@@ -120,6 +120,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                         HomeTile.DOWNLOADS -> nav.navigate(Routes.category(Category.DOWNLOADS))
                         HomeTile.APPS -> nav.navigate(Routes.APPS)
                         HomeTile.BIN -> nav.navigate(Routes.BIN)
+                        HomeTile.HIDDEN -> nav.navigate(Routes.HIDDEN)
                         // Our own storage screen: never the system Files / Settings app (it may be removed or disabled).
                         HomeTile.INTERNAL -> nav.navigate(Routes.STORAGE)
                         HomeTile.VAULT -> Toast.makeText(context, "The encrypted vault comes in the next update", Toast.LENGTH_SHORT).show()
@@ -174,12 +175,33 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         composable(Routes.SLIDESHOW) { com.clpstudio.filesmanager.viewer.SlideshowScreen(ViewerSession.playItems, onBack = back) }
         composable(Routes.DIAGNOSTICS) { com.clpstudio.filesmanager.ui.screens.DiagnosticsScreen(back) }
         composable(Routes.MUSIC) { MusicPlayerScreen(player, back) }
+        composable(Routes.HIDDEN) {
+            com.clpstudio.filesmanager.ui.screens.HiddenFilesScreen(opener, back, onFolder = { nav.navigate(Routes.browse(it)) })
+        }
         composable(Routes.STORAGE) {
-            com.clpstudio.filesmanager.ui.screens.StorageScreen(
+            // Our own Manage storage screen: never the system Files app or Settings storage page.
+            com.clpstudio.filesmanager.ui.screens.ManageStorageScreen(
                 onBack = back,
                 onBrowse = { nav.navigate(Routes.browse(it)) },
-                onCategory = { nav.navigate(Routes.category(it)) },
+                onKind = { kind, vol -> nav.navigate(Routes.storageKind(kind, vol)) },
+                onCleanup = { mode, vol -> nav.navigate(Routes.storageCleanup(mode, vol)) },
+                onApps = { nav.navigate(Routes.APPS) },
+                onBin = { nav.navigate(Routes.BIN) },
             )
+        }
+        composable(
+            "storage_kind?kind={kind}&vol={vol}",
+            arguments = listOf(navArgument("kind") { type = NavType.StringType; defaultValue = "VIDEOS" }, navArgument("vol") { type = NavType.StringType; defaultValue = "" }),
+        ) { e ->
+            val kind = runCatching { com.clpstudio.filesmanager.data.StorageKind.valueOf(e.arguments?.getString("kind").orEmpty()) }
+                .getOrDefault(com.clpstudio.filesmanager.data.StorageKind.VIDEOS)
+            com.clpstudio.filesmanager.ui.screens.StorageKindScreen(kind, e.arguments?.getString("vol").orEmpty(), opener, back, onPaste = toPaste)
+        }
+        composable(
+            "storage_clean?mode={mode}&vol={vol}",
+            arguments = listOf(navArgument("mode") { type = NavType.StringType; defaultValue = "large" }, navArgument("vol") { type = NavType.StringType; defaultValue = "" }),
+        ) { e ->
+            com.clpstudio.filesmanager.ui.screens.StorageCleanupScreen(e.arguments?.getString("mode").orEmpty(), e.arguments?.getString("vol").orEmpty(), back)
         }
         composable("view?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             val path = e.arguments?.getString("path").orEmpty()

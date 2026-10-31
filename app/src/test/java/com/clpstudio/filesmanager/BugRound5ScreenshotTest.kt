@@ -4,6 +4,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -112,10 +113,33 @@ class BugRound5ScreenshotTest {
             GlassBackground(Modifier.fillMaxSize())
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Video player", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 6.dp, top = 24.dp))
+                com.clpstudio.filesmanager.ui.screens.LoopVideosCard(com.clpstudio.filesmanager.data.LoopMode.FOREVER, 3) { _, _ -> }
+                com.clpstudio.filesmanager.ui.screens.LoopVideosCard(com.clpstudio.filesmanager.data.LoopMode.TIMES, 3) { _, _ -> }
                 DoubleTapSkipCard(seconds = 15, onChange = {})
                 DoubleTapSkipCard(seconds = 25, onChange = {})
             }
         }
+    }
+
+    @Config(qualifiers = "w800dp-h1280dp-port-mdpi")
+    @Test fun addPasswordDialog() {
+        SingletonImageLoader.setUnsafe(ImageLoader.Builder(ctx).coroutineContext(Dispatchers.Unconfined).build())
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                FilesTheme(ThemeMode.DARK, liquidGlass = true) {
+                    // A busy PDF page behind the dialog: none of it may show through.
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF1B1D22)).padding(24.dp)) {
+                        Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.White).padding(20.dp)) {
+                            repeat(60) { Text("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor $it", color = androidx.compose.ui.graphics.Color.Black) }
+                        }
+                    }
+                    com.clpstudio.filesmanager.ui.components.PdfLockDialog("Annual report 2026.pdf", onConfirm = { _, _, _ -> }, onDismiss = {})
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(800)
+        com.github.takahirom.roborazzi.captureScreenRoboImage(File(out, "files_r5_add_password_dialog.png").path)
     }
 
     @Config(qualifiers = "w800dp-h1280dp-port-mdpi")

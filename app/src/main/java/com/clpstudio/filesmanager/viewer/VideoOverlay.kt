@@ -73,6 +73,10 @@ class VideoOverlayState {
     var muted by mutableStateOf(false)
     var speed by mutableStateOf(1f)
     var loop by mutableStateOf(false)
+    /** Fill the screen (crop) instead of fitting the whole picture. */
+    var fill by mutableStateOf(false)
+    /** The current file is hidden: the ⋮ menu offers Unhide instead of Hide. */
+    var hidden by mutableStateOf(false)
 
     // Playback, refreshed by the activity a few times a second.
     var position by mutableLongStateOf(0L)
@@ -143,6 +147,8 @@ interface VideoActions {
     /** Seek bar drag: live position while dragging; [done] on release. */
     fun seekBar(ms: Long, done: Boolean) {}
     fun pip() {}
+    fun toggleFit() {}
+    fun unhide() {}
 }
 
 val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f)
@@ -230,26 +236,24 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
         }
 
         val showControls = state.controls && !state.fast && !state.scrubbing
-        // ---- Top bar on its own soft gradient.
+        // ---- Top bar: the photo viewer's glass bar (name + "2 of 144"), with PiP, rotate and ⋮.
         AnimatedVisibility(showControls, enter = fadeIn(tween(FADE_MS)), exit = fadeOut(tween(FADE_MS)), modifier = Modifier.align(Alignment.TopCenter)) {
-            Row(
-                Modifier.fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Shade.copy(alpha = 0.55f), Shade.copy(alpha = 0.25f), Color.Transparent)))
-                    .statusBarsPadding().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 28.dp)
-                    .onGloballyPositioned { state.controlRects["top"] = it.boundsInRoot() },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = actions::back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
-                Spacer(Modifier.weight(1f))
-                if (state.pipSupported && state.photo == null) {
-                    IconButton(onClick = actions::pip) { Icon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", tint = Color.White) }
-                }
-                IconButton(onClick = actions::rotate) { Icon(Icons.Filled.ScreenRotation, "Rotate", tint = Color.White) }
+            Box(Modifier.fillMaxWidth().onGloballyPositioned { state.controlRects["top"] = it.boundsInRoot() }) {
+                ViewerTopBar(
+                    title = state.current()?.name ?: state.title,
+                    subtitle = if (state.items.size > 1) "${state.index + 1} of ${state.items.size}" else null,
+                    onBack = actions::back,
+                ) {
+                    if (state.pipSupported && state.photo == null) {
+                        IconButton(onClick = actions::pip) { Icon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture") }
+                    }
+                    IconButton(onClick = actions::rotate) { Icon(Icons.Filled.ScreenRotation, "Rotate") }
                 Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = Color.White) }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = LocalContentColor.current) }
                     DropdownMenu(menu, { menu = false }) {
                         DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; actions.edit() })
-                        DropdownMenuItem(text = { Text("Hide") }, leadingIcon = { Icon(Icons.Filled.VisibilityOff, null) }, onClick = { menu = false; actions.hide() })
+                        if (state.hidden) DropdownMenuItem(text = { Text("Unhide") }, leadingIcon = { Icon(Icons.Filled.Visibility, null) }, onClick = { menu = false; actions.unhide() })
+                        else DropdownMenuItem(text = { Text("Hide") }, leadingIcon = { Icon(Icons.Filled.VisibilityOff, null) }, onClick = { menu = false; actions.hide() })
                         DropdownMenuItem(text = { Text("Info") }, leadingIcon = { Icon(Icons.Filled.Info, null) }, onClick = { menu = false; actions.info() })
                         if (state.photo == null) {
                             DropdownMenuItem(
@@ -269,15 +273,17 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
                         DropdownMenuItem(text = { Text("Open with") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) }, onClick = { menu = false; actions.openWith() })
                     }
                 }
+                }
             }
         }
-        // ---- Center: previous / play-pause / next. See-through circles, nothing behind them.
+        // ---- Center: one big play / pause with previous / next beside it, on soft dark circles.
         AnimatedVisibility(showControls && state.photo == null, enter = fadeIn(tween(FADE_MS)), exit = fadeOut(tween(FADE_MS)), modifier = Modifier.align(Alignment.Center)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundButton(Icons.Filled.SkipPrevious, "Previous", 46.dp, enabled = state.hasPrev) { state.touchStamp++; actions.previous() }
-                RoundButton(if (state.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (state.playing) "Pause" else "Play", 62.dp) { state.touchStamp++; actions.playPause() }
-                RoundButton(Icons.Filled.SkipNext, "Next", 46.dp, enabled = state.hasNext) { state.touchStamp++; actions.next() }
-            }
+            VideoCenterButtons(
+                playing = state.playing, hasPrev = state.hasPrev, hasNext = state.hasNext,
+                onPrevious = { state.touchStamp++; actions.previous() },
+                onPlayPause = { state.touchStamp++; actions.playPause() },
+                onNext = { state.touchStamp++; actions.next() },
+            )
         }
         // ---- Name + slim timeline after a video change (controls hidden).
         AnimatedVisibility(
@@ -298,53 +304,43 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
                 }
             }
         }
-        // ---- Bottom controls on their own soft gradient.
+        // ---- Bottom: name (on a change) above one seek row and one control row on a scrim, then the photo viewer's
+        // glass panel with the filmstrip (thumbnails only) and Share · Favorite · Info · Delete.
         AnimatedVisibility(showControls, enter = fadeIn(tween(FADE_MS)), exit = fadeOut(tween(FADE_MS)), modifier = Modifier.align(Alignment.BottomCenter)) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Shade.copy(alpha = 0.35f), Shade.copy(alpha = 0.6f))))
-                    .navigationBarsPadding().padding(top = 36.dp, bottom = 4.dp)
-                    .onGloballyPositioned { state.controlRects["bottom"] = it.boundsInRoot() },
-            ) {
-                Box(Modifier.padding(horizontal = 16.dp)) { NameLine(state) }
-                if (state.photo == null) {
-                    SeekRow(state, actions)
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { state.touchStamp++; actions.toggleMute() }) {
-                            Icon(if (state.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, if (state.muted) "Unmute" else "Mute", tint = Color.White)
-                        }
-                        Box {
-                            SpeedChip(state.speed) { state.touchStamp++; speedMenu = true }
-                            DropdownMenu(speedMenu, { speedMenu = false }) {
-                                SPEEDS.forEach { s ->
-                                    DropdownMenuItem(
-                                        text = { Text(if (s == 1f) "1x  Normal" else speedLabel(s), fontWeight = if (s == state.speed) FontWeight.Bold else FontWeight.Normal) },
-                                        trailingIcon = { if (s == state.speed) Icon(Icons.Filled.Check, null) },
-                                        onClick = { speedMenu = false; actions.setSpeed(s) },
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        LoopToggle(state.loop) { state.touchStamp++; actions.setLoop(!state.loop) }
-                        ViewerActions(
-                            onShare = actions::share,
-                            favorite = state.favorite,
-                            onFavorite = actions::toggleFavorite,
-                            onInfo = actions::info,
-                            onDelete = actions::delete,
-                            modifier = Modifier.weight(1f),
-                            contentColor = Color.White,
-                        )
-                    }
-                } else {
-                    ViewerActions(
-                        onShare = actions::share, favorite = state.favorite, onFavorite = actions::toggleFavorite,
-                        onInfo = actions::info, onDelete = actions::delete, contentColor = Color.White,
+            VideoBottomBlock(
+                items = state.items,
+                current = state.index,
+                onSelect = { state.touchStamp++; actions.jumpTo(it) },
+                favorite = state.favorite,
+                onShare = actions::share,
+                onFavorite = actions::toggleFavorite,
+                onInfo = actions::info,
+                onDelete = actions::delete,
+                modifier = Modifier.onGloballyPositioned { state.controlRects["bottom"] = it.boundsInRoot() },
+                nameToast = {
+                    VideoNameToast(
+                        name = state.title,
+                        position = if (state.items.size > 1) "${state.index + 1} / ${state.items.size}" else null,
+                        visible = nameVisible,
+                        modifier = Modifier.padding(bottom = 6.dp),
                     )
-                }
-                if (state.items.size > 1) VideoFilmstrip(state.items, state.index) { state.touchStamp++; actions.jumpTo(it) }
-            }
+                },
+                video = if (state.photo != null) null else ({
+                    VideoSeekRow(
+                        positionMs = if (state.scrubbing) state.scrubMs else state.position,
+                        durationMs = state.duration,
+                        onSeek = { ms, done -> actions.seekBar(ms, done) },
+                        onTouch = { state.touchStamp++ },
+                    )
+                    VideoControlRow(
+                        muted = state.muted, speed = state.speed, loop = state.loop, fill = state.fill,
+                        onMute = { state.touchStamp++; actions.toggleMute() },
+                        onSpeed = { state.touchStamp++; actions.setSpeed(it) },
+                        onLoop = { state.touchStamp++; actions.setLoop(!state.loop) },
+                        onFit = { state.touchStamp++; actions.toggleFit() },
+                    )
+                }),
+            )
         }
     }
     if (speedPicker) {

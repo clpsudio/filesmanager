@@ -45,6 +45,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,12 +81,14 @@ import android.widget.Toast
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.clpstudio.filesmanager.data.Favorites
+import com.clpstudio.filesmanager.Graph
 import com.clpstudio.filesmanager.ui.components.TextInputDialog
 import kotlinx.coroutines.launch
 import java.io.File
@@ -133,6 +137,15 @@ fun FilePagerScreen(
     val dismiss = remember { DismissDragState() }
     val dismissPx = with(androidx.compose.ui.platform.LocalDensity.current) { ViewerGestureMath.DISMISS_DP.dp.toPx() }
     ResetBrightnessOnExit()
+    // Videos play inline, right in the pager (Media, Recent, Favorites, folders): no "Play" card.
+    val video = remember { PagerVideo(context) }
+    DisposableEffect(video) { onDispose { video.release() } }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) video.pause() }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
     // Deleted / moved / renamed anywhere (info sheet, another screen, the video player): the page goes too.
     val fileEvents by com.clpstudio.filesmanager.data.FileEvents.version.collectAsState()
     LaunchedEffect(fileEvents) {
@@ -162,9 +175,22 @@ fun FilePagerScreen(
         if (list.isEmpty()) onBack()
     }
 
-    ImmersiveEffect(fullscreen || (isImage && !chrome))
+    val isVideo = pagerPageType(current.kind) == PagerPage.VIDEO
+    val pwEntries = com.clpstudio.filesmanager.data.rememberPasswordEntries(current)
+    LaunchedEffect(current.path, isVideo) {
+        if (isVideo) video.load(current, Graph.settings.value) else video.stop()
+    }
+    LaunchedEffect(current.path, isVideo) {
+        while (isVideo) { video.tick(); kotlinx.coroutines.delay(250) }
+    }
+    // Video: the controls hide by themselves while it plays (tap shows them again).
+    LaunchedEffect(chrome, video.playing, current.path) {
+        if (isVideo && chrome && video.playing && !fullscreen) { kotlinx.coroutines.delay(3500); chrome = false }
+    }
+
+    ImmersiveEffect(fullscreen || ((isImage || isVideo) && !chrome))
     OrientationEffect(orientation)
-    LaunchedEffect(pager.currentPage) { if (!isImage) chrome = true }
+    LaunchedEffect(pager.currentPage) { if (!isImage && !isVideo) chrome = true }
 
     val dark = isMedia
     val dismissing = ViewerGestureMath.dismissProgress(dismiss.value, dismissPx)
@@ -200,6 +226,7 @@ fun FilePagerScreen(
                             }
                         },
                 ) { ZoomableImage(uri, zoom) { chrome = !chrome } }
+                FileKind.VIDEO -> InlineVideoPage(item, isCurrent = index == pager.currentPage, video = video, onTap = { chrome = !chrome })
                 FileKind.PDF -> PdfContent(uri, item.name, paper, topPadding = top)
                 FileKind.TEXT -> if (Markdown.isMarkdown(item.name)) MarkdownContent(uri, mdSource, paper, topPadding = top) else TextContent(uri, paper, topPadding = top)
                 FileKind.DOCUMENT -> OfficePage(item, paper, top) { openFull(item, list.toList()) }
@@ -210,7 +237,8 @@ fun FilePagerScreen(
         AnimatedVisibility(chrome && !fullscreen, enter = fadeIn(), exit = fadeOut()) {
             ViewerTopBar(
                 title = current.name,
-                subtitle = "${page + 1} of ${list.size}",
+                // Media: "3 of 144"; documents say "files" so it doesn't read like the PDF's page number.
+                subtitle = if (isMedia) "${page + 1} of ${list.size}" else "${page + 1} of ${list.size} file" + (if (list.size == 1) "" else "s"),
                 onBack = onBack,
                 titleColor = if (isMedia) Color.Unspecified else MaterialTheme.colorScheme.primary,
             ) {
@@ -223,6 +251,14 @@ fun FilePagerScreen(
                         orientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     }) { Icon(Icons.Filled.ScreenRotation, "Rotate") }
                 } else {
+                    if (isVideo) {
+                        // Hand over to the full player (picture-in-picture, background play), same list.
+                        IconButton(onClick = {
+                            video.pause()
+                            val media = list.filter { it.kind == FileKind.VIDEO || it.kind == FileKind.IMAGE }
+                            VideoPlayerActivity.startFiles(context, media, media.indexOfFirst { it.path == current.path }.coerceAtLeast(0))
+                        }) { Icon(Icons.Filled.PictureInPictureAlt, "Open in video player (picture-in-picture)") }
+                    }
                     IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
                 }
                 IconButton(onClick = { fullscreen = true; chrome = false }) { Icon(Icons.Filled.Fullscreen, "Full screen") }
@@ -243,14 +279,24 @@ fun FilePagerScreen(
                                 }
                             },
                             onInfo = { info = true },
+                            hidden = com.clpstudio.filesmanager.data.HiddenNames.isHidden(current.path),
+                            onUnhide = {
+                                if (com.clpstudio.filesmanager.data.HiddenOps.unhide(context, file) != null) {
+                                    Toast.makeText(context, "Unhidden", Toast.LENGTH_SHORT).show()
+                                    dropPages(listOf(current.path))
+                                } else {
+                                    Toast.makeText(context, "Couldn't unhide it", Toast.LENGTH_SHORT).show()
+                                }
+                            },
                         ) + listOfNotNull(
                             ViewerMenuEntry(Icons.Filled.DriveFileRenameOutline, "Rename") { renaming = current },
                             ViewerMenuEntry(Icons.Filled.Share, "Share") { actions.share(listOf(current)) },
                             ViewerMenuEntry(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") { actions.openWith(current) },
                             ViewerMenuEntry(Icons.Filled.Folder, "Show in folder") { showInFolder(current.parentPath) },
                             if (orientation != null) ViewerMenuEntry(Icons.Filled.ScreenLockRotation, "Auto-rotate (follow the phone)") { orientation = null } else null,
-                            if (current.kind == FileKind.PDF) ViewerMenuEntry(Icons.Filled.Lock, "Add password") { actions.pdfLockTarget = current } else null,
-                            if (current.kind == FileKind.PDF) ViewerMenuEntry(Icons.Filled.LockOpen, "Remove password") { actions.pdfUnlockTarget = current } else null,
+                            // Only the one that applies: Add for a PDF without a password, Remove for a protected one.
+                            if (com.clpstudio.filesmanager.data.PasswordEntry.ADD in pwEntries) ViewerMenuEntry(Icons.Filled.Lock, "Add password") { actions.pdfLockTarget = current } else null,
+                            if (com.clpstudio.filesmanager.data.PasswordEntry.REMOVE in pwEntries) ViewerMenuEntry(Icons.Filled.LockOpen, "Remove password") { actions.pdfUnlockTarget = current } else null,
                             ViewerMenuEntry(Icons.Filled.Delete, "Delete") { actions.deleteTargets = listOf(current) },
                         )
                         entries.forEach { e -> MenuRow(e.icon, e.label) { menu = false; e.onClick() } }
@@ -265,16 +311,50 @@ fun FilePagerScreen(
             ) { Icon(Icons.Filled.FullscreenExit, "Exit full screen") }
         }
         // Every page: Share / Favorite / Info / Delete; photos and videos also get the filmstrip. Hidden with the top bar.
-        AnimatedVisibility(chrome && !fullscreen && dismissing == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-            ViewerBottomBar(
-                items = list,
-                current = page,
-                onSelect = { scope.launch { pager.animateScrollToPage(it) } },
-                onShare = { actions.share(listOf(current)) },
-                onDelete = { actions.deleteTargets = listOf(current) },
-                showStrip = isMedia && list.size > 1,
-                onInfo = { info = true },
+        // A video adds one seek row and one control row on a scrim above it, and play / pause in the middle.
+        AnimatedVisibility(chrome && !fullscreen && dismissing == 0f && isVideo, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.Center)) {
+            VideoCenterButtons(
+                playing = video.playing,
+                hasPrev = page > 0,
+                hasNext = page < list.size - 1,
+                onPrevious = { scope.launch { pager.animateScrollToPage(page - 1) } },
+                onPlayPause = { video.playPause() },
+                onNext = { scope.launch { pager.animateScrollToPage(page + 1) } },
+                showPrevNext = list.size > 1,
             )
+        }
+        AnimatedVisibility(chrome && !fullscreen && dismissing == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+            if (isVideo) {
+                val favs by Favorites.paths.collectAsState()
+                VideoBottomBlock(
+                    items = list,
+                    current = page,
+                    onSelect = { scope.launch { pager.animateScrollToPage(it) } },
+                    favorite = current.path in favs,
+                    onShare = { actions.share(listOf(current)) },
+                    onFavorite = { Favorites.toggle(current.path) },
+                    onInfo = { info = true },
+                    onDelete = { actions.deleteTargets = listOf(current) },
+                    video = {
+                        VideoSeekRow(video.position, video.duration, onSeek = { ms, _ -> video.seek(ms) })
+                        VideoControlRow(
+                            muted = video.muted, speed = video.speed, loop = video.loop, fill = video.fill,
+                            onMute = video::toggleMute, onSpeed = video::changeSpeed,
+                            onLoop = { video.changeLoop(!video.loop) }, onFit = { video.fill = !video.fill },
+                        )
+                    },
+                )
+            } else {
+                ViewerBottomBar(
+                    items = list,
+                    current = page,
+                    onSelect = { scope.launch { pager.animateScrollToPage(it) } },
+                    onShare = { actions.share(listOf(current)) },
+                    onDelete = { actions.deleteTargets = listOf(current) },
+                    showStrip = isMedia && list.size > 1,
+                    onInfo = { info = true },
+                )
+            }
         }
         LevelPillHost(pill)
     }
@@ -323,11 +403,16 @@ fun FilePagerScreen(
 data class ViewerMenuEntry(val icon: ImageVector, val label: String, val onClick: () -> Unit)
 
 /** The photo-specific rows of the viewer menu: Edit and Set as (photos only), then Hide and Info. */
-fun viewerMenuEntries(kind: FileKind, onEdit: () -> Unit, onSetAs: () -> Unit, onHide: () -> Unit, onInfo: () -> Unit): List<ViewerMenuEntry> =
+fun viewerMenuEntries(
+    kind: FileKind, onEdit: () -> Unit, onSetAs: () -> Unit, onHide: () -> Unit, onInfo: () -> Unit,
+    hidden: Boolean = false, onUnhide: (() -> Unit)? = null,
+): List<ViewerMenuEntry> =
     listOfNotNull(
         if (kind == FileKind.IMAGE) ViewerMenuEntry(Icons.Filled.Edit, "Edit", onEdit) else null,
         if (kind == FileKind.IMAGE) ViewerMenuEntry(Icons.Filled.Wallpaper, "Set as", onSetAs) else null,
-        ViewerMenuEntry(Icons.Filled.VisibilityOff, "Hide", onHide),
+        // A hidden file gets Unhide (never Hide); a normal one gets Hide.
+        if (hidden && onUnhide != null) ViewerMenuEntry(Icons.Filled.Visibility, "Unhide", onUnhide)
+        else if (!hidden) ViewerMenuEntry(Icons.Filled.VisibilityOff, "Hide", onHide) else null,
         ViewerMenuEntry(Icons.Filled.Info, "Info", onInfo),
     )
 

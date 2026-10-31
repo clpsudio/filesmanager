@@ -15,6 +15,10 @@ object Routes {
     const val SLIDESHOW = "slideshow"
     const val FAVORITES = "favorites"
     const val STORAGE = "storage"
+    const val HIDDEN = "hidden"
+
+    fun storageKind(kind: com.clpstudio.filesmanager.data.StorageKind, volume: String) = "storage_kind?kind=${kind.name}&vol=${Uri.encode(volume)}"
+    fun storageCleanup(mode: String, volume: String) = "storage_clean?mode=${Uri.encode(mode)}&vol=${Uri.encode(volume)}"
 
     fun category(c: Category) = "category/${c.name}"
     fun categoryFolder(c: Category, folder: String) = "catfolder/${c.name}?folder=${Uri.encode(folder)}"

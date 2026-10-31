@@ -86,6 +86,7 @@ import com.clpstudio.filesmanager.ui.glass.glassPanel
 import com.clpstudio.filesmanager.ui.glass.pressScale
 import kotlinx.coroutines.launch
 import com.clpstudio.filesmanager.ui.components.rememberLiveFiles
+import com.clpstudio.filesmanager.ui.components.swipeTabs
 
 /**
  * Last loaded list per category, in memory and on disk, so a category opens instantly (also right
@@ -209,11 +210,12 @@ fun CategoryScreen(
                 )
             },
         ) { padding ->
-            when {
+            // Swipe left: All files.
+            Box(Modifier.fillMaxSize().swipeTabs(0, 2) { tab = it }) { when {
                 items == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 groups.isEmpty() -> EmptyState(Icons.Filled.FolderOpen, "Nothing here yet", modifier = Modifier.padding(padding))
                 else -> FolderGroupsGrid(groups, padding, onFolder)
-            }
+            } }
         }
     } else {
         FileListScreen(
@@ -226,6 +228,7 @@ fun CategoryScreen(
             onSearch = onSearch,
             onPaste = onPaste,
             tabs = { CategoryTabs(tab) { tab = it } },
+            onSwipePastStart = { tab = 0 },
             category = cat,
             loading = loading,
         )
@@ -323,6 +326,8 @@ fun FileListScreen(
     onSearch: (() -> Unit)?,
     onPaste: () -> Unit,
     tabs: (@Composable () -> Unit)? = null,
+    /** Swiping right on the first type chip (Media: back to the Folders tab). */
+    onSwipePastStart: (() -> Unit)? = null,
     defaultSort: SortBy = SortBy.DATE,
     category: Category? = null,
     loading: Boolean = false,
@@ -381,7 +386,13 @@ fun FileListScreen(
     ) { padding ->
         val list = sorted
         val click: (FileItem) -> Unit = { if (selection.active) selection.toggle(it.path) else opener.open(it, list.orEmpty()) }
-        when {
+        // Swipe left / right on the list to move through the type chips (off while selecting).
+        val chipIndex = chips.indexOfFirst { it.first.id == chosen }.coerceAtLeast(0)
+        Box(
+            Modifier.fillMaxSize().swipeTabs(chipIndex, if (chips.size > 1) chips.size else 1, enabled = !selection.active, onPastStart = onSwipePastStart) { i ->
+                category?.let { cc -> chips.getOrNull(i)?.let { (chip, _) -> scope.launch { Graph.settingsRepo.setTypeFilter(cc.name, chip.id) } } }
+            },
+        ) { when {
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             list.isEmpty() -> EmptyState(Icons.Filled.FolderOpen, if (chosen != TypeFilters.ALL) "No files of this type" else "Nothing here", modifier = Modifier.padding(padding))
             else -> FileCollection(
@@ -389,7 +400,7 @@ fun FileListScreen(
                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 24.dp),
                 sections = sortBy == SortBy.DATE,
             )
-        }
+        } }
     }
     FileActionDialogs(actions, onDeleted = { selection.clear() })
 }

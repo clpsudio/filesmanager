@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager.picker
 
+import com.clpstudio.filesmanager.ui.components.swipeTabs
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -159,7 +160,9 @@ fun PickerContent(
     ) { padding ->
         val top = padding.calculateTopPadding() + 4.dp
         val bottom = padding.calculateBottomPadding() + 24.dp
-        when {
+        // Swipe left / right to move between the sections (Recent, Images, ...).
+        val sections = ui.request.sections
+        Box(Modifier.fillMaxSize().swipeTabs(sections.indexOf(ui.section).coerceAtLeast(0), sections.size, enabled = !browsingFolder) { i -> onSection(sections[i]) }) { when {
             ui.needsPermission -> Column(
                 Modifier.fillMaxSize().padding(top = top, start = 24.dp, end = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -220,7 +223,7 @@ fun PickerContent(
                     }
                 }
             }
-        }
+        } }
     }
 }
 

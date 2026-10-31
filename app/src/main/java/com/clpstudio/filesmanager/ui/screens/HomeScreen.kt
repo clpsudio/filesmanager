@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager.ui.screens
 
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
@@ -103,6 +104,7 @@ enum class HomeTile(val title: String, val icon: ImageVector, val color: Color) 
     APPS("Apps", Icons.Filled.Android, Color(0xFF65A30D)),
     INTERNAL("Internal storage", Icons.Filled.Storage, Color(0xFF475569)),
     BIN("Bin", Icons.Filled.Delete, Color(0xFFE11D48)),
+    HIDDEN("Hidden files", Icons.Filled.VisibilityOff, Color(0xFF64748B)),
     VAULT("Vault", Icons.Filled.Lock, Color(0xFFD97706)),
 }
 
@@ -139,7 +141,7 @@ fun HomeScreen(
     val snap by HomeRepository.state(showHidden).collectAsState()
     val favorites by com.clpstudio.filesmanager.data.Favorites.paths.collectAsState()
     val state = remember(snap, favorites.size) { homeStateOf(snap, favorites.size) }
-    HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer)
+    HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer, showHiddenTile = showHidden)
 }
 
 /** Maps the repository snapshot to what Home draws; "…" while a count is still loading, never a blank or a false 0. */
@@ -150,6 +152,7 @@ internal fun homeStateOf(snap: HomeSnapshot, favorites: Int): HomeState {
     counts[HomeTile.FAVORITES] = HomeRepository.countLabel(Loadable(value = favorites, loaded = true))
     counts[HomeTile.BIN] = HomeRepository.countLabel(snap.bin)
     counts[HomeTile.VAULT] = "Coming soon"
+    counts[HomeTile.HIDDEN] = "All in one place"
     counts[HomeTile.APPS] = "APKs & installed"
     counts[HomeTile.INTERNAL] = "System storage"
     val (used, total) = snap.storage.value ?: (0L to 0L)
@@ -166,6 +169,8 @@ fun HomeContent(
     onOpenRecent: (FileItem, List<FileItem>) -> Unit,
     player: PlayerUi = PlayerUi(),
     onOpenPlayer: () -> Unit = {},
+    /** "Hidden files" tile: only while Settings → Show hidden files is on. */
+    showHiddenTile: Boolean = false,
 ) {
     GlassScaffold(
         topBar = {
@@ -188,6 +193,8 @@ fun HomeContent(
             val cols = homeGridColumns(maxWidth)
             // Keep the content from stretching edge-to-edge on wide tablets.
             val side = maxOf(16.dp, (maxWidth - HomeMaxContentWidth) / 2)
+            // "Hidden files" shows only while Settings → Show hidden files is on.
+            val homeTiles = remember(showHiddenTile) { HomeTile.entries.filter { it != HomeTile.HIDDEN || showHiddenTile } }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(cols),
                 contentPadding = PaddingValues(start = side, end = side, top = padding.calculateTopPadding() + 12.dp, bottom = padding.calculateBottomPadding() + 24.dp),
@@ -209,7 +216,7 @@ fun HomeContent(
                     }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "catHeader") { SectionTitle("Categories") }
-                items(HomeTile.entries, key = { it.name }) { tile ->
+                items(homeTiles, key = { it.name }) { tile ->
                     val sub = when {
                         tile == HomeTile.INTERNAL && state.total > 0 -> formatSize(state.used) + " used"
                         tile == HomeTile.APPS && state.counts[tile] == "APKs & installed" -> "APKs & apps"
@@ -259,6 +266,7 @@ internal fun tileAccent(tile: HomeTile, dark: Boolean): Color = when (tile) {
     HomeTile.INTERNAL -> if (dark) Color(0xFFA9B6C9) else Color(0xFF526073)
     HomeTile.BIN -> if (dark) Color(0xFFFF667A) else Color(0xFFD21F3C)
     HomeTile.VAULT -> if (dark) Color(0xFFFFB13B) else Color(0xFFC46A00)
+    HomeTile.HIDDEN -> if (dark) Color(0xFFB4BFCE) else Color(0xFF55627A)
 }
 
 private fun tileLabel(tile: HomeTile): String = when (tile) {

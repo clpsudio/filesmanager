@@ -144,7 +144,7 @@ fun Modifier.paperPage(): Modifier = this
 @Composable
 fun PageCounter(current: Int, total: Int, modifier: Modifier = Modifier) {
     Text(
-        "$current/$total",
+        "Page $current/$total",
         style = MaterialTheme.typography.labelLarge,
         modifier = modifier.navigationBarsPadding().padding(14.dp)
             .glassBar(RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp),

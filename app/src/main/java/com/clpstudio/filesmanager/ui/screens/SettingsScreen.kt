@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Add
 import com.clpstudio.filesmanager.data.DoubleTapSkip
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -78,6 +81,7 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onBackgroundPlay = { scope.launch { Graph.settingsRepo.setBackgroundPlay(it) } },
         onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
         onDoubleTapSkip = { scope.launch { Graph.settingsRepo.setDoubleTapSkip(it) } },
+        onLoop = { mode, times -> scope.launch { Graph.settingsRepo.setLoop(mode, times) } },
     )
 }
 
@@ -97,6 +101,7 @@ fun SettingsContent(
     onBackgroundPlay: (Boolean) -> Unit = {},
     onAutoPip: (Boolean) -> Unit = {},
     onDoubleTapSkip: (Int) -> Unit = {},
+    onLoop: (com.clpstudio.filesmanager.data.LoopMode, Int) -> Unit = { _, _ -> },
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -181,6 +186,7 @@ fun SettingsContent(
             item {
                 SwitchCard(Icons.Filled.PictureInPictureAlt, "Auto picture-in-picture", "Going Home while a video plays shows it in a small window over other apps.", settings.autoPip, onAutoPip)
             }
+            item { LoopVideosCard(settings.loopMode, settings.loopTimes, onLoop) }
             item { DoubleTapSkipCard(settings.doubleTapSkipSeconds, onDoubleTapSkip) }
             item { Header("Security") }
             item {
@@ -331,5 +337,51 @@ fun DoubleTapSkipCard(seconds: Int, onChange: (Int) -> Unit) {
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { custom = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Settings → Video player → Loop videos: Off / Forever (default) / N more times (1–10). */
+@Composable
+fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, onChange: (com.clpstudio.filesmanager.data.LoopMode, Int) -> Unit) {
+    val modes = com.clpstudio.filesmanager.data.LoopMode.entries
+    Card {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RowIcon(Icons.Filled.Repeat)
+            Column(Modifier.weight(1f)) {
+                Text("Loop videos", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Play the same video again when it ends. The Loop button in the player changes this too.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(com.clpstudio.filesmanager.data.LoopPolicy.label(mode, times), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.size(10.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            val labels = listOf("Off", "Forever", "Times")
+            modes.forEachIndexed { i, m ->
+                SegmentedButton(selected = mode == m, onClick = { onChange(m, times) }, shape = SegmentedButtonDefaults.itemShape(i, modes.size)) { Text(labels[i]) }
+            }
+        }
+        if (mode == com.clpstudio.filesmanager.data.LoopMode.TIMES) {
+            Spacer(Modifier.size(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Play again", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                androidx.compose.material3.FilledTonalIconButton(
+                    onClick = { onChange(mode, com.clpstudio.filesmanager.data.LoopPolicy.clampTimes(times - 1)) },
+                    enabled = times > com.clpstudio.filesmanager.data.LoopPolicy.MIN_TIMES,
+                ) { Icon(Icons.Filled.Remove, "Fewer") }
+                Text(
+                    if (times == 1) "1 time" else "$times times",
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                androidx.compose.material3.FilledTonalIconButton(
+                    onClick = { onChange(mode, com.clpstudio.filesmanager.data.LoopPolicy.clampTimes(times + 1)) },
+                    enabled = times < com.clpstudio.filesmanager.data.LoopPolicy.MAX_TIMES,
+                ) { Icon(Icons.Filled.Add, "More") }
+            }
+        }
     }
 }

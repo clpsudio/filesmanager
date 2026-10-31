@@ -101,11 +101,15 @@ fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
     LaunchedEffect(apks) {
         apks?.let { l -> val keep = ApkSelectionLogic.prune(selection.paths.toList(), l); if (keep.size != selection.paths.size) selection.selectAll(keep) }
     }
+    // Swipe the content left / right to change tabs; the tab row and the pager follow each other.
+    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = tab) { tabs.size }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(pager.currentPage) { tab = pager.currentPage }
     LaunchedEffect(tab) { if (tab != 0) selection.clear() }
     BackHandler(selection.active) { selection.clear() }
     val tabRow: @Composable () -> Unit = {
-        PrimaryTabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
-            tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+        PrimaryTabRow(selectedTabIndex = pager.currentPage, containerColor = Color.Transparent) {
+            tabs.forEachIndexed { i, t -> Tab(selected = pager.currentPage == i, onClick = { scope.launch { pager.animateScrollToPage(i) } }, text = { Text(t) }) }
         }
     }
     GlassScaffold(
@@ -122,10 +126,13 @@ fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
             }
         },
     ) { padding ->
-        when (tab) {
-            0 -> ApkFilesList(padding, apks, selection, actions)
-            1 -> InstalledList(system = false, padding = padding)
-            else -> InstalledList(system = true, padding = padding)
+        // No swiping away while APK files are being selected.
+        androidx.compose.foundation.pager.HorizontalPager(pager, userScrollEnabled = !selection.active, modifier = Modifier.fillMaxSize()) { page ->
+            when (page) {
+                0 -> ApkFilesList(padding, apks, selection, actions)
+                1 -> InstalledList(system = false, padding = padding)
+                else -> InstalledList(system = true, padding = padding)
+            }
         }
     }
 }

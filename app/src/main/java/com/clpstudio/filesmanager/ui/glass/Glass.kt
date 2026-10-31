@@ -187,19 +187,18 @@ fun DialogGlassEffect() {
     // Applied once per dialog window (setting window attributes on every recomposition makes
     // the window relayout again and again).
     androidx.compose.runtime.LaunchedEffect(view, g.enabled) {
+        // Dialogs are solid now (round 5): a see-through dialog let the page behind show through the text
+        // fields and rows (Samsung often skips the blur). Normal dim behind, no blur.
         if (!g.enabled || !blurSupported) return@LaunchedEffect
         val window = (view.parent as? DialogWindowProvider)?.window ?: return@LaunchedEffect
-        window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-        window.attributes = window.attributes.apply { blurBehindRadius = 48 }
-        window.setDimAmount(0.25f)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
     }
 }
 
 @Composable
 fun dialogContainerColor(): Color {
-    val g = LocalGlass.current
-    val s = MaterialTheme.colorScheme.surfaceContainerHigh
-    return if (g.enabled) s.copy(alpha = if (g.dark) 0.95f else 0.92f) else s
+    // Always opaque: dialogs, sheets and menus never show what is behind them.
+    return MaterialTheme.colorScheme.surfaceContainerHigh
 }
 
 /**

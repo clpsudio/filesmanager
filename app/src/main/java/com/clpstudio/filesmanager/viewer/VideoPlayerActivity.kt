@@ -89,6 +89,8 @@ class VideoPlayerActivity : ComponentActivity() {
     private var userOrientation: Int? = null
     private var normalSpeed = 1f
     private var lastDoubleTapAt = 0L
+    /** Times the current video has repeated (Loop videos → N times). */
+    private var repeatsDone = 0
     private var videoW = 16
     private var videoH = 9
 
@@ -104,6 +106,16 @@ class VideoPlayerActivity : ComponentActivity() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             val c = controller ?: return
+            // Settings → Loop videos: forever, or N more times, then on like Loop off.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                repeatsDone++
+                if (!com.clpstudio.filesmanager.data.LoopPolicy.keepRepeating(settings.loopMode, settings.loopTimes, repeatsDone)) {
+                    c.repeatMode = Player.REPEAT_MODE_OFF
+                }
+            } else {
+                repeatsDone = 0
+                c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            }
             if (ui.photo != null) return
             val e = playlist.entryOfMedia(c.currentMediaItemIndex)
             if (e >= 0 && e != entry) {
@@ -226,7 +238,7 @@ class VideoPlayerActivity : ComponentActivity() {
                 }
                 ui.flashName()
             }
-            ui.loop = c.repeatMode == Player.REPEAT_MODE_ONE
+            ui.loop = settings.loopMode != com.clpstudio.filesmanager.data.LoopMode.OFF
             ui.speed = c.playbackParameters.speed
             normalSpeed = ui.speed
             ui.muted = c.volume == 0f
@@ -539,6 +551,7 @@ class VideoPlayerActivity : ComponentActivity() {
         ui.title = entries.getOrNull(entry)?.name.orEmpty()
         ui.hasPrev = entry > 0
         ui.hasNext = entry < entries.size - 1
+        ui.hidden = currentPath()?.let { com.clpstudio.filesmanager.data.HiddenNames.isHidden(it) } ?: false
         updatePip()
     }
 
@@ -546,8 +559,8 @@ class VideoPlayerActivity : ComponentActivity() {
 
     private val prefs by lazy { getSharedPreferences("video", MODE_PRIVATE) }
 
-    /** Loop: remembered once chosen; before that, on for a single video and off for a list. */
-    private fun loopPref(): Boolean = if (prefs.contains("loop")) prefs.getBoolean("loop", false) else playlist.videoCount <= 1
+    /** Settings → Video player → Loop videos (default: forever). */
+    private fun loopPref(): Boolean = com.clpstudio.filesmanager.data.LoopPolicy.repeatsAtStart(settings.loopMode, settings.loopTimes)
 
     private val videoActions = object : VideoActions {
         override fun back() = closePlayer()
@@ -584,6 +597,21 @@ class VideoPlayerActivity : ComponentActivity() {
                 }
             }
         }
+        override fun unhide() {
+            val path = currentPath() ?: return
+            lifecycleScope.launch {
+                val back = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.clpstudio.filesmanager.data.HiddenOps.unhide(this@VideoPlayerActivity, File(path))
+                }
+                if (back == null) {
+                    android.widget.Toast.makeText(this@VideoPlayerActivity, "Couldn't unhide this file", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(this@VideoPlayerActivity, "Unhidden", android.widget.Toast.LENGTH_SHORT).show()
+                    com.clpstudio.filesmanager.ui.AppState.refresh()
+                    ui.hidden = false
+                }
+            }
+        }
         override fun delete() {
             val path = currentPath() ?: return
             controller?.pause()
@@ -609,7 +637,14 @@ class VideoPlayerActivity : ComponentActivity() {
             ui.speed = speed
         }
         override fun setLoop(on: Boolean) {
-            prefs.edit().putBoolean("loop", on).apply()
+            // The Loop button changes this session and remembers it as the setting.
+            val current = settings.loopMode
+            if (current != com.clpstudio.filesmanager.data.LoopMode.OFF) prefs.edit().putString("loop_last_on", current.name).apply()
+            val lastOn = com.clpstudio.filesmanager.data.LoopMode.parse(prefs.getString("loop_last_on", null))
+            val mode = if (on) com.clpstudio.filesmanager.data.LoopPolicy.toggled(com.clpstudio.filesmanager.data.LoopMode.OFF, lastOn)
+                else com.clpstudio.filesmanager.data.LoopMode.OFF
+            com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setLoop(mode) }
+            repeatsDone = 0
             controller?.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             ui.loop = on
             ui.note(if (on) "Loop on" else "Loop off")
@@ -653,6 +688,10 @@ class VideoPlayerActivity : ComponentActivity() {
             }
         }
         override fun pip() = enterPip()
+        override fun toggleFit() {
+            ui.fill = !ui.fill
+            playerView.resizeMode = if (ui.fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
     }
 
     /** Drops the current entry (after delete / hide); closes when none is left. */

@@ -1,5 +1,7 @@
 package com.clpstudio.filesmanager.ui.components
 
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import android.widget.Toast
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.FolderZip
@@ -169,6 +171,8 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
                 PdfSecurity.init(context)
                 PdfSecurity.encrypt(src, user, out, ownerPassword = owner)
             }
+            com.clpstudio.filesmanager.data.LockStateCache.invalidate(src.absolutePath)
+            com.clpstudio.filesmanager.data.LockStateCache.invalidate(out.absolutePath)
             "Password added: " + out.name to listOf(out)
         }
     }
@@ -195,8 +199,29 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
                 followUp = { AppState.DoneAction("Saved ${out.name}", "Open", out) },
             ) {
                 withContext(Dispatchers.IO) { PdfSecurity.decrypt(src, password, out) }
+                com.clpstudio.filesmanager.data.LockStateCache.invalidate(src.absolutePath)
+                com.clpstudio.filesmanager.data.LockStateCache.invalidate(out.absolutePath)
                 "Password removed: " + out.name to listOf(out)
             }
+        }
+    }
+
+    /** Hide = move into a ".hidden" folder next to it (with .nomedia); Unhide reverses it. */
+    fun hide(items: List<FileItem>) {
+        Graph.appScope.launch(Dispatchers.Main) {
+            val n = withContext(Dispatchers.IO) { items.count { com.clpstudio.filesmanager.data.HideFile.hide(context, File(it.path)) != null } }
+            AppState.refresh()
+            afterAction()
+            toast(if (n == items.size) "Hidden. Find them in Hidden files." else "Hid $n of ${items.size}")
+        }
+    }
+
+    fun unhide(items: List<FileItem>) {
+        Graph.appScope.launch(Dispatchers.Main) {
+            val n = withContext(Dispatchers.IO) { com.clpstudio.filesmanager.data.HiddenOps.unhideAll(context, items.map { File(it.path) }) }
+            AppState.refresh()
+            afterAction()
+            toast(if (n == items.size) "Unhidden" else "Unhid $n of ${items.size}")
         }
     }
 
@@ -337,6 +362,10 @@ fun SelectionActionsRow(
                 else com.clpstudio.filesmanager.data.Favorites.add(selected.map { it.path })
                 actions.toast(if (allFav) "Removed from favorites" else "Added to favorites")
             }
+            // Hidden items get Unhide (never Hide); normal ones Hide.
+            val hideChoice = com.clpstudio.filesmanager.data.HideMenu.decide(selected.map { it.path })
+            if (hideChoice.unhide) MenuRow(Icons.Filled.Visibility, "Unhide") { menu = false; actions.unhide(selected.filter { com.clpstudio.filesmanager.data.HiddenNames.isHidden(it.path) }) }
+            if (hideChoice.hide) MenuRow(Icons.Filled.VisibilityOff, "Hide") { menu = false; actions.hide(selected.filter { !com.clpstudio.filesmanager.data.HiddenNames.isHidden(it.path) }) }
             MenuRow(Icons.Filled.ContentCopy, "Copy to...") { menu = false; actions.copy(selected) }
             MenuRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to...") { menu = false; actions.move(selected) }
             MenuRow(Icons.Filled.FolderZip, "Compress") { menu = false; actions.compress(selected, withPassword = false) }
@@ -346,8 +375,10 @@ fun SelectionActionsRow(
                 MenuRow(Icons.Filled.DriveFolderUpload, "Extract to...") { menu = false; actions.extractPickFor = selected }
             }
             if (selected.size == 1 && selected[0].kind == FileKind.PDF) {
-                MenuRow(Icons.Filled.Lock, "Add password to PDF") { menu = false; actions.pdfLockTarget = selected[0] }
-                MenuRow(Icons.Filled.LockOpen, "Remove PDF password") { menu = false; actions.pdfUnlockTarget = selected[0] }
+                // Only the one that applies (checked in the background; neither while unknown).
+                val pw = com.clpstudio.filesmanager.data.rememberPasswordEntries(selected[0])
+                if (com.clpstudio.filesmanager.data.PasswordEntry.ADD in pw) MenuRow(Icons.Filled.Lock, "Add password to PDF") { menu = false; actions.pdfLockTarget = selected[0] }
+                if (com.clpstudio.filesmanager.data.PasswordEntry.REMOVE in pw) MenuRow(Icons.Filled.LockOpen, "Remove PDF password") { menu = false; actions.pdfUnlockTarget = selected[0] }
             }
             if (selected.size == 1) {
                 MenuRow(Icons.Filled.DriveFileRenameOutline, "Rename") { menu = false; actions.renameTarget = selected[0] }

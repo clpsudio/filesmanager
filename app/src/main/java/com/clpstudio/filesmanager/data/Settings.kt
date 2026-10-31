@@ -50,6 +50,10 @@ data class AppSettings(
     val backgroundPlay: Boolean = true,
     /** Home / app switch while a video plays opens picture-in-picture. */
     val autoPip: Boolean = true,
+    /** Settings → Video player → Loop videos (default: loop forever). */
+    val loopMode: LoopMode = LoopMode.FOREVER,
+    /** Extra plays for [LoopMode.TIMES] (1–10). */
+    val loopTimes: Int = LoopPolicy.DEFAULT_TIMES,
     /** Seconds a double-tap on the left / right side skips in the video player. */
     val doubleTapSkipSeconds: Int = DoubleTapSkip.DEFAULT,
     /** Last type-filter chip per category name (e.g. "PHOTOS" -> "PNG"). */
@@ -73,6 +77,8 @@ class SettingsRepository(private val context: Context) {
         val backgroundPlay = booleanPreferencesKey("background_play")
         val autoPip = booleanPreferencesKey("auto_pip")
         val doubleTapSkip = androidx.datastore.preferences.core.intPreferencesKey("double_tap_skip")
+        val loopMode = stringPreferencesKey("loop_mode")
+        val loopTimes = androidx.datastore.preferences.core.intPreferencesKey("loop_times")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -90,6 +96,8 @@ class SettingsRepository(private val context: Context) {
             backgroundPlay = p[Keys.backgroundPlay] ?: true,
             autoPip = p[Keys.autoPip] ?: true,
             doubleTapSkipSeconds = DoubleTapSkip.clamp(p[Keys.doubleTapSkip] ?: DoubleTapSkip.DEFAULT),
+            loopMode = LoopMode.parse(p[Keys.loopMode]),
+            loopTimes = LoopPolicy.clampTimes(p[Keys.loopTimes] ?: LoopPolicy.DEFAULT_TIMES),
         )
     }
 
@@ -110,6 +118,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
     suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
     suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
+    suspend fun setLoop(mode: LoopMode, times: Int? = null) = context.dataStore.edit {
+        it[Keys.loopMode] = mode.name
+        if (times != null) it[Keys.loopTimes] = LoopPolicy.clampTimes(times)
+    }
     suspend fun setDoubleTapSkip(seconds: Int) = context.dataStore.edit { it[Keys.doubleTapSkip] = DoubleTapSkip.clamp(seconds) }
     suspend fun setDefaultView(view: DefaultView) = context.dataStore.edit { it[Keys.defaultView] = view.name }
 }
@@ -134,4 +146,52 @@ object DoubleTapSkip {
     fun label(seconds: Int): String = "${clamp(seconds)} s"
     /** Parses what the user typed in "Custom"; null when it isn't a whole number in range. */
     fun parse(text: String): Int? = text.trim().removeSuffix("s").trim().toIntOrNull()?.takeIf { it in MIN..MAX }
+}
+
+/** Settings → Video player → Loop videos. */
+enum class LoopMode(val label: String) {
+    OFF("Off"), FOREVER("Loop forever"), TIMES("Loop a number of times");
+
+    companion object {
+        fun parse(value: String?): LoopMode = entries.firstOrNull { it.name == value } ?: FOREVER
+    }
+}
+
+/**
+ * How the player loops the current video. Forever = repeat with no limit. Times = play it N more
+ * times after the first, then go on like Loop off (next video in the list, or stop at the last).
+ */
+object LoopPolicy {
+    const val DEFAULT_TIMES = 3
+    const val MIN_TIMES = 1
+    const val MAX_TIMES = 10
+
+    fun clampTimes(n: Int): Int = n.coerceIn(MIN_TIMES, MAX_TIMES)
+
+    /** Repeat the current item at the start of a video? (Off: no.) */
+    fun repeatsAtStart(mode: LoopMode, times: Int): Boolean = when (mode) {
+        LoopMode.OFF -> false
+        LoopMode.FOREVER -> true
+        LoopMode.TIMES -> clampTimes(times) > 0
+    }
+
+    /**
+     * Called after the video repeated once more ([repeatsDone] counts repeats so far, this one included).
+     * Returns whether it should keep repeating after this play.
+     */
+    fun keepRepeating(mode: LoopMode, times: Int, repeatsDone: Int): Boolean = when (mode) {
+        LoopMode.OFF -> false
+        LoopMode.FOREVER -> true
+        LoopMode.TIMES -> repeatsDone < clampTimes(times)
+    }
+
+    /** The in-player Loop button: off ↔ the last chosen looping mode (forever when it was off). */
+    fun toggled(current: LoopMode, lastOn: LoopMode): LoopMode =
+        if (current != LoopMode.OFF) LoopMode.OFF else if (lastOn == LoopMode.OFF) LoopMode.FOREVER else lastOn
+
+    fun label(mode: LoopMode, times: Int): String = when (mode) {
+        LoopMode.OFF -> "Off"
+        LoopMode.FOREVER -> "Forever"
+        LoopMode.TIMES -> if (clampTimes(times) == 1) "1 more time" else "${clampTimes(times)} more times"
+    }
 }

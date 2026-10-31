@@ -1,5 +1,10 @@
 package com.clpstudio.filesmanager.ui.components
 
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -208,7 +213,7 @@ private fun SaveModeChooser(copyName: String, replace: Boolean, onReplace: (Bool
     }
 }
 
-/** "Add password to PDF": user password twice, optional owner password, copy or replace. */
+/** "Add password to PDF": the password twice (with the eye), copy or replace. The owner password is the same password. */
 @Composable
 fun PdfLockDialog(
     fileName: String,
@@ -217,7 +222,6 @@ fun PdfLockDialog(
 ) {
     var pass by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
-    var owner by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
     var replace by remember { mutableStateOf(false) }
     var tried by remember { mutableStateOf(false) }
@@ -229,18 +233,17 @@ fun PdfLockDialog(
         title = { Text("Add password to PDF") },
         text = {
             DialogGlassEffect()
-            Column(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("AES-256. The password is needed to open the PDF.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 PasswordField(pass, { pass = it }, "Password to open", visible = visible, onToggleVisible = { visible = !visible },
                     error = if (tried && pass.length < MIN_PASSWORD_LENGTH) "At least $MIN_PASSWORD_LENGTH characters" else null)
                 PasswordField(repeat, { repeat = it }, "Repeat password", visible = visible, onToggleVisible = { visible = !visible },
                     error = if (tried && pass.length >= MIN_PASSWORD_LENGTH && pass != repeat) "The passwords don't match" else null)
-                PasswordField(owner, { owner = it }, "Owner password (optional)", visible = visible, onToggleVisible = { visible = !visible })
                 SaveModeChooser(File(fileName).nameWithoutExtension + "_locked.pdf", replace) { replace = it }
             }
         },
         confirmButton = {
-            TextButton(onClick = { tried = true; if (error == null) onConfirm(pass, owner.ifEmpty { null }, replace) }) { Text("Add password") }
+            TextButton(onClick = { tried = true; if (error == null) onConfirm(pass, null, replace) }) { Text("Add password") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -326,4 +329,26 @@ fun FolderPickerDialog(
         confirmButton = { TextButton(onClick = { onPick(dir) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** A "More options ⌄" row that opens [content] below it (closed by default). */
+@Composable
+fun MoreOptions(expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    Column {
+        androidx.compose.foundation.layout.Row(
+            Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).clickable(onClick = onToggle)
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text("More options", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Icon(
+                if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                if (expanded) "Hide more options" else "Show more options",
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        androidx.compose.animation.AnimatedVisibility(expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+        }
+    }
 }
