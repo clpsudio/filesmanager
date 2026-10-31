@@ -121,11 +121,15 @@ fun TextContent(uri: Uri, modifier: Modifier = Modifier, topPadding: Dp = 100.dp
 @Composable
 fun TextViewerScreen(uri: Uri, name: String, onBack: () -> Unit, extraActions: @Composable () -> Unit = {}) {
     var wrap by rememberSaveable { mutableStateOf(true) }
+    val markdown = remember(name) { Markdown.isMarkdown(name) }
+    var mdSource by rememberSaveable { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
     val target = remember(uri, name) { InfoTarget(uri, name, uri.takeIf { it.scheme == "file" }?.path) }
     Box(Modifier.fillMaxSize()) {
-        TextContent(uri, Modifier.swipeUpToOpen { info = true }.navigationBarsPadding().padding(bottom = 64.dp), wrap = wrap)
+        val content = Modifier.swipeUpToOpen { info = true }.navigationBarsPadding().padding(bottom = 64.dp)
+        if (markdown) MarkdownContent(uri, mdSource, content) else TextContent(uri, content, wrap = wrap)
         ViewerTopBar(name, null, onBack, titleColor = MaterialTheme.colorScheme.primary) {
+            if (markdown) androidx.compose.material3.TextButton(onClick = { mdSource = !mdSource }) { Text(if (mdSource) "Preview" else "Source") }
             IconButton(onClick = { wrap = !wrap }) { Icon(Icons.AutoMirrored.Filled.WrapText, if (wrap) "No wrap" else "Wrap lines") }
             IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
             extraActions()

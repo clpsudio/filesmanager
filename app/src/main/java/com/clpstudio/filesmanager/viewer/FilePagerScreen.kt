@@ -124,6 +124,7 @@ fun FilePagerScreen(
     var orientation by rememberSaveable { mutableStateOf<Int?>(null) }
     var info by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var mdSource by rememberSaveable { mutableStateOf(false) } // Markdown: Preview (default) or Source
     var renaming by remember { mutableStateOf<FileItem?>(null) }
     val actions = rememberFileActions(afterCopyOrMove = {})
     // Swipe zones (ViewerGestures.kt): brightness pill, drag-down-to-close; brightness goes back to the system on exit.
@@ -189,7 +190,7 @@ fun FilePagerScreen(
                         },
                 ) { ZoomableImage(uri, zoom) { chrome = !chrome } }
                 FileKind.PDF -> PdfContent(uri, item.name, paper, topPadding = top)
-                FileKind.TEXT -> TextContent(uri, paper, topPadding = top)
+                FileKind.TEXT -> if (Markdown.isMarkdown(item.name)) MarkdownContent(uri, mdSource, paper, topPadding = top) else TextContent(uri, paper, topPadding = top)
                 FileKind.DOCUMENT -> OfficePage(item, paper, top) { openFull(item, list.toList()) }
                 else -> PreviewCard(item, swipe) { openFull(item, list.toList()) }
             }
@@ -203,6 +204,9 @@ fun FilePagerScreen(
                 titleColor = if (isMedia) Color.Unspecified else MaterialTheme.colorScheme.primary,
             ) {
                 FavoriteButton(current.path)
+                if (Markdown.isMarkdown(current.name)) {
+                    androidx.compose.material3.TextButton(onClick = { mdSource = !mdSource }) { Text(if (mdSource) "Preview" else "Source") }
+                }
                 if (isImage) {
                     IconButton(onClick = {
                         orientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
