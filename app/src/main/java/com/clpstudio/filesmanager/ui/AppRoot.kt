@@ -173,7 +173,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         ) { e ->
             SearchScreen(e.arguments?.getString("root"), e.arguments?.getString("type"), opener, back)
         }
-        composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste) }
+        composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste, onOpenApk = { nav.navigate(Routes.apk(it)) }) }
         composable(Routes.BIN) { BinScreen(back) }
         composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onLogs = { nav.navigate(Routes.LOGS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }, onFolderFilters = { nav.navigate(Routes.FOLDER_FILTERS) }, onAppLock = { nav.navigate(Routes.APP_LOCK) }, onVaultSettings = { nav.navigate(Routes.VAULT_SETTINGS) }) }
         vaultRoutes(nav, back)
@@ -236,6 +236,13 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         composable("zip?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             ZipViewerScreen(e.arguments?.getString("path").orEmpty(), back) { extracted -> opener.open(FileItem.of(extracted)) }
         }
+        composable("apk?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
+            com.clpstudio.filesmanager.viewer.ApkViewerScreen(
+                e.arguments?.getString("path").orEmpty(), back,
+                onBrowseFiles = { f -> nav.navigate(Routes.zip(f.absolutePath)) },
+                onOpenText = { f -> nav.navigate(Routes.text(Uri.fromFile(f), f.name)) },
+            )
+        }
         composable("epub?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             com.clpstudio.filesmanager.viewer.EpubReaderScreen(File(e.arguments?.getString("path").orEmpty()), back)
         }
@@ -281,6 +288,6 @@ val LocalMiniPlayerInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 /** Screens that show the floating mini player: lists and pages, not Home (own bar), viewers or the full player. */
 internal fun miniPlayerRoute(route: String): Boolean {
     if (route == Routes.HOME || route == Routes.MUSIC || route == Routes.SLIDESHOW) return false
-    val viewers = listOf("view?", "pdf?", "text?", "zip?", "info?", "font?", "hex?", "epub?")
+    val viewers = listOf("view?", "pdf?", "text?", "zip?", "info?", "font?", "hex?", "epub?", "apk?")
     return viewers.none { route.startsWith(it) }
 }

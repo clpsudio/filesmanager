@@ -41,5 +41,6 @@ object Routes {
     fun hex(uri: Uri, name: String) = "hex?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun zip(path: String) = "zip?path=${Uri.encode(path)}"
     fun epub(path: String) = "epub?path=${Uri.encode(path)}"
+    fun apk(path: String) = "apk?path=${Uri.encode(path)}"
     fun info(path: String) = "info?path=${Uri.encode(path)}"
 }

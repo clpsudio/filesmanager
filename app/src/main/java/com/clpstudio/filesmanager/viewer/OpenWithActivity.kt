@@ -163,9 +163,23 @@ class OpenWithActivity : ComponentActivity() {
                 }
                 MusicPlayerScreen(rememberPlayerUi(), back)
             }
-            FileKind.APK -> LaunchedEffect(f) {
-                Opener.installApk(context, f.uri)
-                finish()
+            // The APK preview page, same as inside Files (a shared content:// APK is copied to the cache to be read).
+            FileKind.APK -> {
+                val local by produceState<File?>(null, f) {
+                    value = withContext(Dispatchers.IO) {
+                        f.path?.let { File(it) }?.takeIf { it.canRead() }
+                            ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name.let { n -> if (n.contains('.')) n else "$n.apk" }) }.getOrNull()
+                    }
+                }
+                var sub by remember { mutableStateOf<Pair<Int, File>?>(null) }
+                val apk = local
+                val open = sub
+                when {
+                    apk == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    open?.first == 1 -> ZipViewerScreen(open.second.absolutePath, { sub = null }) { extracted -> openInside(extracted) }
+                    open?.first == 2 -> TextViewerScreen(Uri.fromFile(open.second), open.second.name, { sub = null })
+                    else -> ApkViewerScreen(apk.absolutePath, back, onBrowseFiles = { sub = 1 to it }, onOpenText = { sub = 2 to it })
+                }
             }
             FileKind.ARCHIVE -> {
                 val local by produceState<File?>(null, f) {

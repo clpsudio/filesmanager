@@ -17,7 +17,7 @@ class ApkSelectionTest {
     private val paths = apks.map { it.path }
 
     @Test fun tapInstallsUntilSelecting() {
-        assertEquals(TapResult.Install(paths[0]), ApkSelectionLogic.onTap(false, paths[0]))
+        assertEquals(TapResult.Open(paths[0]), ApkSelectionLogic.onTap(false, paths[0]))
         assertEquals(TapResult.Toggle(paths[0]), ApkSelectionLogic.onTap(true, paths[0]))
     }
 

@@ -86,7 +86,7 @@ import java.io.File
 /** Apps: APK files on storage, downloaded (user) apps, system apps. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
+fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}, onOpenApk: (String) -> Unit = {}) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = listOf("APK files", "Downloaded", "System")
     val context = LocalContext.current
@@ -129,7 +129,7 @@ fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
         // No swiping away while APK files are being selected.
         androidx.compose.foundation.pager.HorizontalPager(pager, userScrollEnabled = !selection.active, modifier = Modifier.fillMaxSize()) { page ->
             when (page) {
-                0 -> ApkFilesList(padding, apks, selection, actions)
+                0 -> ApkFilesList(padding, apks, selection, actions, onOpenApk)
                 1 -> InstalledList(system = false, padding = padding)
                 else -> InstalledList(system = true, padding = padding)
             }
@@ -138,7 +138,7 @@ fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
 }
 
 @Composable
-private fun ApkFilesList(padding: PaddingValues, apks: List<FileItem>?, selection: SelectionState, actions: FileActions) {
+private fun ApkFilesList(padding: PaddingValues, apks: List<FileItem>?, selection: SelectionState, actions: FileActions, onOpenApk: (String) -> Unit) {
     val context = LocalContext.current
     val list = apks
     when {
@@ -164,7 +164,7 @@ private fun ApkFilesList(padding: PaddingValues, apks: List<FileItem>?, selectio
                                 onClick = {
                                     when (val r = ApkSelectionLogic.onTap(selection.active, item.path)) {
                                         is ApkSelectionLogic.TapResult.Toggle -> selection.toggle(r.path)
-                                        is ApkSelectionLogic.TapResult.Install -> Opener.installApk(context, File(r.path))
+                                        is ApkSelectionLogic.TapResult.Open -> onOpenApk(r.path)
                                     }
                                 },
                                 // dragToSelect handles the long-press (selects, then drag extends the range).

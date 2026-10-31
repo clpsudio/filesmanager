@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -528,7 +529,7 @@ fun PreviewCard(item: FileItem, modifier: Modifier = Modifier, onOpen: () -> Uni
             Spacer(Modifier.height(4.dp))
             val (icon, label) = when (item.kind) {
                 FileKind.VIDEO, FileKind.AUDIO -> Icons.Filled.PlayArrow to "Play"
-                FileKind.APK -> Icons.Filled.InstallMobile to "Install"
+                FileKind.APK -> Icons.Filled.Android to "View app details"
                 FileKind.ARCHIVE, FileKind.FONT -> Icons.Filled.Folder to "Open"
                 else -> Icons.AutoMirrored.Filled.OpenInNew to "Open"
             }
@@ -543,6 +544,11 @@ fun PreviewCard(item: FileItem, modifier: Modifier = Modifier, onOpen: () -> Uni
                     FileOps.openWithOtherApp(context, FileOps.uriFor(context, f), FileTypes.mimeOf(f.name))
                 }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.AutoMirrored.Filled.OpenInNew, null); Text("  Open with another app") }
             } else Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Text("  $label") }
+            if (item.kind == FileKind.APK && File(item.path).extension.equals("apk", true)) {
+                OutlinedButton(onClick = { com.clpstudio.filesmanager.ui.Opener.installApk(context, File(item.path)) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.InstallMobile, null); Text("  Install")
+                }
+            }
             if (item.kind == FileKind.OTHER) {
                 OutlinedButton(onClick = {
                     val f = File(item.path)

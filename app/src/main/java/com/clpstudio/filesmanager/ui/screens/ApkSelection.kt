@@ -32,11 +32,11 @@ import java.io.File
 object ApkSelectionLogic {
     sealed interface TapResult {
         data class Toggle(val path: String) : TapResult
-        data class Install(val path: String) : TapResult
+        data class Open(val path: String) : TapResult
     }
 
-    /** Selecting: a tap toggles. Not selecting: a tap installs (the system install prompt). */
-    fun onTap(selecting: Boolean, path: String): TapResult = if (selecting) TapResult.Toggle(path) else TapResult.Install(path)
+    /** Selecting: a tap toggles. Not selecting: a tap opens the APK preview page (Install / Update / Open are there). */
+    fun onTap(selecting: Boolean, path: String): TapResult = if (selecting) TapResult.Toggle(path) else TapResult.Open(path)
 
     /** The selected APKs in list order, dropping paths that are no longer in the list (deleted / moved). */
     fun selectedItems(list: List<FileItem>, selected: Collection<String>): List<FileItem> {

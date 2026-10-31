@@ -106,7 +106,8 @@ class Opener(private val context: Context, private val nav: NavController) {
                 }
                 nav.navigate(Routes.MUSIC)
             }
-            FileKind.APK -> installApk(context, file)
+            // The APK preview page (icon, version, permissions, signature, files inside) with Install / Update / Open.
+            FileKind.APK -> nav.navigate(Routes.apk(item.path))
             FileKind.ARCHIVE -> if (com.clpstudio.filesmanager.data.Archives.canBrowse(item.name)) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
             FileKind.FONT -> nav.navigate(Routes.font(Uri.fromFile(file), item.name))
             FileKind.IMAGE, FileKind.PDF, FileKind.TEXT -> openPager(item, siblings)

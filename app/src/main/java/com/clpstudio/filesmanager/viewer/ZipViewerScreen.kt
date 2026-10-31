@@ -185,7 +185,11 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
                                 val out = File(base, node.path)
                                 if (!out.canonicalPath.startsWith(base.canonicalPath + File.separator)) return@launch
                                 val r = runCatching { Archives.extractEntry(zipFile, pw(), node.path, out) }
-                                r.onSuccess { openExtracted(it) }.onFailure { e ->
+                                r.onSuccess { f ->
+                                    // A binary XML from an APK (manifest, res/…xml) opens as readable XML.
+                                    val shown = withContext(Dispatchers.IO) { com.clpstudio.filesmanager.data.apk.ApkInspector.readable(context, zipFile, f) }
+                                    openExtracted(shown)
+                                }.onFailure { e ->
                                     if (e is WrongPasswordException) { password = null; passwordError = "Wrong password"; askPassword = true }
                                     else Toast.makeText(context, "Couldn't open this file", Toast.LENGTH_SHORT).show()
                                 }
