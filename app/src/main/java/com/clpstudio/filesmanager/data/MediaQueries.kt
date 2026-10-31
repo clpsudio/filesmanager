@@ -3,8 +3,14 @@ package com.clpstudio.filesmanager.data
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
+import com.clpstudio.filesmanager.Graph
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -17,10 +23,16 @@ enum class Category(val title: String) {
     DOWNLOADS("Downloads"),
 }
 
-/** Category lists from the MediaStore index (fast) plus direct folder walks where needed. */
-class MediaQueries(private val context: Context) {
+/** One step of a category load: [done] = false while results are still streaming in. */
+data class CategoryLoad(val items: List<FileItem>, val done: Boolean)
 
-    private val filesUri: Uri = MediaStore.Files.getContentUri("external")
+/**
+ * Category lists. Photos / videos / audio come from the MediaStore index (fast), with a direct
+ * file walk if the index fails or is empty. Documents, Downloads and APKs never rely on the index
+ * alone: it often misses non-media files or has no MIME type for them, so a direct walk is merged
+ * in (streamed while it runs). Errors are logged to Diagnostics, never shown as an empty list.
+ */
+class MediaQueries(private val context: Context) {
 
     @Suppress("DEPRECATION")
     private val projection = arrayOf(
@@ -31,74 +43,144 @@ class MediaQueries(private val context: Context) {
         MediaStore.Files.FileColumns.MIME_TYPE,
     )
 
-    suspend fun category(cat: Category, filter: HiddenFilter): List<FileItem> = withContext(Dispatchers.IO) {
-        when (cat) {
-            Category.DOWNLOADS -> walk(StoragePaths.downloads(), filter, maxDepth = 8, limit = 20_000)
-            Category.RECENT -> {
-                val cutoff = System.currentTimeMillis() / 1000 - 30L * 24 * 3600
-                val (sel, args) = mediaOrDocsSelection()
-                query("($sel) AND ${MediaStore.Files.FileColumns.DATE_MODIFIED} > ?", args + cutoff.toString(), filter, limit = 400)
-            }
-            Category.PHOTOS -> query(kindSelection("image/", FileTypes.imageExt), kindArgs("image/", FileTypes.imageExt), filter)
-            Category.VIDEOS -> query(kindSelection("video/", FileTypes.videoExt), kindArgs("video/", FileTypes.videoExt), filter)
-            Category.AUDIO -> query(kindSelection("audio/", FileTypes.audioExt), kindArgs("audio/", FileTypes.audioExt), filter)
-            Category.DOCUMENTS -> {
-                val exts = FileTypes.documentExt.toList()
-                query(extSelection(exts), extArgs(exts), filter)
-            }
+    /** Every external volume (internal storage, SD card, USB) has its own index on Android 10+. */
+    private fun volumeUris(): List<Uri> {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val names = runCatching { MediaStore.getExternalVolumeNames(context).toList() }
+                .onFailure { Diagnostics.log("media", "getExternalVolumeNames failed", it) }
+                .getOrNull().orEmpty()
+            if (names.isNotEmpty()) return names.map { MediaStore.Files.getContentUri(it) }
         }
+        return listOf(MediaStore.Files.getContentUri("external"))
     }
 
-    /** All .apk (and split-bundle) files on storage. */
+    /** Streams the category: first the fast results, then the complete list. */
+    fun categoryFlow(cat: Category, filter: HiddenFilter): Flow<CategoryLoad> = flow {
+        val t0 = System.currentTimeMillis()
+        when (cat) {
+            Category.PHOTOS, Category.VIDEOS, Category.AUDIO -> {
+                val (prefix, exts) = when (cat) {
+                    Category.PHOTOS -> "image/" to FileTypes.imageExt + FileTypes.rawExt
+                    Category.VIDEOS -> "video/" to FileTypes.videoExt
+                    else -> "audio/" to FileTypes.audioExt
+                }
+                val indexed = query(kindSelection(exts), kindArgs(prefix, exts), filter)
+                val list = indexed.getOrNull()
+                if (list != null && list.isNotEmpty()) {
+                    emit(CategoryLoad(list, true))
+                } else {
+                    // Index failed or empty: look on storage directly.
+                    if (list != null) emit(CategoryLoad(emptyList(), false))
+                    val walked = walkVolumes(filter) { FileTypes.extension(it) in exts }
+                    Diagnostics.log("media", "${cat.title}: index ${if (list == null) "failed" else "empty"}, direct walk found ${walked.size}")
+                    emit(CategoryLoad(walked.sortedByDescending { it.modified }, true))
+                }
+            }
+            Category.DOCUMENTS -> {
+                val docFilter = filter.withoutNoMedia()
+                val indexed = query(extSelection(FileTypes.documentExt), extArgs(FileTypes.documentExt), docFilter).getOrNull().orEmpty()
+                if (indexed.isNotEmpty()) emit(CategoryLoad(indexed, false))
+                Graph.index.observe(filter.showHidden).collect { snap ->
+                    val walked = snap.items.filter { FileTypes.isDocument(it.name) && docFilter.visiblePath(it.path) }
+                    emit(CategoryLoad(StorageWalker.merge(walked, indexed), snap.complete))
+                }
+            }
+            Category.DOWNLOADS -> {
+                val dl = StoragePaths.downloads()
+                val list = walk(dl, filter.withoutNoMedia(), maxDepth = 8, limit = 20_000)
+                if (list.isEmpty() && !dl.isDirectory) Diagnostics.log("media", "Downloads folder not found: ${dl.path}")
+                emit(CategoryLoad(list, true))
+            }
+            Category.RECENT -> {
+                val cutoffSec = System.currentTimeMillis() / 1000 - 30L * 24 * 3600
+                val (sel, args) = mediaOrDocsSelection()
+                val indexed = query("($sel) AND ${MediaStore.Files.FileColumns.DATE_MODIFIED} > ?", args + cutoffSec.toString(), filter, limit = 400)
+                    .getOrNull().orEmpty()
+                emit(CategoryLoad(indexed, false))
+                val recentDocs = Graph.index.complete(filter.showHidden)
+                    .filter { it.modified / 1000 > cutoffSec && filter.withoutNoMedia().visiblePath(it.path) }
+                emit(CategoryLoad(StorageWalker.merge(indexed, recentDocs).take(400), true))
+            }
+        }
+        Diagnostics.log("media", "${cat.title} loaded in ${System.currentTimeMillis() - t0} ms")
+    }.flowOn(Dispatchers.IO)
+
+    /** The complete list (Home counts and other one-shot uses). */
+    suspend fun category(cat: Category, filter: HiddenFilter): List<FileItem> =
+        categoryFlow(cat, filter).first { it.done }.items
+
+    /** All .apk (and split-bundle) files on storage: the index merged with a direct walk. */
     suspend fun apkFiles(filter: HiddenFilter): List<FileItem> = withContext(Dispatchers.IO) {
-        val exts = FileTypes.apkExt.toList()
-        query(extSelection(exts), extArgs(exts), filter)
+        val f = filter.withoutNoMedia()
+        val indexed = query(extSelection(FileTypes.apkExt), extArgs(FileTypes.apkExt), f).getOrNull().orEmpty()
+        val walked = Graph.index.complete(filter.showHidden).filter { FileTypes.isApk(it.name) && f.visiblePath(it.path) }
+        StorageWalker.merge(walked, indexed)
+    }
+
+    private fun walkVolumes(filter: HiddenFilter, accept: (String) -> Boolean): List<FileItem> =
+        StorageWalker.walk(
+            roots = StoragePaths.volumes(context).map { File(it.path) },
+            showHidden = filter.showHidden,
+            privateRoots = filter.privateRoots,
+            accept = accept,
+        ).filter { filter.visiblePath(it.path) }
+
+    /** Queries every volume; fails only if every volume failed (then it's logged, never "empty"). */
+    @Suppress("DEPRECATION")
+    private fun query(selection: String, args: Array<String>, filter: HiddenFilter, limit: Int = Int.MAX_VALUE): Result<List<FileItem>> {
+        val out = LinkedHashMap<String, FileItem>()
+        var anyOk = false
+        var lastError: Throwable? = null
+        for (uri in volumeUris()) {
+            for (attempt in 0..1) {
+                try {
+                    val c: Cursor? = context.contentResolver.query(
+                        uri, projection, selection, args, "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC",
+                    )
+                    if (c == null) throw IllegalStateException("MediaStore returned no cursor for $uri")
+                    c.use { cur ->
+                        val iData = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
+                        val iName = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                        val iSize = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+                        val iDate = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+                        while (cur.moveToNext() && out.size < limit) {
+                            val path = cur.getString(iData) ?: continue
+                            if (out.containsKey(path) || !filter.visiblePath(path)) continue
+                            val name = cur.getString(iName) ?: path.substringAfterLast('/')
+                            out[path] = FileItem(path = path, name = name, isDir = false, size = cur.getLong(iSize), modified = cur.getLong(iDate) * 1000)
+                        }
+                    }
+                    anyOk = true
+                    break
+                } catch (e: Exception) {
+                    lastError = e
+                    Diagnostics.log("media", "query failed on $uri (attempt ${attempt + 1})", e)
+                    if (attempt == 0) Thread.sleep(250)
+                }
+            }
+        }
+        return if (anyOk) Result.success(out.values.sortedByDescending { it.modified })
+        else Result.failure(lastError ?: IllegalStateException("no volumes"))
     }
 
     @Suppress("DEPRECATION")
-    private fun query(selection: String, args: Array<String>, filter: HiddenFilter, limit: Int = Int.MAX_VALUE): List<FileItem> {
-        val out = ArrayList<FileItem>()
-        val c: Cursor? = runCatching {
-            context.contentResolver.query(
-                filesUri, projection, selection, args,
-                "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC",
-            )
-        }.getOrNull()
-        c?.use { cur ->
-            val iData = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
-            val iName = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-            val iSize = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-            val iDate = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
-            while (cur.moveToNext() && out.size < limit) {
-                val path = cur.getString(iData) ?: continue
-                if (!filter.visiblePath(path)) continue
-                val name = cur.getString(iName) ?: path.substringAfterLast('/')
-                out += FileItem(
-                    path = path,
-                    name = name,
-                    isDir = false,
-                    size = cur.getLong(iSize),
-                    modified = cur.getLong(iDate) * 1000,
-                )
-            }
-        }
-        return out
-    }
-
-    private fun kindSelection(mimePrefix: String, exts: Set<String>): String =
-        "(${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " + extSelection(exts.toList()) + ")"
+    private fun kindSelection(exts: Set<String>): String =
+        "(${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " + extSelection(exts) + ")"
 
     private fun kindArgs(mimePrefix: String, exts: Set<String>): Array<String> =
-        arrayOf("$mimePrefix%") + extArgs(exts.toList())
+        arrayOf("$mimePrefix%") + extArgs(exts)
 
+    /** Matches by extension on both the path and the display name (MIME_TYPE is often null). */
     @Suppress("DEPRECATION")
-    private fun extSelection(exts: List<String>): String =
-        "(" + exts.joinToString(" OR ") { "${MediaStore.Files.FileColumns.DATA} LIKE ?" } + ")"
+    private fun extSelection(exts: Set<String>): String =
+        "(" + exts.joinToString(" OR ") {
+            "${MediaStore.Files.FileColumns.DATA} LIKE ? OR ${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE ?"
+        } + ")"
 
-    private fun extArgs(exts: List<String>): Array<String> = exts.map { "%.$it" }.toTypedArray()
+    private fun extArgs(exts: Set<String>): Array<String> = exts.flatMap { listOf("%.$it", "%.$it") }.toTypedArray()
 
     private fun mediaOrDocsSelection(): Pair<String, Array<String>> {
-        val exts = (FileTypes.documentExt + FileTypes.apkExt + FileTypes.archiveExt).toList()
+        val exts = FileTypes.documentExt + FileTypes.apkExt + FileTypes.archiveExt
         val sel = "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR ${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " +
             "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " + extSelection(exts)
         return sel to (arrayOf("image/%", "video/%", "audio/%") + extArgs(exts))

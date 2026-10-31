@@ -65,6 +65,7 @@ fun AppRoot(nowPlayingTick: Int = 0) {
         granted = StoragePermission.granted(context)
         onPauseOrDispose { }
     }
+    LaunchedEffect(granted) { if (granted) AppState.refresh() }
     if (!granted) {
         PermissionScreen(onChecked = { granted = StoragePermission.granted(context) })
         return
@@ -152,11 +153,18 @@ fun AppRoot(nowPlayingTick: Int = 0) {
         }
         composable(Routes.APPS) { AppsScreen(back) }
         composable(Routes.BIN) { BinScreen(back) }
-        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }) }
+        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }) }
+        composable(Routes.DIAGNOSTICS) { com.clpstudio.filesmanager.ui.screens.DiagnosticsScreen(back) }
         composable(Routes.MUSIC) { MusicPlayerScreen(player, back) }
-        composable("image?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
+        composable("view?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             val path = e.arguments?.getString("path").orEmpty()
-            ImageViewerScreen(ViewerSession.images, path, back)
+            com.clpstudio.filesmanager.viewer.FilePagerScreen(
+                paths = ViewerSession.files,
+                start = path,
+                onBack = back,
+                openFull = { item, list -> opener.openFull(item, list) },
+                showInFolder = { folder -> nav.navigate(Routes.browse(folder)) },
+            )
         }
         composable("pdf?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
             PdfViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)

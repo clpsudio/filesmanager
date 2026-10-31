@@ -9,6 +9,8 @@ import com.clpstudio.filesmanager.data.MediaQueries
 import com.clpstudio.filesmanager.data.SearchEngine
 import com.clpstudio.filesmanager.data.SettingsRepository
 import com.clpstudio.filesmanager.data.StoragePaths
+import com.clpstudio.filesmanager.data.Diagnostics
+import com.clpstudio.filesmanager.data.StorageIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,10 +35,13 @@ object Graph {
     val media by lazy { MediaQueries(app) }
     val search by lazy { SearchEngine(app) }
     val apps by lazy { AppsRepository(app) }
+    /** Shared direct walk of storage for documents / APKs / archives. */
+    val index by lazy { StorageIndex(app) }
 
     fun init(context: Context) {
         if (::app.isInitialized) return
         app = context.applicationContext
+        Diagnostics.init(app)
         settingsRepo = SettingsRepository(app)
         settings = settingsRepo.settings.stateIn(appScope, SharingStarted.Eagerly, AppSettings())
     }

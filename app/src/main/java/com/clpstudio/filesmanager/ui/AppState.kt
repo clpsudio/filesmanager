@@ -31,6 +31,7 @@ object AppState {
     private var job: Job? = null
 
     fun refresh() {
+        runCatching { Graph.index.invalidate() }
         refreshTick++
     }
 
@@ -58,7 +59,35 @@ object AppState {
                 withContext(Dispatchers.Main) { toast(context, e.message ?: "Something went wrong") }
             } finally {
                 progress = null
-                refreshTick++
+                refresh()
+            }
+        }
+    }
+
+    /**
+     * Runs a long file operation (zip, unzip, PDF password...) with the shared progress dialog,
+     * a Stop button, a toast with [block]'s result, and a rescan of [block]'s new files.
+     */
+    fun runOperation(context: Context, title: String, block: suspend (report: (OpProgress) -> Unit) -> Pair<String, List<File>>) {
+        job = Graph.appScope.launch {
+            try {
+                progress = OpProgress(title)
+                val (message, created) = block { p -> progress = p }
+                val paths = created.flatMap { f -> if (f.isDirectory) f.walkTopDown().filter { it.isFile }.take(5000).map { it.absolutePath }.toList() else listOf(f.absolutePath) }
+                if (paths.isNotEmpty()) FileOps.scan(context, paths)
+                withContext(Dispatchers.Main) { toast(context, message) }
+            } catch (e: CancellationException) {
+                withContext(Dispatchers.Main + kotlinx.coroutines.NonCancellable) { toast(context, "Stopped") }
+            } catch (e: com.clpstudio.filesmanager.data.WrongPasswordException) {
+                withContext(Dispatchers.Main) { toast(context, "Wrong password") }
+            } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+                withContext(Dispatchers.Main) { toast(context, "Wrong password") }
+            } catch (e: Throwable) {
+                com.clpstudio.filesmanager.data.Diagnostics.log("op", "$title failed", e)
+                withContext(Dispatchers.Main) { toast(context, e.message ?: "Something went wrong") }
+            } finally {
+                progress = null
+                refresh()
             }
         }
     }
@@ -76,7 +105,7 @@ object AppState {
                 withContext(Dispatchers.Main) { toast(context, e.message ?: "Couldn't delete") }
             } finally {
                 progress = null
-                refreshTick++
+                refresh()
             }
         }
     }

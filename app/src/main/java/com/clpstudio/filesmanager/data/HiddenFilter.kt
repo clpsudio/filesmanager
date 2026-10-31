@@ -11,10 +11,15 @@ import java.util.concurrent.ConcurrentHashMap
  * the setting: [privateRoots] are excluded always.
  */
 class HiddenFilter(
-    private val showHidden: Boolean,
-    private val privateRoots: List<String> = emptyList(),
+    val showHidden: Boolean,
+    val privateRoots: List<String> = emptyList(),
     private val storageRoots: List<String> = emptyList(),
+    /** `.nomedia` hides a folder's files (galleries). Off for documents/APKs/downloads. */
+    private val respectNoMedia: Boolean = true,
 ) {
+    /** The same rules without the `.nomedia` one (WhatsApp keeps documents in such folders). */
+    fun withoutNoMedia(): HiddenFilter = HiddenFilter(showHidden, privateRoots, storageRoots, respectNoMedia = false)
+
     private val noMediaCache = ConcurrentHashMap<String, Boolean>()
 
     fun isPrivate(path: String): Boolean =
@@ -26,7 +31,7 @@ class HiddenFilter(
         if (isPrivate(path)) return false
         if (showHidden) return true
         if (file.name.startsWith(".")) return false
-        if (file.isDirectory && hasNoMedia(path)) return false
+        if (respectNoMedia && file.isDirectory && hasNoMedia(path)) return false
         return true
     }
 
@@ -37,6 +42,7 @@ class HiddenFilter(
         val root = storageRoots.firstOrNull { path.startsWith("$it/") } ?: ""
         val rel = path.removePrefix(root).trim('/')
         if (rel.split('/').any { it.startsWith(".") }) return false
+        if (!respectNoMedia) return true
         // Any folder between the storage root and the file holding .nomedia hides it.
         var dir = path.substringBeforeLast('/', "")
         while (dir.length > root.length && dir.isNotEmpty()) {

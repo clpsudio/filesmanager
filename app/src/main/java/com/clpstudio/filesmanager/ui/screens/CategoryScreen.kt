@@ -1,6 +1,8 @@
 package com.clpstudio.filesmanager.ui.screens
 
 import androidx.activity.compose.BackHandler
+import com.clpstudio.filesmanager.data.DefaultView
+import com.clpstudio.filesmanager.data.Diagnostics
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -93,15 +95,31 @@ val Category.typeFilter: String?
 
 private val Category.gridFiles: Boolean get() = this == Category.PHOTOS || this == Category.VIDEOS
 
+/** The category list, streamed: null = still loading (spinner, never "empty" before the first result). */
 @Composable
-private fun rememberCategoryItems(cat: Category): List<FileItem>? {
+private fun rememberCategoryItems(cat: Category): Pair<List<FileItem>?, Boolean> {
     val settings by Graph.settings.collectAsState()
-    val items by produceState(CategoryCache[cat], cat, settings.showHidden, AppState.refreshTick) {
-        val list = runCatching { Graph.media.category(cat, Graph.hiddenFilter(settings.showHidden)) }.getOrDefault(emptyList())
-        CategoryCache[cat] = list
-        value = list
+    var loading by remember(cat) { mutableStateOf(true) }
+    val items by produceState(CategoryCache[cat]?.takeIf { it.isNotEmpty() }, cat, settings.showHidden, AppState.refreshTick) {
+        loading = true
+        try {
+            Graph.media.categoryFlow(cat, Graph.hiddenFilter(settings.showHidden)).collect { load ->
+                // Partial empty results keep the spinner; only a finished load may say "empty".
+                if (load.items.isNotEmpty() || load.done) {
+                    value = load.items
+                    if (load.items.isNotEmpty()) CategoryCache[cat] = load.items
+                }
+                loading = !load.done
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Diagnostics.log("category", "${cat.title} failed to load", e)
+            if (value == null) value = emptyList()
+            loading = false
+        }
     }
-    return items
+    return items to loading
 }
 
 @Composable
@@ -113,15 +131,16 @@ fun CategoryScreen(
     onSearch: () -> Unit,
     onPaste: () -> Unit,
 ) {
-    val items = rememberCategoryItems(cat)
-    var tab by rememberSaveable { mutableStateOf(0) }
+    val (items, loading) = rememberCategoryItems(cat)
+    // 0 = Folders, 1 = All files. Opens on the view chosen in Settings (All files by default).
+    var tab by rememberSaveable { mutableStateOf(if (Graph.settings.value.defaultView == DefaultView.FOLDERS) 0 else 1) }
     val groups = remember(items) { groupByFolder(items.orEmpty()) }
     if (tab == 0) {
         GlassScaffold(
             topBar = {
                 GlassTopBar(
                     title = cat.title,
-                    subtitle = items?.let { "${it.size} files in ${groups.size} folders" },
+                    subtitle = items?.let { "${it.size} files in ${groups.size} folders" + if (loading) " · searching..." else "" },
                     onBack = onBack,
                     actions = { IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "Search") } },
                     below = { CategoryTabs(tab) { tab = it } },
@@ -137,7 +156,7 @@ fun CategoryScreen(
     } else {
         FileListScreen(
             title = cat.title,
-            subtitle = items?.let { "${it.size} files" },
+            subtitle = items?.let { "${it.size} files" + if (loading) " · searching..." else "" },
             items = items,
             grid = cat.gridFiles,
             opener = opener,
@@ -213,8 +232,8 @@ private fun MosaicThumb(item: FileItem) {
 
 @Composable
 fun CategoryFolderScreen(cat: Category, folder: String, opener: Opener, onBack: () -> Unit, onSearch: () -> Unit, onPaste: () -> Unit) {
-    val all = rememberCategoryItems(cat)
-    val items = remember(all, folder) { all?.filter { it.parentPath == folder } }
+    val (all, loading) = rememberCategoryItems(cat)
+    val items = remember(all, folder, loading) { all?.filter { it.parentPath == folder }?.takeIf { it.isNotEmpty() || !loading } }
     FileListScreen(
         title = folder.substringAfterLast('/'),
         subtitle = cat.title + (items?.let { " · ${it.size}" } ?: ""),
@@ -243,7 +262,7 @@ fun FileListScreen(
     defaultSort: SortBy = SortBy.DATE,
 ) {
     val selection = remember { SelectionState() }
-    val actions = rememberFileActions(afterCopyOrMove = { selection.clear(); onPaste() })
+    val actions = rememberFileActions(afterCopyOrMove = { selection.clear(); onPaste() }, afterAction = { selection.clear() })
     var sortBy by rememberSaveable { mutableStateOf(defaultSort) }
     var asc by rememberSaveable { mutableStateOf(false) }
     var useGrid by rememberSaveable { mutableStateOf(grid) }

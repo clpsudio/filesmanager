@@ -10,6 +10,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val MUSIC = "music"
     const val VAULT = "vault"
+    const val DIAGNOSTICS = "diagnostics"
 
     fun category(c: Category) = "category/${c.name}"
     fun categoryFolder(c: Category, folder: String) = "catfolder/${c.name}?folder=${Uri.encode(folder)}"
@@ -18,7 +19,8 @@ object Routes {
         val q = listOfNotNull(root?.let { "root=${Uri.encode(it)}" }, type?.let { "type=$it" })
         return "search" + if (q.isEmpty()) "" else "?" + q.joinToString("&")
     }
-    fun image(path: String) = "image?path=${Uri.encode(path)}"
+    fun image(path: String) = view(path)
+    fun view(path: String) = "view?path=${Uri.encode(path)}"
     fun pdf(uri: Uri, name: String) = "pdf?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun text(uri: Uri, name: String) = "text?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun font(uri: Uri, name: String) = "font?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"

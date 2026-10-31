@@ -27,6 +27,7 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         Graph.init(this)
+        com.clpstudio.filesmanager.data.StorageWatcher.install()
         // Bin: auto-delete after 30 days, checked daily and at start.
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             BinCleanupWorker.NAME,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
@@ -44,13 +45,15 @@ import com.clpstudio.filesmanager.Graph
 import com.clpstudio.filesmanager.R
 import com.clpstudio.filesmanager.data.AppSettings
 import com.clpstudio.filesmanager.data.ThemeMode
+import com.clpstudio.filesmanager.data.DefaultView
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import com.clpstudio.filesmanager.ui.components.GlassTopBar
 import com.clpstudio.filesmanager.ui.glass.GlassScaffold
 import com.clpstudio.filesmanager.ui.glass.glassPanel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}) {
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     SettingsContent(
@@ -60,6 +63,8 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit) {
         onGlass = { scope.launch { Graph.settingsRepo.setLiquidGlass(it) } },
         onHidden = { scope.launch { Graph.settingsRepo.setShowHidden(it) } },
         onBin = onBin,
+        onDefaultView = { scope.launch { Graph.settingsRepo.setDefaultView(it) } },
+        onDiagnostics = onDiagnostics,
     )
 }
 
@@ -71,6 +76,8 @@ fun SettingsContent(
     onGlass: (Boolean) -> Unit,
     onHidden: (Boolean) -> Unit,
     onBin: () -> Unit,
+    onDefaultView: (DefaultView) -> Unit = {},
+    onDiagnostics: () -> Unit = {},
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -99,6 +106,24 @@ fun SettingsContent(
             }
             item { Header("Files") }
             item {
+                Card {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RowIcon(Icons.AutoMirrored.Filled.ViewList)
+                        Column(Modifier.weight(1f)) {
+                            Text("Default view", style = MaterialTheme.typography.titleSmall)
+                            Text("How Recent, Photos, Videos, Audios, Documents and Downloads open.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.size(10.dp))
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        val views = listOf(DefaultView.ALL_FILES to "All files", DefaultView.FOLDERS to "Folders")
+                        views.forEachIndexed { i, (v, label) ->
+                            SegmentedButton(selected = settings.defaultView == v, onClick = { onDefaultView(v) }, shape = SegmentedButtonDefaults.itemShape(i, views.size)) { Text(label) }
+                        }
+                    }
+                }
+            }
+            item {
                 SwitchCard(Icons.Filled.Visibility, "Show hidden files", "Shows dot-files, dot-folders and folders with .nomedia. Vault items are never shown here.", settings.showHidden, onHidden)
             }
             item {
@@ -125,6 +150,17 @@ fun SettingsContent(
                             Text("Files", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text("Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodySmall)
                             Text("by CLP Studio · works fully offline, no internet permission", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.clickable(onClick = onDiagnostics)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RowIcon(Icons.Filled.BugReport)
+                        Column(Modifier.weight(1f)) {
+                            Text("Diagnostics", style = MaterialTheme.typography.titleSmall)
+                            Text("What Files can see on this phone, and its error log (kept on the phone).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

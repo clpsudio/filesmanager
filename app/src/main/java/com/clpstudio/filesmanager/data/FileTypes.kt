@@ -31,8 +31,16 @@ object FileTypes {
     val apkExt = setOf("apk", "apks", "xapk", "apkm")
     val archiveExt = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "zst", "lz", "cab", "iso", "jar")
 
-    /** Extensions shown in the Documents category. */
-    val documentExt: Set<String> = officeExt + textExt + setOf("pdf")
+    /**
+     * Extensions shown in the Documents category: PDF, Office / OpenDocument, e-books and the
+     * common text formats (not source code or logs, which would bury the real documents).
+     */
+    val documentExt: Set<String> = setOf("pdf") + officeExt +
+        setOf("txt", "csv", "tsv", "rtf", "md", "markdown", "json", "xml", "html", "htm")
+
+    fun isDocument(name: String): Boolean = extension(name) in documentExt
+    fun isApk(name: String): Boolean = extension(name) in apkExt
+    fun isArchive(name: String): Boolean = extension(name) in archiveExt
 
     fun extension(name: String): String {
         val dot = name.lastIndexOf('.')

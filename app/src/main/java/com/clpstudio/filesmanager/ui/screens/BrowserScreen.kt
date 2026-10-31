@@ -49,6 +49,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
+import com.clpstudio.filesmanager.data.Diagnostics
+import com.clpstudio.filesmanager.data.FolderWatcher
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -105,15 +109,27 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
     var sortMenu by remember { mutableStateOf(false) }
     var newFolder by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val actions = rememberFileActions(afterCopyOrMove = { selection.clear() })
+    val actions = rememberFileActions(afterCopyOrMove = { selection.clear() }, afterAction = { selection.clear() })
     val scrollMemory = remember { mutableStateMapOf<String, Int>() }
 
     val root = volumes.firstOrNull { path == it.path || path.startsWith(it.path + "/") }?.path ?: "/"
 
-    val listing by produceState<List<FileItem>?>(null, path, settings.showHidden, settings.sortBy, settings.sortAscending, AppState.refreshTick) {
+    // Reload when something changes inside the open folder (another app, a download...).
+    var folderTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(path) {
+        val watcher = FolderWatcher(File(path)) { folderTick++ }
+        watcher.start()
+        onDispose { watcher.stop() }
+    }
+    val listing by produceState<List<FileItem>?>(null, path, settings.showHidden, settings.sortBy, settings.sortAscending, AppState.refreshTick, folderTick) {
         value = withContext(Dispatchers.IO) {
             val f = Graph.hiddenFilter(settings.showHidden)
-            val entries = File(path).listFiles().orEmpty().filter { f.visibleEntry(it) }.map { FileItem.of(it, countChildren = true) }
+            val dir = File(path)
+            val raw = dir.listFiles() ?: run {
+                Diagnostics.log("browse", "can't list ${dir.path} (exists=${dir.exists()}, readable=${dir.canRead()})")
+                emptyArray()
+            }
+            val entries = raw.filter { f.visibleEntry(it) }.map { FileItem.of(it, countChildren = true) }
             sortItems(entries, settings.sortBy, settings.sortAscending)
         }
     }
