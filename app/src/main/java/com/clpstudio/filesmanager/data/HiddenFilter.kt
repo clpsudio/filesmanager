@@ -16,14 +16,17 @@ class HiddenFilter(
     private val storageRoots: List<String> = emptyList(),
     /** `.nomedia` hides a folder's files (galleries). Off for documents/APKs/downloads. */
     private val respectNoMedia: Boolean = true,
+    /** Whole volumes hidden by a setting (an SD card while "Show SD card" is off). */
+    val hiddenRoots: List<String> = emptyList(),
 ) {
     /** The same rules without the `.nomedia` one (WhatsApp keeps documents in such folders). */
-    fun withoutNoMedia(): HiddenFilter = HiddenFilter(showHidden, privateRoots, storageRoots, respectNoMedia = false)
+    fun withoutNoMedia(): HiddenFilter = HiddenFilter(showHidden, privateRoots, storageRoots, respectNoMedia = false, hiddenRoots = hiddenRoots)
 
     private val noMediaCache = ConcurrentHashMap<String, Boolean>()
 
     fun isPrivate(path: String): Boolean =
-        privateRoots.any { root -> path == root || path.startsWith("$root/") }
+        privateRoots.any { root -> path == root || path.startsWith("$root/") } ||
+            hiddenRoots.any { root -> path == root || path.startsWith("$root/") }
 
     /** Whether a single entry (already inside a visible folder) can be listed. */
     fun visibleEntry(file: File): Boolean {

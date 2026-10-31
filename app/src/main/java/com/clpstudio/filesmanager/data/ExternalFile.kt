@@ -21,6 +21,8 @@ data class OpenedFile(
 
 /** Recognises common formats from their first bytes. Pure Kotlin, unit tested. */
 object MagicSniffer {
+    /** HEIF still-image / image-sequence brands (Samsung Camera saves "heic"; bursts and motion photos use others). */
+    private val HEIF_BRANDS = listOf("heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1")
     fun sniff(head: ByteArray): String? {
         fun at(i: Int, vararg b: Int) = head.size >= i + b.size && b.indices.all { (head[i + it].toInt() and 0xFF) == b[it] }
         fun ascii(i: Int, s: String) = head.size >= i + s.length && s.indices.all { head[i + it].toInt().toChar() == s[it] }
@@ -33,7 +35,8 @@ object MagicSniffer {
             ascii(0, "RIFF") && ascii(8, "WAVE") -> "audio/wav"
             ascii(0, "RIFF") && ascii(8, "AVI ") -> "video/x-msvideo"
             ascii(0, "BM") && head.size > 14 -> "image/bmp"
-            ascii(4, "ftyp") && (ascii(8, "heic") || ascii(8, "heix") || ascii(8, "mif1") || ascii(8, "msf1")) -> "image/heic"
+            ascii(4, "ftyp") && (ascii(8, "avif") || ascii(8, "avis")) -> "image/avif"
+            ascii(4, "ftyp") && HEIF_BRANDS.any { ascii(8, it) } -> "image/heic"
             ascii(4, "ftyp") && (ascii(8, "M4A ") || ascii(8, "M4B ")) -> "audio/mp4"
             ascii(4, "ftyp") && ascii(8, "3gp") -> "video/3gpp"
             ascii(4, "ftyp") -> "video/mp4"
@@ -58,6 +61,12 @@ object MagicSniffer {
      * else the name's extension, else the first bytes, else octet-stream.
      */
     fun resolveMime(intentType: String?, name: String, head: ByteArray?): String {
+        // A photo is never a video (item 28): bytes that are an image win over a "video/*" type or a video name.
+        val sniffedFirst = head?.let { sniff(it) }
+        if (sniffedFirst != null && sniffedFirst.startsWith("image/") && intentType?.lowercase()?.startsWith("image/") != true) {
+            val byNameMime = FileTypes.mimeOf(name)
+            return if (byNameMime.startsWith("image/")) byNameMime else sniffedFirst
+        }
         val fromIntent = intentType?.takeIf { it.isNotBlank() && it != "*/*" && it != "application/octet-stream" && !it.endsWith("/*") }
         if (fromIntent != null) return fromIntent
         val byName = FileTypes.mimeOf(name).takeIf { it != "*/*" && !it.endsWith("/*") }
@@ -70,39 +79,46 @@ object MagicSniffer {
 }
 
 object ExternalFiles {
-    /** Name, size and type of any uri (content:// or file://). Never throws. */
+    /** How long to wait for a file another app is still writing (Samsung Camera's preview opens before the photo is saved). */
+    const val PENDING_WAIT_MS = 3_000L
+    private const val PENDING_STEP_MS = 250L
+
+    /**
+     * Name, size, type and (when it can be found) the real path of any uri (content:// or file://). Never throws.
+     * A foreign content:// uri without a name (Samsung Camera's content://secmedia/media/<id>) is matched to its
+     * file through MediaStore, so it opens like any photo on storage (item 28).
+     */
     suspend fun resolve(context: Context, uri: Uri, intentType: String?): OpenedFile = withContext(Dispatchers.IO) {
         val cr = context.contentResolver
-        var name: String? = null
-        var size = -1L
-        var path: String? = null
-        if (uri.scheme == ContentResolver.SCHEME_FILE) {
-            val f = File(uri.path ?: "")
-            name = f.name
-            size = f.length()
-            path = f.absolutePath
-        } else {
-            runCatching {
-                cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
-                    if (c.moveToFirst()) {
-                        val ni = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        val si = c.getColumnIndex(OpenableColumns.SIZE)
-                        if (ni >= 0) name = c.getString(ni)
-                        if (si >= 0 && !c.isNull(si)) size = c.getLong(si)
-                    }
-                }
-            }
+        var meta: ForeignMeta
+        var head: ByteArray?
+        var waited = 0L
+        while (true) {
+            meta = if (uri.scheme == ContentResolver.SCHEME_FILE) {
+                val f = File(uri.path ?: "")
+                ForeignMeta(name = f.name, size = f.length(), path = f.absolutePath)
+            } else ForeignResolve.queryMeta(cr, uri)
+            head = runCatching {
+                if (uri.scheme == ContentResolver.SCHEME_FILE) ForeignResolve.headOf(File(uri.path ?: ""))
+                else cr.openInputStream(uri)?.use { ForeignResolve.headOf(it) }
+            }.getOrNull()
+            val stillWriting = meta.pending || head == null || head.isEmpty() || meta.size == 0L
+            if (!stillWriting || uri.scheme == ContentResolver.SCHEME_FILE || waited >= PENDING_WAIT_MS) break
+            kotlinx.coroutines.delay(PENDING_STEP_MS)
+            waited += PENDING_STEP_MS
         }
+        var path = meta.path?.takeIf { File(it).isFile }
+        if (path == null && uri.scheme == ContentResolver.SCHEME_CONTENT && !ForeignResolve.isOwnAuthority(context, uri)) {
+            path = runCatching { ForeignResolve.findRealFile(cr, uri, meta, head)?.absolutePath }.getOrNull()
+        }
+        val real = path?.let { File(it) }
         val crType = runCatching { cr.getType(uri) }.getOrNull()
-        val head = runCatching {
-            cr.openInputStream(uri)?.use { s ->
-                val buf = ByteArray(32)
-                val n = s.read(buf)
-                if (n > 0) buf.copyOf(n) else null
-            }
-        }.getOrNull()
-        val finalName = name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file"
-        val mime = MagicSniffer.resolveMime(intentType ?: crType, finalName, head)
+        val rawName = real?.name ?: meta.name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+        val size = real?.length() ?: meta.size
+        val mime0 = MagicSniffer.resolveMime(intentType ?: crType ?: meta.mime, rawName, head)
+        // No name at all (only a row id): give it the extension of what it is, so it reads as a file.
+        val finalName = if (real == null && meta.name.isNullOrBlank() && !rawName.contains('.')) ForeignResolve.nameFor(rawName, meta.title, mime0) else rawName
+        val mime = MagicSniffer.resolveMime(intentType ?: crType ?: meta.mime, finalName, head)
         val kindByName = FileTypes.kindOf(finalName)
         val kind = FileTypes.kindOfMime(mime)?.let { mk ->
             // Office files, APKs and subtitles are ZIP / text inside: trust the name for those.

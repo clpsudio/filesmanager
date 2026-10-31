@@ -27,17 +27,38 @@ data class BinEntry(
  * The Bin: deleted files are moved (not copied, when on the same volume) into the app's own
  * folder and kept for 30 days, then removed for good by [com.clpstudio.filesmanager.work.BinCleanupWorker].
  */
-class BinRepository(private val context: Context, private val dir: File = StoragePaths.binDir(context)) {
+class BinRepository(
+    private val context: Context,
+    private val dir: File = StoragePaths.binDir(context),
+    /** One Bin per SD card, on the card itself (so deleting a card file never copies it to the phone). */
+    private val cardBins: () -> List<CardBin> = { StoragePaths.cardBins(context) },
+) {
 
     companion object {
         val RETENTION_MS: Long = TimeUnit.DAYS.toMillis(30)
     }
 
-    private fun ensureDir() {
-        if (!dir.exists()) dir.mkdirs()
-        val noMedia = File(dir, ".nomedia")
+    private fun ensureDir(d: File = dir): Boolean {
+        if (!d.exists()) d.mkdirs()
+        val noMedia = File(d, ".nomedia")
         if (!noMedia.exists()) runCatching { noMedia.createNewFile() }
+        return d.isDirectory
     }
+
+    /** Every Bin folder: the phone's, then each mounted card's. */
+    private fun allDirs(): List<File> = listOf(dir) + runCatching { cardBins().map { it.dir } }.getOrDefault(emptyList())
+
+    /**
+     * Where a deleted file goes: the Bin on its own SD card when it lives on one (a rename, no
+     * copy), else the phone's Bin. A card Bin that can't be made falls back to the phone's.
+     */
+    fun binFor(file: File): File {
+        val path = file.absolutePath
+        val card = runCatching { cardBins() }.getOrDefault(emptyList()).firstOrNull { VolumeRules.isUnder(path, it.root) }
+        return if (card != null && ensureDir(card.dir)) card.dir else dir
+    }
+
+    private fun metaOf(e: BinEntry): File = File(e.dataFile.parentFile ?: dir, e.id + ".json")
 
     suspend fun moveToBin(files: List<File>, onEach: (Int) -> Unit = {}): Int = withContext(Dispatchers.IO) {
         ensureDir()
@@ -47,7 +68,8 @@ class BinRepository(private val context: Context, private val dir: File = Storag
         files.forEachIndexed { i, f ->
             if (!f.exists()) return@forEachIndexed
             val id = UUID.randomUUID().toString()
-            val data = File(dir, id)
+            val target = binFor(f)
+            val data = File(target, id)
             val size = FileOps.sizeOf(f)
             val isDir = f.isDirectory
             // Collect media paths before the move so the index forgets them.
@@ -62,7 +84,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
                     .put("deletedAt", System.currentTimeMillis())
                     .put("isDir", isDir)
                     .put("size", size)
-                File(dir, "$id.json").writeText(meta.toString())
+                File(target, "$id.json").writeText(meta.toString())
                 moved++
                 gone += f.absolutePath
             } else {
@@ -78,7 +100,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
 
     suspend fun list(): List<BinEntry> = withContext(Dispatchers.IO) {
         ensureDir()
-        dir.listFiles { f -> f.name.endsWith(".json") }.orEmpty().mapNotNull { meta ->
+        allDirs().distinct().flatMap { d -> d.listFiles { f -> f.name.endsWith(".json") }.orEmpty().toList() }.mapNotNull { meta ->
             runCatching {
                 val j = JSONObject(meta.readText())
                 val id = meta.name.removeSuffix(".json")
@@ -89,7 +111,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
                     deletedAt = j.getLong("deletedAt"),
                     isDir = j.optBoolean("isDir"),
                     size = j.optLong("size"),
-                    dataFile = File(dir, id),
+                    dataFile = File(meta.parentFile, id),
                 )
             }.getOrNull()
         }.filter { it.dataFile.exists() }.sortedByDescending { it.deletedAt }
@@ -108,7 +130,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
                 runCatching { e.dataFile.copyRecursively(target, overwrite = false) }.isSuccess && e.dataFile.deleteRecursively()
             }
             if (ok) {
-                File(dir, e.id + ".json").delete()
+                metaOf(e).delete()
                 scan += target.absolutePath
                 n++
             }
@@ -122,7 +144,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
         var n = 0
         for (e in entries) {
             e.dataFile.deleteRecursively()
-            File(dir, e.id + ".json").delete()
+            metaOf(e).delete()
             n++
         }
         n

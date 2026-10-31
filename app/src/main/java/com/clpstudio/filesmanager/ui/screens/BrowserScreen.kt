@@ -105,7 +105,8 @@ import java.io.File
 @Composable
 fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSearchAll: (String) -> Unit) {
     val context = LocalContext.current
-    val volumes = remember { StoragePaths.volumes(context) }
+    // Re-read when an SD card goes in / out (refresh tick) so its root label stays right.
+    val volumes = remember(AppState.refreshTick) { StoragePaths.volumes(context) }
     val home = startPath ?: volumes.first().path
     var path by rememberSaveable { mutableStateOf(home) }
     val settings by Graph.settings.collectAsState()

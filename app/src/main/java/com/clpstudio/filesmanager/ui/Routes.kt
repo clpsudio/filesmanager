@@ -6,10 +6,14 @@ import com.clpstudio.filesmanager.data.Category
 object Routes {
     const val HOME = "home"
     const val APPS = "apps"
+    const val UNUSED_APPS = "unused_apps"
     const val BIN = "bin"
     const val SETTINGS = "settings"
     const val MUSIC = "music"
     const val VAULT = "vault"
+    const val VAULT_SETTINGS = "vault_settings"
+    const val APP_LOCK = "app_lock"
+    fun vaultView(id: String) = "vault_view?id=${Uri.encode(id)}"
     const val DIAGNOSTICS = "diagnostics"
     const val CRASH_REPORTS = "crash_reports"
     const val SLIDESHOW = "slideshow"
@@ -35,5 +39,6 @@ object Routes {
     fun font(uri: Uri, name: String) = "font?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun hex(uri: Uri, name: String) = "hex?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun zip(path: String) = "zip?path=${Uri.encode(path)}"
+    fun epub(path: String) = "epub?path=${Uri.encode(path)}"
     fun info(path: String) = "info?path=${Uri.encode(path)}"
 }

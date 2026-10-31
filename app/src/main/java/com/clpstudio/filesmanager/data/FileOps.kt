@@ -71,6 +71,18 @@ object FileOps {
             }
         }
         val total = sources.sumOf { sizeOf(it) }
+        // Phone ⇄ SD card: check room and write access first, so a full or read-only card says so
+        // in plain words before anything is written.
+        val vols = runCatching { SdCards.all(context) }.getOrDefault(emptyList())
+        val roots = vols.map { it.path }
+        val targetLoc = VolumeRules.locationOf(targetDir.absolutePath, vols.filter { it.removable }.map { it.path })
+        val targetRoot = TransferRules.volumeRootOf(targetDir.absolutePath, roots)
+        val sameVolumeMove = move && sources.all { TransferRules.volumeRootOf(it.absolutePath, roots) == targetRoot }
+        // A StatFs that reports a 0-byte volume knows nothing (emulated paths, tests): no check then.
+        val free = runCatching { android.os.StatFs(targetDir.absolutePath) }.getOrNull()
+            ?.takeIf { it.totalBytes > 0 }?.availableBytes
+        TransferRules.problem(total, free, targetDir.canWrite() || !targetDir.exists(), targetLoc, sameVolumeMove)
+            ?.let { throw FileOpException(it) }
         var done = 0L
         val results = ArrayList<File>()
         val scanPaths = ArrayList<String>()
@@ -86,9 +98,18 @@ object FileOps {
             if (move && src.renameTo(dest)) {
                 done += sizeOf(dest)
             } else {
-                copyRecursively(src, dest) { bytes, current ->
-                    done += bytes
-                    onProgress(OpProgress(title, current, done, total, index, sources.size))
+                try {
+                    copyRecursively(src, dest) { bytes, current ->
+                        done += bytes
+                        onProgress(OpProgress(title, current, done, total, index, sources.size))
+                    }
+                } catch (e: Throwable) {
+                    // Stopped or failed half-way: never leave a half-written copy behind (the
+                    // original is untouched; a move only deletes it after a full copy).
+                    withContext(kotlinx.coroutines.NonCancellable) { runCatching { dest.deleteRecursively() } }
+                    if (e is kotlinx.coroutines.CancellationException || e is FileOpException) throw e
+                    Diagnostics.log("transfer", "${src.path} -> ${dest.path} failed", e)
+                    throw FileOpException(TransferRules.friendlyError(e, targetLoc))
                 }
                 if (move && !src.deleteRecursively()) throw FileOpException("Copied, but couldn't remove the original of ${src.name}")
             }

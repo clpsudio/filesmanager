@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        com.clpstudio.filesmanager.viewer.VideoPip.register(this)
         com.clpstudio.filesmanager.ui.PrivacyGuard.install(this)
         enableEdgeToEdge()
         if (intent?.action == ACTION_NOW_PLAYING) nowPlayingTick.intValue++
@@ -31,6 +32,22 @@ class MainActivity : ComponentActivity() {
                 AppRoot(nowPlayingTick.intValue, browsePath.value) { browsePath.value = null }
             }
         }
+    }
+
+    // Picture-in-picture for the gallery video view (item 34); closing the small window stops it (item 33).
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        com.clpstudio.filesmanager.viewer.VideoPip.onUserLeaveHint(this)
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        com.clpstudio.filesmanager.viewer.VideoPip.onModeChanged(this, isInPictureInPictureMode, lifecycle)
+    }
+
+    override fun onDestroy() {
+        com.clpstudio.filesmanager.viewer.VideoPip.unregister(this)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

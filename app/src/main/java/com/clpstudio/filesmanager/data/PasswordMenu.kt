@@ -63,7 +63,8 @@ object LockStateCache {
         val state = runCatching {
             when (kind) {
                 FileKind.PDF -> { PdfSecurity.init(context); PasswordMenu.fromPdf(PdfSecurity.lockState(file)) }
-                FileKind.ARCHIVE -> if (ArchiveOps.isEncrypted(file)) LockState.PROTECTED else LockState.NONE
+                // Only ZIPs can be locked / unlocked here; 7z and RAR are open-only.
+                FileKind.ARCHIVE -> if (!ArchiveOps.isZip(file.name)) LockState.NOT_LOCKABLE else if (ArchiveOps.isEncrypted(file)) LockState.PROTECTED else LockState.NONE
                 else -> LockState.NOT_LOCKABLE
             }
         }.getOrDefault(LockState.UNKNOWN)

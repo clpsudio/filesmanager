@@ -148,6 +148,10 @@ fun VideoControlRow(
     loopHint: String? = null,
 ) {
     var speedMenu by remember { mutableStateOf(false) }
+    androidx.compose.runtime.DisposableEffect(speedMenu) {
+        VideoSpeed.menuOpen = speedMenu
+        onDispose { VideoSpeed.menuOpen = false }
+    }
     Row(modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onMute) {
             Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, if (muted) "Unmute" else "Mute", tint = Color.White)

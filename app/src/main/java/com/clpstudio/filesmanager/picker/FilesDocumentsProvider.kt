@@ -45,9 +45,12 @@ class FilesDocumentsProvider : DocumentsProvider() {
     override fun queryRoots(projection: Array<out String>?): Cursor {
         ensureGraph()
         val c = MatrixCursor(projection ?: DEFAULT_ROOT_PROJECTION)
+        // App lock on and locked: Files doesn't show up in other apps' pickers until it's unlocked.
+        if (runCatching { com.clpstudio.filesmanager.security.AppLock.isLocked }.getOrDefault(false)) return c
+        // Phone storage, plus a root per mounted SD card while "Show SD card" is on.
         StoragePaths.volumes(ctx()).forEachIndexed { i, v ->
             c.newRow().apply {
-                add(Root.COLUMN_ROOT_ID, if (i == 0) "primary" else "volume$i")
+                add(Root.COLUMN_ROOT_ID, rootId(i, v))
                 add(Root.COLUMN_DOCUMENT_ID, v.path)
                 add(Root.COLUMN_TITLE, "Files")
                 add(Root.COLUMN_SUMMARY, v.label)
@@ -79,7 +82,7 @@ class FilesDocumentsProvider : DocumentsProvider() {
         ensureGraph()
         val c = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
         val vols = StoragePaths.volumes(ctx())
-        val root = vols.getOrNull(if (rootId == "primary") 0 else rootId.removePrefix("volume").toIntOrNull() ?: 0) ?: return c
+        val root = vols.withIndex().firstOrNull { (i, v) -> rootId(i, v) == rootId }?.value ?: return c
         val q = query.trim().lowercase()
         if (q.isEmpty()) return c
         val deadline = System.currentTimeMillis() + SEARCH_BUDGET_MS
@@ -180,6 +183,19 @@ class FilesDocumentsProvider : DocumentsProvider() {
     }
 
     companion object {
+        /** Stable root ids: "primary", "sd:<card id>" (e.g. sd:1A2B-3C4D), else "volume<i>". */
+        fun rootId(index: Int, v: com.clpstudio.filesmanager.data.StorageVolume): String = when {
+            index == 0 && !v.removable -> "primary"
+            v.removable -> "sd:" + v.path.trimEnd('/').substringAfterLast('/')
+            else -> "volume$index"
+        }
+
+        /** Tells the system picker the roots changed (app lock locked / unlocked). */
+        fun notifyRootsChanged(context: android.content.Context) {
+            val uri = android.provider.DocumentsContract.buildRootsUri(context.packageName + ".documents")
+            context.contentResolver.notifyChange(uri, null)
+        }
+
         private const val SEARCH_LIMIT = 200
         private const val SEARCH_BUDGET_MS = 4_000L
 

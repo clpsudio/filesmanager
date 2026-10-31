@@ -32,6 +32,10 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
         Graph.init(this)
         com.clpstudio.filesmanager.data.Favorites.init(this)
         com.clpstudio.filesmanager.data.StorageWatcher.install()
+        installSdCard()
+        // Phase 2: vault (encrypted, hardware key) and the app lock over every screen.
+        com.clpstudio.filesmanager.vault.Vault.init(this)
+        com.clpstudio.filesmanager.security.AppLock.init(this)
         // Bin: auto-delete after 30 days, checked daily and at start.
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             BinCleanupWorker.NAME,
@@ -39,6 +43,21 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
             PeriodicWorkRequestBuilder<BinCleanupWorker>(1, TimeUnit.DAYS).build(),
         )
         Graph.appScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { Graph.bin.purgeExpired() } }
+    }
+
+    /** SD card in / out, or "Show SD card" switched: every list, Home and the picker reload. */
+    private fun installSdCard() {
+        val sd = com.clpstudio.filesmanager.data.SdCards
+        sd.addListener { com.clpstudio.filesmanager.ui.SdCardRefresh.onVolumesChanged(this) }
+        sd.install(this)
+        Graph.appScope.launch {
+            var last: Boolean? = null
+            Graph.settings.collect { s ->
+                val prev = last
+                last = s.showSdCard
+                if (prev != null && prev != s.showSdCard) sd.changed()
+            }
+        }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
@@ -58,6 +77,10 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
                 add(ThumbKeyers.pdf)
                 add(ThumbKeyers.apk)
                 add(ThumbKeyers.app)
+                add(com.clpstudio.filesmanager.thumbs.DesignThumbFetcher.Factory())
+                add(com.clpstudio.filesmanager.thumbs.EpubCoverFetcher.Factory())
+                add(ThumbKeyers.design)
+                add(ThumbKeyers.epub)
             }
             .memoryCache {
                 MemoryCache.Builder().maxSizePercent(context, 0.25).build()

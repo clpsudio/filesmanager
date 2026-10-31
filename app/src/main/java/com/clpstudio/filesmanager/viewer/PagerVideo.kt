@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -74,7 +75,7 @@ fun pagerPageType(kind: FileKind): PagerPage = when (kind) {
  */
 @OptIn(UnstableApi::class)
 class PagerVideo(context: Context) {
-    val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
+    val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext, com.clpstudio.filesmanager.playback.MediaRenderers.factory(context))
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), false)
         .setHandleAudioBecomingNoisy(true)
         .build()
@@ -91,6 +92,12 @@ class PagerVideo(context: Context) {
         private set
     var muted by mutableStateOf(false)
         private set
+    /** The video's shape, for the picture-in-picture window. */
+    var aspect by mutableStateOf<android.util.Rational?>(null)
+        private set
+    /** True while a long press plays at 2x (item 32). */
+    var fast by mutableStateOf(false)
+        private set
     /** Shared by every video view (pager pages and the full player), kept while paging. */
     val speed: Float get() = VideoSpeed.value
     var loop by mutableStateOf(true)
@@ -102,6 +109,8 @@ class PagerVideo(context: Context) {
     var seekAmount by mutableIntStateOf(10)
 
     private var repeats = 0
+    /** Opened by "Play N" (item 37): loop settings ignored, always on to the next video, the first after the last. */
+    var playlist = false
     /** Set by the pager: go to the next video page (null at the last one). */
     var onNext: (() -> Unit)? = null
     /** "2/3" while "Play N times" is counting. */
@@ -118,17 +127,21 @@ class PagerVideo(context: Context) {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             override fun onRenderedFirstFrame() { firstFrame = true }
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                val turned = videoSize.unappliedRotationDegrees % 180 != 0
+                aspect = if (turned) VideoPip.clampAspect(videoSize.height, videoSize.width) else VideoPip.clampAspect(videoSize.width, videoSize.height)
+            }
             override fun onPlaybackStateChanged(state: Int) {
                 // One play finished: again, the next video, or stop (Settings → Loop videos / the Loop button).
                 if (state != Player.STATE_ENDED || path == null) return
                 repeats++
-                val mode = if (loop) settings.loopMode.takeIf { it != LoopMode.OFF } ?: LoopMode.FOREVER else LoopMode.OFF
+                val mode = com.clpstudio.filesmanager.data.PlaylistPlay.loopMode(playlist, if (loop) settings.loopMode.takeIf { it != LoopMode.OFF } ?: LoopMode.FOREVER else LoopMode.OFF)
                 when (LoopPolicy.afterPlay(mode, settings.loopTimes, repeats, hasNext = onNext != null)) {
                     LoopPolicy.After.REPLAY -> { player.seekTo(0); player.play() }
                     LoopPolicy.After.NEXT -> onNext?.invoke()
                     LoopPolicy.After.STOP -> Unit
                 }
-                loopHint = if (loop) LoopPolicy.hint(mode, settings.loopTimes, repeats) else null
+                loopHint = if (loop && !playlist) LoopPolicy.hint(mode, settings.loopTimes, repeats) else null
             }
         })
     }
@@ -147,7 +160,7 @@ class PagerVideo(context: Context) {
         player.setMediaItem(MediaItem.fromUri(uri))
         // We count plays ourselves (no REPEAT_MODE_ONE, which never ends).
         player.repeatMode = Player.REPEAT_MODE_OFF
-        loopHint = if (loop) LoopPolicy.hint(s.loopMode, s.loopTimes, 0) else null
+        loopHint = if (loop && !playlist) LoopPolicy.hint(s.loopMode, s.loopTimes, 0) else null
         player.setPlaybackSpeed(speed)
         player.volume = if (muted) 0f else 1f
         player.prepare()
@@ -176,7 +189,7 @@ class PagerVideo(context: Context) {
         player.pause()
         handed = videos
         val items = videos.map { com.clpstudio.filesmanager.playback.PlaybackService.item(Uri.fromFile(File(it.path)), it.name.substringBeforeLast('.'), isVideo = true) }
-        val repeatOne = loop && settings.loopMode == LoopMode.FOREVER
+        val repeatOne = !playlist && loop && settings.loopMode == LoopMode.FOREVER
         Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             runCatching {
                 val c = com.clpstudio.filesmanager.playback.PlayerConnection.controller(context)
@@ -216,7 +229,7 @@ class PagerVideo(context: Context) {
     /** The list wrapped around to this same video: play it again from the start (new count). */
     fun restart() {
         repeats = 0
-        loopHint = if (loop) LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null
+        loopHint = if (loop && !playlist) LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null
         player.seekTo(0)
         player.play()
     }
@@ -264,7 +277,7 @@ class PagerVideo(context: Context) {
     }
 
     fun seek(ms: Long) {
-        if (ms < 1_000) { repeats = 0; loopHint = if (loop) LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null }
+        if (ms < 1_000) { repeats = 0; loopHint = if (loop && !playlist) LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null }
         player.seekTo(ms.coerceIn(0, duration.takeIf { it > 0 } ?: Long.MAX_VALUE))
         position = ms
     }
@@ -285,7 +298,38 @@ class PagerVideo(context: Context) {
 
     fun changeSpeed(s: Float) {
         VideoSpeed.set(s)
+        fast = false
         player.setPlaybackSpeed(VideoSpeed.value)
+    }
+
+    /** Press and hold the video: 2x while held, like the full player (item 32). */
+    fun startFast() {
+        if (fast || path == null) return
+        fast = true
+        player.setPlaybackSpeed(2f)
+        if (!player.isPlaying) player.play()
+    }
+
+    /** Finger up: back to the chosen speed. */
+    fun endFast() {
+        if (!fast) return
+        fast = false
+        player.setPlaybackSpeed(VideoSpeed.value)
+    }
+
+    /**
+     * Closing the video (back, swipe down, the screen closing, the picture-in-picture window's X), item 33:
+     * nothing plays on, and a copy handed to the background service is stopped too (its notification goes).
+     */
+    fun closeAll(context: Context) {
+        stop()
+        if (handed.isNotEmpty()) {
+            handed = emptyList()
+            pendingSeek = null
+            Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                runCatching { com.clpstudio.filesmanager.playback.PlayerConnection.controller(context).run { stop(); clearMediaItems() } }
+            }
+        }
     }
 
     /** The Loop button: this video now, and remembered as Settings → Loop videos. */
@@ -350,6 +394,9 @@ fun InlineVideoPage(
                 .pointerInput(item.path, active) {
                 detectTapGestures(
                     onTap = { onTap() },
+                    // Press and hold = 2x while held (item 32), back to the chosen speed on release.
+                    onLongPress = { if (active) video.startFast() },
+                    onPress = { tryAwaitRelease(); video.endFast() },
                     onDoubleTap = { o ->
                         if (active) {
                             val side = if (o.x > size.width / 2f) 1 else -1
@@ -360,6 +407,7 @@ fun InlineVideoPage(
             },
         )
         if (active) SkipGlow(video)
+        if (active && video.fast) SpeedPill(Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
         val scrub = video.scrubMs
         if (active && scrub != null) {
             ScrubBubble(scrub, video.duration, scrub - video.scrubStartMs, Modifier.align(Alignment.Center))
@@ -406,6 +454,8 @@ private fun androidx.compose.foundation.layout.BoxScope.SkipGlow(video: PagerVid
 object VideoSpeed {
     var value by mutableFloatStateOf(1f)
         private set
+    /** The speed menu is open: the controls don't hide under the finger (item 32). */
+    var menuOpen by androidx.compose.runtime.mutableStateOf(false)
 
     /** Only the menu's speeds; anything else falls back to normal. */
     fun set(s: Float) {

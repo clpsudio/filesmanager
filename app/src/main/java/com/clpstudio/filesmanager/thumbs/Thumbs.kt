@@ -50,6 +50,10 @@ data class PdfThumb(val path: String, val modified: Long)
 data class ApkIcon(val path: String, val modified: Long)
 data class AppIcon(val packageName: String)
 data class VideoThumb(val path: String, val modified: Long)
+/** PSD / AI / CDR / DWG: the preview stored in the file. */
+data class DesignThumb(val path: String, val modified: Long)
+/** EPUB: the book's cover picture. */
+data class EpubCover(val path: String, val modified: Long)
 
 /** The model to load for a file's thumbnail, or null for a plain type icon. */
 fun thumbModel(item: FileItem): Any? = when (item.kind) {
@@ -59,7 +63,8 @@ fun thumbModel(item: FileItem): Any? = when (item.kind) {
     FileKind.AUDIO -> AudioArt(item.path, item.modified)
     FileKind.PDF -> PdfThumb(item.path, item.modified)
     FileKind.APK -> if (item.extension == "apk") ApkIcon(item.path, item.modified) else null
-    else -> null
+    FileKind.DOCUMENT -> if (item.extension == "epub") EpubCover(item.path, item.modified) else null
+    else -> if (com.clpstudio.filesmanager.data.DesignPreview.isDesign(item.name)) DesignThumb(item.path, item.modified) else null
 }
 
 private const val THUMB_PX = 256
@@ -158,7 +163,34 @@ class AppIconFetcher(private val pm: PackageManager, private val load: (PackageM
     }
 }
 
+/** Design-file previews (small; a PSD prefers its embedded thumbnail, which is fast). */
+class DesignThumbFetcher(private val data: DesignThumb) : Fetcher {
+    override suspend fun fetch(): FetchResult? {
+        val bmp = runCatching {
+            com.clpstudio.filesmanager.viewer.DesignBitmaps.load(File(data.path), maxPx = THUMB_PX, thumbnail = true).bitmap
+        }.getOrNull() ?: return null
+        return ImageFetchResult(scaled(bmp).asImage(), true, DataSource.DISK)
+    }
+
+    class Factory : Fetcher.Factory<DesignThumb> {
+        override fun create(data: DesignThumb, options: Options, imageLoader: ImageLoader): Fetcher = DesignThumbFetcher(data)
+    }
+}
+
+class EpubCoverFetcher(private val data: EpubCover) : Fetcher {
+    override suspend fun fetch(): FetchResult? {
+        val bmp = com.clpstudio.filesmanager.viewer.epubCover(File(data.path), THUMB_PX) ?: return null
+        return ImageFetchResult(scaled(bmp).asImage(), true, DataSource.DISK)
+    }
+
+    class Factory : Fetcher.Factory<EpubCover> {
+        override fun create(data: EpubCover, options: Options, imageLoader: ImageLoader): Fetcher = EpubCoverFetcher(data)
+    }
+}
+
 object ThumbKeyers {
+    val design = Keyer<DesignThumb> { d, _ -> "design:${d.path}:${d.modified}" }
+    val epub = Keyer<EpubCover> { d, _ -> "epub:${d.path}:${d.modified}" }
     val audio = Keyer<AudioArt> { d, _ -> "audio:${d.path}:${d.modified}" }
     val pdf = Keyer<PdfThumb> { d, _ -> "pdf:${d.path}:${d.modified}" }
     val apk = Keyer<ApkIcon> { d, _ -> "apk:${d.path}:${d.modified}" }

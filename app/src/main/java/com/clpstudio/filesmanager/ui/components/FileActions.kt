@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Unarchive
 import com.clpstudio.filesmanager.Graph
@@ -101,6 +102,19 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
         return try { d.await() } finally { passwordAsk = null }
     }
 
+    /** "Move to vault": straight in when the vault is open, else Vault asks to set up / unlock first. */
+    var vaultAsk by mutableStateOf<List<FileItem>?>(null)
+
+    fun moveToVault(items: List<FileItem>) {
+        if (items.isEmpty()) return
+        if (com.clpstudio.filesmanager.vault.Vault.state.value == com.clpstudio.filesmanager.vault.VaultState.UNLOCKED) {
+            afterAction()
+            com.clpstudio.filesmanager.vault.Vault.moveIn(context, items.map { File(it.path) })
+        } else {
+            vaultAsk = items
+        }
+    }
+
     fun compress(items: List<FileItem>, withPassword: Boolean) {
         compressRequest = items to withPassword
     }
@@ -116,18 +130,19 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
         }
     }
 
-    /** Extract each ZIP into a folder next to it, or everything into [dest]. Asks for passwords first. */
+    /** Extract each archive (ZIP, 7z, RAR4) into a folder next to it, or everything into [dest]. Asks for passwords first. */
     fun extract(items: List<FileItem>, dest: File?) {
-        val zips = items.filter { !it.isDir && ArchiveOps.isZip(it.name) }.map { File(it.path) }
+        val zips = items.filter { !it.isDir && com.clpstudio.filesmanager.data.Archives.canBrowse(it.name) }.map { File(it.path) }
         if (zips.isEmpty()) {
-            Toast.makeText(context, "Select ZIP files to extract", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Select ZIP, 7z or RAR files to extract", Toast.LENGTH_SHORT).show()
             return
         }
         Graph.appScope.launch(Dispatchers.Main) {
             val plan = ArrayList<Triple<File, CharArray?, File>>()
             for (zip in zips) {
-                val encrypted = withContext(Dispatchers.IO) { runCatching { ArchiveOps.isEncrypted(zip) } }.getOrElse {
-                    Toast.makeText(context, "Can't open ${zip.name}: it may be damaged", Toast.LENGTH_LONG).show()
+                val encrypted = withContext(Dispatchers.IO) { runCatching { com.clpstudio.filesmanager.data.Archives.probe(zip).encrypted } }.getOrElse {
+                    val why = if (it is com.clpstudio.filesmanager.data.Rar5NotSupportedException) "RAR5 not supported" else "it may be damaged"
+                    Toast.makeText(context, "Can't open ${zip.name}: $why", Toast.LENGTH_LONG).show()
                     continue
                 }
                 var password: CharArray? = null
@@ -137,7 +152,7 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
                         val typed = askPassword(zip.name, error) ?: return@launch
                         // Keep the dialog up with "Checking password…" while the check runs.
                         passwordAsk = PasswordAsk(zip.name, null, CompletableDeferred(), checking = true)
-                        val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zip, typed.toCharArray()) }.getOrDefault(false) }
+                        val ok = withContext(Dispatchers.IO) { runCatching { com.clpstudio.filesmanager.data.Archives.checkPassword(zip, typed.toCharArray()) }.getOrDefault(false) }
                         passwordAsk = null
                         if (ok) {
                             password = typed.toCharArray()
@@ -162,7 +177,7 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
                 followUp = { if (single != null) AppState.DoneAction("Extracted to ${single.name}", "Open folder", single) else null },
             ) { report ->
                 var files = 0
-                for ((zip, pw, target) in plan) files += ArchiveOps.extract(zip, pw, target, onProgress = report)
+                for ((zip, pw, target) in plan) files += com.clpstudio.filesmanager.data.Archives.extract(zip, pw, target, onProgress = report)
                 val where = plan.map { it.third }.distinct()
                 "Extracted $files file" + (if (files == 1) "" else "s") + " to " + where.joinToString { it.name } to where
             }
@@ -256,6 +271,13 @@ fun rememberFileActions(afterCopyOrMove: () -> Unit, afterAction: () -> Unit = {
 @Composable
 fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
     val context = LocalContext.current
+    actions.vaultAsk?.let { items ->
+        com.clpstudio.filesmanager.ui.vault.VaultUnlockDialog(
+            count = items.size,
+            onUnlocked = { actions.vaultAsk = null; actions.moveToVault(items) },
+            onDismiss = { actions.vaultAsk = null },
+        )
+    }
     actions.renameTarget?.let { item ->
         TextInputDialog(
             title = "Rename",
@@ -316,7 +338,7 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
     actions.pdfLockTarget?.let { item ->
         PdfLockDialog(
             fileName = item.name,
-            onConfirm = { user, owner, replace -> actions.pdfLockTarget = null; actions.lockPdf(item, user, owner, replace) },
+            onConfirm = { password, replace -> actions.pdfLockTarget = null; actions.lockPdf(item, password, null, replace) },
             onDismiss = { actions.pdfLockTarget = null },
         )
     }
@@ -336,7 +358,8 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
         InfoDialog(
             title = item.name,
             rows = listOf(
-                "Location" to StoragePaths.relative(item.parentPath),
+                "Source" to com.clpstudio.filesmanager.data.SdCards.locationOf(context, item.path).label,
+                "Folder" to StoragePaths.relative(item.parentPath),
                 "Size" to (size?.let { formatSize(it) } ?: "Counting..."),
                 "Modified" to formatDateTime(item.modified),
                 "Type" to if (item.isDir) "Folder" else FileTypes.mimeOf(item.name),
@@ -385,9 +408,10 @@ fun SelectionActionsRow(
             if (hideChoice.hide) MenuRow(Icons.Filled.VisibilityOff, "Hide") { menu = false; actions.hide(selected.filter { !com.clpstudio.filesmanager.data.HiddenNames.isHidden(it.path) }) }
             MenuRow(Icons.Filled.ContentCopy, "Copy to...") { menu = false; actions.copy(selected) }
             MenuRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to...") { menu = false; actions.move(selected) }
+            MenuRow(Icons.Filled.Shield, "Move to vault") { menu = false; actions.moveToVault(selected) }
             MenuRow(Icons.Filled.FolderZip, "Compress") { menu = false; actions.compress(selected, withPassword = false) }
             MenuRow(Icons.Filled.Lock, "Compress with password") { menu = false; actions.compress(selected, withPassword = true) }
-            if (selected.isNotEmpty() && selected.all { !it.isDir && ArchiveOps.isZip(it.name) }) {
+            if (selected.isNotEmpty() && selected.all { !it.isDir && com.clpstudio.filesmanager.data.Archives.canBrowse(it.name) }) {
                 MenuRow(Icons.Filled.Unarchive, "Extract") { menu = false; actions.extract(selected, null) }
                 MenuRow(Icons.Filled.DriveFolderUpload, "Extract to...") { menu = false; actions.extractPickFor = selected }
             }

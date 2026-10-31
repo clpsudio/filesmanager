@@ -66,7 +66,7 @@ fun FileInfoScreen(
                 Text(
                     when (file.kind) {
                         FileKind.DOCUMENT -> "Office preview comes in the next update. Open it with another app for now."
-                        FileKind.ARCHIVE -> "This archive type opens in the next update (ZIP files open here already)."
+                        FileKind.ARCHIVE -> "Files opens ZIP, 7z and RAR archives. This archive type isn't supported yet."
                         else -> "Files can't preview this type yet."
                     },
                     textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,

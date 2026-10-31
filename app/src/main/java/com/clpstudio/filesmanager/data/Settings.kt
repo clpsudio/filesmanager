@@ -37,6 +37,8 @@ data class AppSettings(
     val liquidGlass: Boolean = true,
     /** Show dot-files, dot-folders and folders with .nomedia (default off). Never shows vault items. */
     val showHidden: Boolean = false,
+    /** Settings → "Show SD card" (default on): card files mixed into every list; off = hidden everywhere. */
+    val showSdCard: Boolean = true,
     val sortBy: SortBy = SortBy.NAME,
     val sortAscending: Boolean = true,
     val gridView: Boolean = false,
@@ -50,6 +52,8 @@ data class AppSettings(
     val backgroundPlay: Boolean = true,
     /** Home / app switch while a video plays opens picture-in-picture. */
     val autoPip: Boolean = true,
+    /** Settings → "Show hidden files in search" (default off; only offered while Show hidden files is on). */
+    val hiddenInSearch: Boolean = false,
     /** Settings → Default sort for every list (Date, newest first, unless changed). */
     val defaultSortBy: SortBy = SortBy.DATE,
     val defaultSortAscending: Boolean = false,
@@ -79,6 +83,7 @@ class SettingsRepository(private val context: Context) {
         val theme = stringPreferencesKey("theme")
         val glass = booleanPreferencesKey("liquid_glass")
         val hidden = booleanPreferencesKey("show_hidden")
+        val sdCard = booleanPreferencesKey("show_sd_card")
         val sortBy = stringPreferencesKey("sort_by")
         val sortAsc = booleanPreferencesKey("sort_asc")
         val grid = booleanPreferencesKey("grid_view")
@@ -88,6 +93,7 @@ class SettingsRepository(private val context: Context) {
         val typeFilters = stringPreferencesKey("type_filters")
         val backgroundPlay = booleanPreferencesKey("background_play")
         val autoPip = booleanPreferencesKey("auto_pip")
+        val hiddenInSearch = booleanPreferencesKey("hidden_in_search")
         val doubleTapSkip = androidx.datastore.preferences.core.intPreferencesKey("double_tap_skip")
         val loopMode = stringPreferencesKey("loop_mode")
         val dateGrouping = stringPreferencesKey("date_grouping")
@@ -105,6 +111,7 @@ class SettingsRepository(private val context: Context) {
             theme = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
             liquidGlass = p[Keys.glass] ?: true,
             showHidden = p[Keys.hidden] ?: false,
+            showSdCard = p[Keys.sdCard] ?: true,
             sortBy = p[Keys.sortBy]?.let { runCatching { SortBy.valueOf(it) }.getOrNull() } ?: SortBy.NAME,
             sortAscending = p[Keys.sortAsc] ?: true,
             gridView = p[Keys.grid] ?: false,
@@ -114,6 +121,7 @@ class SettingsRepository(private val context: Context) {
             typeFilters = decodeFilters(p[Keys.typeFilters]),
             backgroundPlay = p[Keys.backgroundPlay] ?: true,
             autoPip = p[Keys.autoPip] ?: true,
+            hiddenInSearch = p[Keys.hiddenInSearch] ?: false,
             doubleTapSkipSeconds = DoubleTapSkip.clamp(p[Keys.doubleTapSkip] ?: DoubleTapSkip.DEFAULT),
             loopMode = LoopMode.parse(p[Keys.loopMode]),
             dateGrouping = DateGrouping.parse(p[Keys.dateGrouping]),
@@ -130,6 +138,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setTheme(mode: ThemeMode) = context.dataStore.edit { it[Keys.theme] = mode.name }
     suspend fun setLiquidGlass(on: Boolean) = context.dataStore.edit { it[Keys.glass] = on }
     suspend fun setShowHidden(on: Boolean) = context.dataStore.edit { it[Keys.hidden] = on }
+    suspend fun setShowSdCard(on: Boolean) = context.dataStore.edit { it[Keys.sdCard] = on }
     suspend fun setSort(by: SortBy, ascending: Boolean) = context.dataStore.edit {
         it[Keys.sortBy] = by.name
         it[Keys.sortAsc] = ascending
@@ -144,6 +153,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
     suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
     suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
+    suspend fun setHiddenInSearch(on: Boolean) = context.dataStore.edit { it[Keys.hiddenInSearch] = on }
     /** Settings → Default sort: every list, and the folder browser too. */
     suspend fun setDefaultSort(by: SortBy, ascending: Boolean) = context.dataStore.edit {
         it[Keys.defaultSortBy] = by.name
@@ -253,3 +263,17 @@ object LoopPolicy {
         LoopMode.TIMES -> "Play ${clampTimes(times)} times"
     }
 }
+
+/**
+ * Item 37: a playlist ("Play N" on selected songs / videos / a slideshow) ignores the Video loop and Audio loop
+ * settings: every item plays once, then the next; after the last, the first again, and it keeps going.
+ * The loop settings still apply to a single file opened on its own.
+ */
+object PlaylistPlay {
+    /** The item after [index] in a playlist of [size]: the next one, the first after the last. */
+    fun next(index: Int, size: Int): Int = if (size <= 0) 0 else (index + 1).mod(size)
+
+    /** The loop mode a player uses: always Off inside a playlist. */
+    fun loopMode(playlist: Boolean, mode: LoopMode): LoopMode = if (playlist) LoopMode.OFF else mode
+}
+

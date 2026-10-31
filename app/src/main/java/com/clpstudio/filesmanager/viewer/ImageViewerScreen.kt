@@ -165,7 +165,12 @@ fun SingleImageViewer(
                     scaleX = 1f - 0.15f * dismissing
                     scaleY = 1f - 0.15f * dismissing
                 },
-        ) { ZoomableImage(uri, zoom) { chrome = !chrome } }
+        ) {
+            // GIFs keep their animation; every other photo from another app decodes from the stream with retries,
+            // so it is never a black screen (item 28).
+            if (mime == "image/gif") ZoomableImage(uri, zoom) { chrome = !chrome }
+            else RobustImage(uri, file?.absolutePath, zoom) { chrome = !chrome }
+        }
         AnimatedVisibility(chrome && dismissing == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
             ViewerActionPanel(
                 path = file?.absolutePath,

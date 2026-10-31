@@ -135,7 +135,7 @@ class BugRound5ScreenshotTest {
                             repeat(60) { Text("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor $it", color = androidx.compose.ui.graphics.Color.Black) }
                         }
                     }
-                    com.clpstudio.filesmanager.ui.components.PdfLockDialog("Annual report 2026.pdf", onConfirm = { _, _, _ -> }, onDismiss = {})
+                    com.clpstudio.filesmanager.ui.components.PdfLockDialog("Annual report 2026.pdf", onConfirm = { _, _ -> }, onDismiss = {})
                 }
             }
         }

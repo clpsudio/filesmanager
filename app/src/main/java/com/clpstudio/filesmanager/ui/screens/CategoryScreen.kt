@@ -98,6 +98,11 @@ object CategoryCache {
 
     operator fun get(c: Category): List<FileItem>? =
         (lists[c] ?: runCatching { read(c) }.getOrNull()?.also { lists[c] = it })?.let(com.clpstudio.filesmanager.data.FileEvents::filter)
+            ?.let { list ->
+                // "Show SD card" off: card files saved by an earlier run never show, even for a moment.
+                val hidden = runCatching { com.clpstudio.filesmanager.data.StoragePaths.hiddenRoots(Graph.app) }.getOrDefault(emptyList())
+                if (hidden.isEmpty()) list else list.filter { f -> hidden.none { com.clpstudio.filesmanager.data.VolumeRules.isUnder(f.path, it) } }
+            }
 
     /** Deleted / moved files leave the cached lists too (memory and disk). */
     fun prune() {
@@ -194,10 +199,19 @@ fun CategoryScreen(
     onSearch: () -> Unit,
     onPaste: () -> Unit,
 ) {
-    val (items, loading) = rememberCategoryItems(cat)
+    val (allItems, loading) = rememberCategoryItems(cat)
+    // All / Phone / SD card chip: only while a card is mounted and "Show SD card" is on.
+    val sd = com.clpstudio.filesmanager.ui.components.rememberSdCardState()
+    var location by rememberSaveable(cat) { mutableStateOf(com.clpstudio.filesmanager.data.LocationFilter.ALL) }
+    val items = remember(allItems, location, sd) {
+        allItems?.let { com.clpstudio.filesmanager.data.VolumeRules.filterByLocation(it, if (sd.showChips) location else com.clpstudio.filesmanager.data.LocationFilter.ALL, sd.removableRoots) { f -> f.path } }
+    }
     // 0 = Folders, 1 = All files. Opens on the view chosen in Settings (All files by default).
     var tab by rememberSaveable { mutableStateOf(if (Graph.settings.value.defaultView == DefaultView.FOLDERS) 0 else 1) }
     val groups = remember(items) { groupByFolder(items.orEmpty()) }
+    val locationChips: @Composable () -> Unit = {
+        if (sd.showChips) com.clpstudio.filesmanager.ui.components.LocationChips(location) { location = it }
+    }
     if (tab == 0) {
         GlassScaffold(
             topBar = {
@@ -206,7 +220,7 @@ fun CategoryScreen(
                     subtitle = items?.let { "${it.size} files in ${groups.size} folders" + if (loading) " · searching..." else "" },
                     onBack = onBack,
                     actions = { IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "Search") } },
-                    below = { CategoryTabs(tab) { tab = it } },
+                    below = { Column { CategoryTabs(tab) { tab = it }; locationChips() } },
                 )
             },
         ) { padding ->
@@ -227,7 +241,7 @@ fun CategoryScreen(
             onBack = onBack,
             onSearch = onSearch,
             onPaste = onPaste,
-            tabs = { CategoryTabs(tab) { tab = it } },
+            tabs = { Column { CategoryTabs(tab) { tab = it }; locationChips() } },
             onSwipePastStart = { tab = 0 },
             category = cat,
             loading = loading,

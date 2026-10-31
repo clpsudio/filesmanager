@@ -114,7 +114,7 @@ fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: ()
         snapshotFlow {
             val p = DateQueryParser.parse(text)
             val r = p.range ?: if (quick == QuickDate.CUSTOM) custom else DateQueryParser.quick(quick, LocalDate.now())
-            Triple(SearchQuery(name = p.nameQuery, range = r, types = types, root = root), settings.showHidden, AppState.refreshTick)
+            Triple(SearchQuery(name = p.nameQuery, range = r, types = types, root = root), com.clpstudio.filesmanager.data.SearchHidden.include(settings), AppState.refreshTick)
         }
             .debounce(250)
             .collectLatest { (q, hidden, _) ->

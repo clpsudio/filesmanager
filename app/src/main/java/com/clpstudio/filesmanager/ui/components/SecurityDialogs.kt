@@ -1,7 +1,5 @@
 package com.clpstudio.filesmanager.ui.components
 
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -217,7 +215,7 @@ private fun SaveModeChooser(copyName: String, replace: Boolean, onReplace: (Bool
 @Composable
 fun PdfLockDialog(
     fileName: String,
-    onConfirm: (user: String, owner: String?, replace: Boolean) -> Unit,
+    onConfirm: (password: String, replace: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var pass by remember { mutableStateOf("") }
@@ -243,7 +241,7 @@ fun PdfLockDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { tried = true; if (error == null) onConfirm(pass, null, replace) }) { Text("Add password") }
+            TextButton(onClick = { tried = true; if (error == null) onConfirm(pass, replace) }) { Text("Add password") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -331,24 +329,3 @@ fun FolderPickerDialog(
     )
 }
 
-/** A "More options ⌄" row that opens [content] below it (closed by default). */
-@Composable
-fun MoreOptions(expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
-    Column {
-        androidx.compose.foundation.layout.Row(
-            Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).clickable(onClick = onToggle)
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            Text("More options", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-            Icon(
-                if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                if (expanded) "Hide more options" else "Show more options",
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
-        androidx.compose.animation.AnimatedVisibility(expanded) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
-        }
-    }
-}

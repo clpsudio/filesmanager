@@ -192,7 +192,7 @@ fun PickerContent(
                         Modifier.fillMaxWidth().glassPanel(RoundedCornerShape(20.dp)).clickable { onOpenFolder(v.path) }.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(if (v.label == "SD card") Icons.Filled.SdCard else Icons.Filled.PhoneAndroid, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(if (v.removable) Icons.Filled.SdCard else Icons.Filled.PhoneAndroid, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(v.label, style = MaterialTheme.typography.titleSmall)

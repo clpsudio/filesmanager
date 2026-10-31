@@ -51,5 +51,6 @@ object Graph {
         showHidden = showHidden,
         privateRoots = StoragePaths.privateRoots(app),
         storageRoots = StoragePaths.volumes(app).map { it.path },
+        hiddenRoots = StoragePaths.hiddenRoots(app),
     )
 }

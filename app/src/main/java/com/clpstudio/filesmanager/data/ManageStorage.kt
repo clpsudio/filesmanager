@@ -57,6 +57,8 @@ object ManageStorageRepository {
     init {
         // Deleted / moved files leave every number and list at once; the screen recomputes after.
         FileEvents.addListener { change -> if (change.removed.isNotEmpty()) prune() }
+        // Usage access granted / taken away (item 36): app sizes and unused apps come in without a restart.
+        UsageAccess.onChange { refresh() }
     }
 
     fun state(): StateFlow<Loadable<ManageStorageData>> = report.state
@@ -87,7 +89,7 @@ object ManageStorageRepository {
         val access = hasUsageAccess(context)
         val bin = runCatching { Graph.bin.totalSize() }.getOrNull()
         val apps = if (access) runCatching { appsBytes(context, bin ?: 0L) }.getOrNull() else null
-        val unused = if (access) runCatching { unusedAppCount(context) }.getOrNull() else null
+        val unused = if (access) runCatching { UnusedApps.load(context).size }.getOrNull() else null
         val now = System.currentTimeMillis()
         val reports = vols.mapIndexed { i, v ->
             StorageMath.report(v, i == 0, perVol[v.path].orEmpty(), apps, bin, now)
@@ -175,22 +177,5 @@ object ManageStorageRepository {
             ok++
         }
         return if (ok == 0) null else sum
-    }
-
-    /** Apps the user installed (and could open) that weren't used in the past 30 days. */
-    private fun unusedAppCount(context: Context): Int? {
-        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now = System.currentTimeMillis()
-        val since = now - 30 * StorageMath.DAY
-        val stats = usm.queryAndAggregateUsageStats(since, now)
-        val pm = context.packageManager
-        return pm.getInstalledApplications(0).count { app ->
-            if (app.flags and ApplicationInfo.FLAG_SYSTEM != 0 || app.packageName == context.packageName) return@count false
-            if (pm.getLaunchIntentForPackage(app.packageName) == null) return@count false
-            val installed = runCatching { pm.getPackageInfo(app.packageName, 0).firstInstallTime }.getOrDefault(0L)
-            if (installed > since) return@count false
-            val last = stats[app.packageName]?.lastTimeUsed ?: 0L
-            last < since
-        }
     }
 }

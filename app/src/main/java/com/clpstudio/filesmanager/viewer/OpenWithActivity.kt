@@ -58,6 +58,7 @@ class OpenWithActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.clpstudio.filesmanager.viewer.VideoPip.register(this)
         com.clpstudio.filesmanager.ui.PrivacyGuard.install(this)
         enableEdgeToEdge()
         val uri = incomingUri(intent)
@@ -92,12 +93,29 @@ class OpenWithActivity : ComponentActivity() {
         }
     }
 
-    private var launchedPlayer = false
+    // Picture-in-picture for the gallery video view (item 34); closing the small window stops it (item 33).
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        com.clpstudio.filesmanager.viewer.VideoPip.onUserLeaveHint(this)
+    }
 
-    override fun onRestart() {
-        super.onRestart()
-        // Back from the video player: nothing left to show here.
-        if (launchedPlayer) finish()
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        com.clpstudio.filesmanager.viewer.VideoPip.onModeChanged(this, isInPictureInPictureMode, lifecycle)
+    }
+
+    override fun onDestroy() {
+        com.clpstudio.filesmanager.viewer.VideoPip.unregister(this)
+        super.onDestroy()
+    }
+
+    private fun browse(folder: String) {
+        com.clpstudio.filesmanager.data.SafeStart.start(
+            this,
+            Intent(this, com.clpstudio.filesmanager.MainActivity::class.java)
+                .setAction(com.clpstudio.filesmanager.MainActivity.ACTION_BROWSE)
+                .putExtra(com.clpstudio.filesmanager.MainActivity.EXTRA_PATH, folder),
+        )
     }
 
     private fun incomingUri(intent: Intent): Uri? = when (intent.action) {
@@ -115,15 +133,26 @@ class OpenWithActivity : ComponentActivity() {
             IconButton(onClick = { scope.launch { saveCopy(f) } }) { Icon(Icons.Filled.SaveAlt, "Save a copy to Downloads") }
             IconButton(onClick = { FileOps.openWithOtherApp(context, f.uri, f.mime, f.name) }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") }
         }
+        // A photo / video that is a real file on storage (Samsung Camera's preview included, item 28/29): exactly like
+        // opening it in Files, the gallery pager over its folder (Share / Favorite / Info / Delete, swipe, filmstrip).
+        if (ExternalMedia.opensInPager(f)) {
+            val file = File(f.path!!)
+            val paths = remember(f.path) { ExternalMedia.siblings(file, Graph.settings.value.showHidden) }
+            FilePagerScreen(
+                paths = paths,
+                start = file.absolutePath,
+                onBack = back,
+                openFull = { item, _ -> openInside(File(item.path)) },
+                showInFolder = { folder -> browse(folder) },
+            )
+            return
+        }
         when (f.kind) {
             FileKind.IMAGE -> SingleImageViewer(f.uri, f.name, back, actions, path = f.path)
             FileKind.PDF -> PdfViewerScreen(f.uri, f.name, back, actions)
             FileKind.TEXT -> TextViewerScreen(f.uri, f.name, back, actions)
-            FileKind.VIDEO -> LaunchedEffect(f) {
-                // Stay under the player: the read access the other app gave lives with this screen (item 27);
-                // it closes when the player is closed.
-                if (VideoPlayerActivity.startUri(context, f.uri, f.name)) launchedPlayer = true else finish()
-            }
+            // Same gallery-style player as the pager, in this screen (no second player screen, no permission passed on).
+            FileKind.VIDEO -> ForeignVideoScreen(f, back, actions)
             FileKind.AUDIO -> {
                 LaunchedEffect(f) {
                     runCatching {
@@ -138,7 +167,9 @@ class OpenWithActivity : ComponentActivity() {
             }
             FileKind.ARCHIVE -> {
                 val local by produceState<File?>(null, f) {
-                    value = if (f.mime == "application/zip" || f.name.endsWith(".zip", true)) {
+                    value = if (f.mime == "application/zip" || com.clpstudio.filesmanager.data.Archives.canBrowse(f.name) ||
+                        f.mime == "application/x-7z-compressed" || f.mime == "application/vnd.rar" || f.mime == "application/x-rar-compressed"
+                    ) {
                         f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
                     } else null
                 }
@@ -150,7 +181,16 @@ class OpenWithActivity : ComponentActivity() {
                 }
             }
             FileKind.FONT -> FontPreviewScreen(f.uri, f.name, back)
-            FileKind.DOCUMENT -> if (hasOfficeViewer(f.name)) {
+            FileKind.DOCUMENT -> if (f.name.endsWith(".epub", true) || f.mime == "application/epub+zip") {
+                val local by produceState<File?>(null, f) {
+                    value = withContext(Dispatchers.IO) {
+                        f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
+                    }
+                }
+                val book = local
+                if (book == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else EpubReaderScreen(book, back)
+            } else if (hasOfficeViewer(f.name)) {
                 val local by produceState<File?>(null, f) {
                     value = f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
                 }
@@ -174,7 +214,17 @@ class OpenWithActivity : ComponentActivity() {
             } else {
                 FileInfoScreen(f, back)
             }
-            else -> {
+            else -> if (com.clpstudio.filesmanager.data.DesignPreview.isDesign(f.name)) {
+                // PSD / AI / CDR / DWG: the preview inside the file, or a clean "no preview" card.
+                val local by produceState<File?>(null, f) {
+                    value = withContext(Dispatchers.IO) {
+                        f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
+                    }
+                }
+                val file = local
+                if (file == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else DesignViewerScreen(file, f.name, back, actions)
+            } else {
                 var mode by remember { mutableStateOf(0) }
                 when (mode) {
                     1 -> TextViewerScreen(f.uri, f.name, { mode = 0 }, actions)

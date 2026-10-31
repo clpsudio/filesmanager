@@ -19,7 +19,11 @@ import java.io.File
 
 /** The list the file viewer swipes through (set just before opening it), in the list's own order. */
 object ViewerSession {
+    /** Setting a new list ends playlist mode; "Play N" turns it back on right after (item 37). */
     var files: List<String> = emptyList()
+        set(v) { field = v; playlist = false }
+    /** The pager was opened by "Play N" on videos: loop settings are ignored, it plays on and wraps (item 37). */
+    var playlist: Boolean = false
     /** Items for "Play N" (slideshow / playlist), in the selected order. */
     var playItems: List<FileItem> = emptyList()
 }
@@ -38,7 +42,7 @@ class Opener(private val context: Context, private val nav: NavController) {
             PlayRoute.MUSIC -> {
                 val audios = items.filter { it.kind == FileKind.AUDIO }
                 Graph.appScope.launch(Dispatchers.Main) {
-                    runCatching { PlayerConnection.playAudio(context, audios, 0) }
+                    runCatching { PlayerConnection.playAudio(context, audios, 0, playlist = true) }
                 }
                 nav.navigate(Routes.MUSIC) { launchSingleTop = true }
             }
@@ -46,6 +50,7 @@ class Opener(private val context: Context, private val nav: NavController) {
                 // The same gallery-style video view as everywhere else, over just these videos.
                 val videos = items.filter { it.kind == FileKind.VIDEO }
                 ViewerSession.files = videos.map { it.path }
+                ViewerSession.playlist = true
                 nav.navigate(Routes.view(videos.first().path))
             }
             PlayRoute.SLIDESHOW -> {
@@ -64,7 +69,9 @@ class Opener(private val context: Context, private val nav: NavController) {
             // Videos play in the photo / video pager (one video UI everywhere: Videos, Media, Recent, search, folders, Favorites).
             FileKind.VIDEO -> openVideo(item, siblings)
             FileKind.AUDIO, FileKind.APK -> openFull(item, siblings)
-            FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) openFull(item, siblings) else openPager(item, siblings)
+            FileKind.ARCHIVE -> if (com.clpstudio.filesmanager.data.Archives.canBrowse(item.name)) openFull(item, siblings) else openPager(item, siblings)
+            // E-books open straight in the reader.
+            FileKind.DOCUMENT -> if (item.extension == "epub") nav.navigate(Routes.epub(item.path)) else openPager(item, siblings)
             else -> openPager(item, siblings)
         }
     }
@@ -100,9 +107,10 @@ class Opener(private val context: Context, private val nav: NavController) {
                 nav.navigate(Routes.MUSIC)
             }
             FileKind.APK -> installApk(context, file)
-            FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
+            FileKind.ARCHIVE -> if (com.clpstudio.filesmanager.data.Archives.canBrowse(item.name)) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
             FileKind.FONT -> nav.navigate(Routes.font(Uri.fromFile(file), item.name))
             FileKind.IMAGE, FileKind.PDF, FileKind.TEXT -> openPager(item, siblings)
+            FileKind.DOCUMENT -> if (item.extension == "epub") nav.navigate(Routes.epub(item.path)) else nav.navigate(Routes.info(item.path))
             else -> nav.navigate(Routes.info(item.path))
         }
     }

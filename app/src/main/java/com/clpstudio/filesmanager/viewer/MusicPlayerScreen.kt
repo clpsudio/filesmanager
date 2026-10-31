@@ -97,10 +97,7 @@ fun MusicPlayerScreen(ui: PlayerUi, onBack: () -> Unit) {
         onSeek = { p?.seekTo(it) },
         onShuffle = { p?.shuffleModeEnabled = !(p?.shuffleModeEnabled ?: false) },
         // Loop = Settings → Audio player → Audio loop (Off / Forever / Play N times); the service applies and counts it.
-        onRepeat = {
-            val next = com.clpstudio.filesmanager.playback.AudioLoop.toggledMode(com.clpstudio.filesmanager.Graph.settings.value.audioLoopMode)
-            com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setAudioLoop(next) }
-        },
+        onRepeat = { com.clpstudio.filesmanager.playback.AudioLoop.toggle() },
         onPick = { p?.seekTo(it, 0) },
     )
 }

@@ -153,9 +153,16 @@ fun FilePagerScreen(
                     val cur = video.path
                     val videos = list.filter { pagerPageType(it.kind) == PagerPage.VIDEO }
                     val idx = videos.indexOfFirst { it.path == cur }
-                    if (video.playing && idx >= 0 && Graph.settings.value.backgroundPlay && act?.isChangingConfigurations != true) {
-                        video.handOff(context, videos, idx)
-                    } else video.pause()
+                    val pipShown = VideoPip.inPip || (android.os.Build.VERSION.SDK_INT >= 24 && act?.isInPictureInPictureMode == true)
+                    when {
+                        act?.isChangingConfigurations == true -> Unit
+                        // Closing the screen or the picture-in-picture window stops the video and its notification (item 33).
+                        act?.isFinishing == true || pipShown -> video.closeAll(context)
+                        // Leaving the app without picture-in-picture (Auto picture-in-picture off, or not allowed):
+                        // Background play keeps the sound going.
+                        video.playing && idx >= 0 && Graph.settings.value.backgroundPlay -> video.handOff(context, videos, idx)
+                        else -> video.pause()
+                    }
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_START -> video.takeBack(context) { p, _, _ ->
                     val i = list.indexOfFirst { it.path == p }
@@ -202,6 +209,8 @@ fun FilePagerScreen(
         if (isVideo) video.load(current, Graph.settings.value) else video.stop()
     }
     // When a video is done (Off, or after "Play N times"): the next video in this list, skipping photos and other files.
+    val playlist = remember { com.clpstudio.filesmanager.ui.ViewerSession.playlist }
+    video.playlist = playlist
     val nextVideo = remember(list.toList(), page) { com.clpstudio.filesmanager.ui.VideoOpen.nextVideo(list.map { pagerPageType(it.kind) == PagerPage.VIDEO }, page) }
     video.onNext = nextVideo?.let { n ->
         when {
@@ -213,9 +222,19 @@ fun FilePagerScreen(
     LaunchedEffect(current.path, isVideo) {
         while (isVideo) { video.tick(); kotlinx.coroutines.delay(250) }
     }
+    // Leaving the app while a video plays: picture-in-picture (item 34); only the video shows in the small window.
+    VideoPipEffect(
+        video, isVideo, hasPrevNext = list.size > 1,
+        onNext = { com.clpstudio.filesmanager.ui.VideoOpen.nextVideo(list.map { pagerPageType(it.kind) == PagerPage.VIDEO }, page)?.let { n -> scope.launch { pager.scrollToPage(n) } } },
+        onPrevious = {
+            val isV = list.map { pagerPageType(it.kind) == PagerPage.VIDEO }
+            (page - 1 downTo 0).firstOrNull { isV[it] }?.let { n -> scope.launch { pager.scrollToPage(n) } }
+        },
+    )
+    LaunchedEffect(VideoPip.inPip) { chrome = !VideoPip.inPip }
     // Video: the controls hide by themselves while it plays (tap shows them again).
-    LaunchedEffect(chrome, video.playing, current.path) {
-        if (isVideo && chrome && video.playing && !fullscreen) { kotlinx.coroutines.delay(3500); chrome = false }
+    LaunchedEffect(chrome, video.playing, current.path, VideoSpeed.menuOpen) {
+        if (isVideo && chrome && video.playing && !fullscreen && !VideoSpeed.menuOpen) { kotlinx.coroutines.delay(3500); chrome = false }
     }
 
     ImmersiveEffect(fullscreen || ((isImage || isVideo) && !chrome))
@@ -298,7 +317,9 @@ fun FilePagerScreen(
                 FileKind.PDF -> PdfContent(uri, item.name, paper, topPadding = top)
                 FileKind.TEXT -> if (Markdown.isMarkdown(item.name)) MarkdownContent(uri, mdSource, paper, topPadding = top) else TextContent(uri, paper, topPadding = top)
                 FileKind.DOCUMENT -> OfficePage(item, paper, top) { openFull(item, list.toList()) }
-                else -> PreviewCard(item, swipe) { openFull(item, list.toList()) }
+                else -> if (com.clpstudio.filesmanager.data.DesignPreview.isDesign(item.name)) {
+                    DesignPage(File(item.path), item.name, zoom, swipe, topPadding = top) { chrome = !chrome }
+                } else PreviewCard(item, swipe) { openFull(item, list.toList()) }
             }
         }
 

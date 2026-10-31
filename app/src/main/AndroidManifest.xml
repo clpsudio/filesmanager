@@ -36,6 +36,9 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Optional fingerprint for the app lock (Settings → App lock). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <application
         android:name=".FilesApp"
         android:allowBackup="false"
@@ -54,6 +57,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.Files.Starting"
             android:windowSoftInputMode="adjustResize">
@@ -71,6 +76,8 @@
             android:taskAffinity=""
             android:excludeFromRecents="false"
             android:documentLaunchMode="intoExisting"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter tools:ignore="AppLinkUrlError">
@@ -201,6 +208,13 @@
                 <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
             </intent-filter>
         </provider>
+
+        <!-- Vault: the app's own viewers read encrypted files through this (decrypted on demand, never to disk). Not exported. -->
+        <provider
+            android:name=".vault.VaultProvider"
+            android:authorities="${applicationId}.vault"
+            android:exported="false"
+            android:grantUriPermissions="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

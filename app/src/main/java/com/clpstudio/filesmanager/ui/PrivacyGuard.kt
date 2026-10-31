@@ -42,7 +42,7 @@ object PrivacyGuard {
             activity.setRecentsScreenshotEnabled(!on)
         } else if (on && !resumed && secureAllowed()) {
             activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        } else {
+        } else if (!com.clpstudio.filesmanager.ui.security.SecureWindow.isHeld(activity)) {
             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }

@@ -109,8 +109,12 @@ fun ManageStorageScreen(
     onCleanup: (String, String) -> Unit,
     onApps: () -> Unit,
     onBin: () -> Unit,
+    onUnused: () -> Unit = onApps,
 ) {
     val context = LocalContext.current
+    // Item 36: the permission is live (resume + app-op watcher), not read from the last storage report.
+    val usageAccess by com.clpstudio.filesmanager.data.UsageAccess.granted.collectAsState()
+    LaunchedEffect(Unit) { com.clpstudio.filesmanager.data.UsageAccess.watch(context) }
     val state by ManageStorageRepository.state().collectAsState()
     val dups by ManageStorageRepository.duplicates.state.collectAsState()
     val vols = remember { StoragePaths.volumes(context) }
@@ -123,12 +127,14 @@ fun ManageStorageScreen(
     LaunchedEffect(fileVersion) { if (firstVersion) firstVersion = false else ManageStorageRepository.scheduleRefresh(1_500) }
     // Back from the Usage access page: read sizes again.
     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        val now = com.clpstudio.filesmanager.data.UsageAccess.check(context)
+        // Also when the last report (or one still running) read it before the change.
         val had = state.value?.usageAccess
-        if (had != null && had != ManageStorageRepository.hasUsageAccess(context)) ManageStorageRepository.refresh()
+        if (had != null && had != now) ManageStorageRepository.refresh()
         onPauseOrDispose { }
     }
     ManageStorageContent(
-        data = state.value,
+        data = state.value?.let { if (usageAccess && !it.usageAccess) it.copy(usageAccess = true, unusedApps = null) else it },
         volumes = vols,
         duplicates = dups.value,
         onBack = onBack,
@@ -137,9 +143,8 @@ fun ManageStorageScreen(
         onCleanup = onCleanup,
         onApps = onApps,
         onBin = onBin,
-        onUsageSettings = {
-            runCatching { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        },
+        onUnused = onUnused,
+        onUsageSettings = { com.clpstudio.filesmanager.data.UsageAccess.openSettings(context) },
     )
 }
 
@@ -155,6 +160,7 @@ fun ManageStorageContent(
     onApps: () -> Unit,
     onBin: () -> Unit,
     onUsageSettings: () -> Unit,
+    onUnused: () -> Unit = onApps,
     initiallyExpanded: Boolean = false,
     initiallyMoreSuggestions: Boolean = false,
 ) {
@@ -250,9 +256,10 @@ fun ManageStorageContent(
                                     trailing = when {
                                         data == null -> "…"
                                         data.unusedApps != null -> data.unusedApps.toString()
+                                        data.usageAccess -> "…"
                                         else -> "—"
                                     },
-                                    onClick = { if (data?.usageAccess == true) onApps() else usageExplainer = true },
+                                    onClick = { if (data?.usageAccess == true) onUnused() else usageExplainer = true },
                                     panel = false,
                                 )
                             }
@@ -276,7 +283,7 @@ fun ManageStorageContent(
             title = "Usage access",
             text = "To see app sizes and which apps you haven't used in 30 days, allow Usage access for Files. Android keeps this on your device; nothing is sent anywhere.",
             confirm = "Open settings",
-            onConfirm = onUsageSettings,
+            onConfirm = { usageExplainer = false; onUsageSettings() },
             onDismiss = { usageExplainer = false },
         )
     }

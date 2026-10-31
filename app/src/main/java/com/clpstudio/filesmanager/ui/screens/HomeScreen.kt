@@ -48,7 +48,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,6 +122,8 @@ data class HomeState(
     val total: Long = 0,
     val counts: Map<HomeTile, String> = emptyMap(),
     val recent: List<FileItem> = emptyList(),
+    /** Mounted SD cards (Home shows a box for each next to "Device"). */
+    val sdCards: List<com.clpstudio.filesmanager.data.StorageBox> = emptyList(),
 )
 
 @Composable
@@ -130,6 +135,8 @@ fun HomeScreen(
     onOpenRecent: (FileItem, List<FileItem>) -> Unit,
     player: PlayerUi,
     onOpenPlayer: () -> Unit,
+    /** Opens a storage root (the SD card box) in the folder browser. */
+    onBrowseRoot: (String) -> Unit = { onBrowse() },
 ) {
     val context = LocalContext.current
     val settings by Graph.settings.collectAsState()
@@ -140,23 +147,30 @@ fun HomeScreen(
     LaunchedEffect(showHidden, tick) { HomeRepository.onShow(showHidden, tick) }
     val snap by HomeRepository.state(showHidden).collectAsState()
     val favorites by com.clpstudio.filesmanager.data.Favorites.paths.collectAsState()
-    val state = remember(snap, favorites.size) { homeStateOf(snap, favorites.size) }
-    HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer, showHiddenTile = showHidden)
+    val vaultState by com.clpstudio.filesmanager.vault.Vault.state.collectAsState()
+    val vaultCount by com.clpstudio.filesmanager.vault.Vault.count.collectAsState()
+    val vaultLabel = when (vaultState) {
+        com.clpstudio.filesmanager.vault.VaultState.NOT_SET_UP -> "Set up"
+        com.clpstudio.filesmanager.vault.VaultState.LOCKED -> "Locked · $vaultCount"
+        com.clpstudio.filesmanager.vault.VaultState.UNLOCKED -> "$vaultCount file${if (vaultCount == 1) "" else "s"}"
+    }
+    val state = remember(snap, favorites.size, vaultLabel) { homeStateOf(snap, favorites.size, vaultLabel) }
+    HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer, showHiddenTile = showHidden, onBrowseRoot = onBrowseRoot)
 }
 
 /** Maps the repository snapshot to what Home draws; "…" while a count is still loading, never a blank or a false 0. */
-internal fun homeStateOf(snap: HomeSnapshot, favorites: Int): HomeState {
+internal fun homeStateOf(snap: HomeSnapshot, favorites: Int, vaultLabel: String = "Set up"): HomeState {
     val counts = mutableMapOf<HomeTile, String>()
     for ((tile, cat) in homeCategories) counts[tile] = HomeRepository.countLabel(snap.counts[cat])
     counts[HomeTile.RECENT] = HomeRepository.countLabel(snap.recent.map { it.size })
     counts[HomeTile.FAVORITES] = HomeRepository.countLabel(Loadable(value = favorites, loaded = true))
     counts[HomeTile.BIN] = HomeRepository.countLabel(snap.bin)
-    counts[HomeTile.VAULT] = "Coming soon"
+    counts[HomeTile.VAULT] = vaultLabel
     counts[HomeTile.HIDDEN] = "All in one place"
     counts[HomeTile.APPS] = "APKs & installed"
     counts[HomeTile.INTERNAL] = "System storage"
     val (used, total) = snap.storage.value ?: (0L to 0L)
-    return HomeState(used = used, total = total, counts = counts, recent = snap.recent.value.orEmpty().take(20))
+    return HomeState(used = used, total = total, counts = counts, recent = snap.recent.value.orEmpty().take(20), sdCards = snap.sdCards.value.orEmpty())
 }
 
 @Composable
@@ -171,6 +185,7 @@ fun HomeContent(
     onOpenPlayer: () -> Unit = {},
     /** "Hidden files" tile: only while Settings → Show hidden files is on. */
     showHiddenTile: Boolean = false,
+    onBrowseRoot: (String) -> Unit = {},
 ) {
     GlassScaffold(
         topBar = {
@@ -202,7 +217,16 @@ fun HomeContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "storage") { StorageCard(state.used, state.total, onBrowse) }
+                item(span = { GridItemSpan(maxLineSpan) }, key = "storage") {
+                    // "Device" and, while a card is mounted, "SD card": used / total, tap opens that root.
+                    // Stacked, one full-width box each, so names and sizes never get cut on a narrow phone.
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        StorageCard(if (state.sdCards.isEmpty()) "Browse all files" else "Device storage", Icons.Filled.Storage, state.used, state.total, onBrowse)
+                        state.sdCards.forEach { card ->
+                            StorageCard(card.label, Icons.Filled.SdCard, card.used, card.total, { onBrowseRoot(card.path) })
+                        }
+                    }
+                }
                 if (state.recent.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "recentHeader") {
                         SectionTitle("Recent files", onMore = { onTile(HomeTile.RECENT) })
@@ -288,23 +312,24 @@ private fun SectionTitle(text: String, onMore: (() -> Unit)? = null) {
 }
 
 @Composable
-private fun StorageCard(used: Long, total: Long, onClick: () -> Unit) {
+private fun StorageCard(title: String, icon: ImageVector, used: Long, total: Long, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     Column(
-        Modifier.fillMaxWidth().pressScale(interaction, 0.98f).glassPanel(RoundedCornerShape(28.dp))
+        modifier.fillMaxWidth().pressScale(interaction, 0.98f).glassPanel(RoundedCornerShape(28.dp))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Storage, null, tint = MaterialTheme.colorScheme.primary)
+                Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Browse all files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    if (total > 0) "${formatSize(used)} used of ${formatSize(total)}" else "Internal storage",
+                    if (total > 0) "${formatSize(used)} used of ${formatSize(total)}" else "Tap to browse",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
@@ -361,7 +386,13 @@ val MiniPlayerHeight = 88.dp
  * Close stops playback (and its notification) and hides the bar.
  */
 @Composable
-fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+fun MiniPlayer(
+    player: PlayerUi,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    loopMode: com.clpstudio.filesmanager.data.LoopMode = com.clpstudio.filesmanager.playback.AudioLoop.mode,
+    onLoop: () -> Unit = { com.clpstudio.filesmanager.playback.AudioLoop.toggle() },
+) {
     val art = remember(player.artwork) {
         player.artwork?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
     }
@@ -383,6 +414,14 @@ fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit, modifier: Modifier = Modifi
                 Icon(if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (player.isPlaying) "Pause" else "Play")
             }
             IconButton(onClick = { player.controller?.seekToNext() }) { Icon(Icons.Filled.SkipNext, "Next") }
+            // Same audio Loop as the full player and the notification (item 30).
+            val loopOn = loopMode != com.clpstudio.filesmanager.data.LoopMode.OFF
+            IconButton(onClick = onLoop) {
+                Icon(
+                    if (loopOn) Icons.Filled.RepeatOne else Icons.Filled.Repeat, if (loopOn) "Loop on" else "Loop off",
+                    tint = if (loopOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             IconButton(onClick = { player.controller?.let { runCatching { it.stop(); it.clearMediaItems() } } }) { Icon(Icons.Filled.Close, "Close player") }
         }
         LinearProgressIndicator(

@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import com.clpstudio.filesmanager.Graph
 import kotlinx.coroutines.Dispatchers
@@ -103,7 +104,12 @@ class MediaQueries(private val context: Context) {
                 val dl = StoragePaths.downloads()
                 val list = walk(dl, filter.withoutNoMedia(), maxDepth = 8, limit = 20_000)
                 if (list.isEmpty() && !dl.isDirectory) Diagnostics.log("media", "Downloads folder not found: ${dl.path}")
-                emit(CategoryLoad(list, true))
+                // An SD card's own Download folder joins in (only while "Show SD card" is on).
+                val cardLists = StoragePaths.volumes(context).filter { it.removable }.flatMap { v ->
+                    val cardDl = File(v.path, Environment.DIRECTORY_DOWNLOADS)
+                    if (cardDl.isDirectory) runCatching { walk(cardDl, filter.withoutNoMedia(), maxDepth = 8, limit = 20_000) }.getOrDefault(emptyList()) else emptyList()
+                }
+                emit(CategoryLoad(if (cardLists.isEmpty()) list else (list + cardLists).sortedByDescending { it.modified }, true))
             }
             Category.RECENT -> {
                 val cutoffSec = System.currentTimeMillis() / 1000 - 30L * 24 * 3600

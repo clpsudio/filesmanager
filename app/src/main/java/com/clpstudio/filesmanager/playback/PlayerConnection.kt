@@ -35,14 +35,15 @@ object PlayerConnection {
 
     suspend fun controller(context: Context): MediaController = future(context).await()
 
-    suspend fun playAudio(context: Context, files: List<FileItem>, index: Int) {
+    suspend fun playAudio(context: Context, files: List<FileItem>, index: Int, playlist: Boolean = false) {
+        AudioLoop.playlist = playlist
         val items = files.map { PlaybackService.item(Uri.fromFile(File(it.path)), it.name.substringBeforeLast('.'), isVideo = false) }
         // A video may have left the shared player on "repeat one" (the 1.0.10 bug: only the first song played).
         // Start with the audio loop's own mode; the service keeps it right on every song after this.
         val s = runCatching { com.clpstudio.filesmanager.Graph.settings.value }.getOrNull()
         val c = controller(context)
         AudioLoop.plays = 0
-        c.repeatMode = AudioLoop.repeatModeFor(s?.audioLoopMode ?: com.clpstudio.filesmanager.data.LoopMode.OFF, s?.audioLoopTimes ?: 3, 0)
+        c.repeatMode = AudioLoop.repeatModeFor(com.clpstudio.filesmanager.data.PlaylistPlay.loopMode(playlist, s?.audioLoopMode ?: com.clpstudio.filesmanager.data.LoopMode.OFF), s?.audioLoopTimes ?: 3, 0)
         c.shuffleModeEnabled = false
         play(context, items, index)
     }

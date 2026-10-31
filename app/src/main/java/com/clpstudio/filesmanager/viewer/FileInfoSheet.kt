@@ -113,6 +113,7 @@ object FileDetailsLoader {
         size?.let { rows += "Size" to formatSize(it) + " (" + "%,d".format(it) + " bytes)" }
         rows += "Type" to "${typeLabel(t.kind)} · $mime"
         file?.let { rows += "Modified" to formatDateTime(it.lastModified()) }
+        file?.let { rows += "Source" to com.clpstudio.filesmanager.data.SdCards.locationOf(context, it.absolutePath).label }
         file?.parentFile?.let { rows += "Folder" to StoragePaths.relative(it.absolutePath) }
         file?.let { rows += "Path" to it.absolutePath }
         runCatching { rows += mediaRows(context, t) }
@@ -186,7 +187,19 @@ object FileDetailsLoader {
         }
         FileKind.ARCHIVE -> {
             val path = t.path ?: return emptyList()
-            if (!ArchiveOps.isZip(t.name)) return emptyList()
+            if (!ArchiveOps.isZip(t.name)) {
+                if (!com.clpstudio.filesmanager.data.Archives.canBrowse(t.name)) return emptyList()
+                return try {
+                    val p = com.clpstudio.filesmanager.data.Archives.probe(File(path))
+                    listOf(
+                        "Format" to p.format.label,
+                        "Items inside" to if (p.listLocked) "Locked" else p.entries.size.toString(),
+                        "Password" to if (p.encrypted) "Yes" else "No",
+                    )
+                } catch (e: com.clpstudio.filesmanager.data.Rar5NotSupportedException) {
+                    listOf("Format" to "RAR5 (not supported yet)")
+                }
+            }
             ArchiveOps.open(File(path)).use { z ->
                 listOf("Items inside" to z.fileHeaders.size.toString(), "Password" to if (z.isEncrypted) "Yes (locked zip)" else "No")
             }

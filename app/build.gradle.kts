@@ -22,6 +22,8 @@ android {
         versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.0-dev"
         vectorDrawables.useSupportLibrary = true
+        // Phones and tablets only (ARM): halves the size the FFmpeg decoders add (x86 emulators can't install it).
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -126,6 +128,13 @@ dependencies {
 
     // ZIP with passwords (AES-256 / ZipCrypto). Pure Java, no network code.
     implementation("net.lingala.zip4j:zip4j:2.11.5")
+    // RAR / 7z archives (pure Java, offline): commons-compress reads 7z, xz supplies its LZMA codecs, junrar reads RAR4.
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.tukaani:xz:1.10")
+    implementation("com.github.junrar:junrar:7.5.5")
+    // FFmpeg audio decoders for Media3 (offline native libs) — plays codecs the phone's own decoders can't.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1")
+
     // PDF passwords (open / add / remove, AES-256). Offline; no network permission.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 

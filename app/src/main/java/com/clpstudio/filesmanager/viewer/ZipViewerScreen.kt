@@ -33,7 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.clpstudio.filesmanager.data.ArchiveEntry
+import com.clpstudio.filesmanager.data.ArchiveFormat
 import com.clpstudio.filesmanager.data.ArchiveOps
+import com.clpstudio.filesmanager.data.Archives
 import com.clpstudio.filesmanager.data.FileItem
 import com.clpstudio.filesmanager.data.WrongPasswordException
 import com.clpstudio.filesmanager.data.uniqueName
@@ -53,13 +55,20 @@ import java.io.File
 
 private sealed interface ZipLoad {
     data object Loading : ZipLoad
-    data class Ready(val entries: List<ArchiveEntry>, val encrypted: Boolean) : ZipLoad
-    data class Failed(val message: String) : ZipLoad
+    data class Ready(
+        val entries: List<ArchiveEntry>,
+        val encrypted: Boolean,
+        val format: ArchiveFormat = ArchiveFormat.ZIP,
+        /** The names themselves are locked (7z / RAR with encrypted names): nothing to list until the password. */
+        val listLocked: Boolean = false,
+    ) : ZipLoad
+    data class Failed(val message: String, val title: String = "Can't open this archive") : ZipLoad
 }
 
 /**
- * Browse a ZIP (normal or password-protected: AES or ZipCrypto) without extracting; open any file
+ * Browse a ZIP, 7z or RAR4 archive (normal or password-protected) without extracting; open any file
  * inside; extract all or selected entries, here or to a folder of your choice, with progress.
+ * RAR5 shows a clear "not supported" message.
  */
 @Composable
 fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> Unit) {
@@ -75,13 +84,26 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
     var menu by remember { mutableStateOf(false) }
     val selected = remember { mutableStateListOf<String>() }
 
-    val load by produceState<ZipLoad>(ZipLoad.Loading, path, AppState.refreshTick) {
+    val probe by produceState<ZipLoad>(ZipLoad.Loading, path, AppState.refreshTick) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
-                ArchiveOps.open(zipFile).use { z -> ZipLoad.Ready(ArchiveOps.entries(z), z.isEncrypted || z.fileHeaders.any { it.isEncrypted }) }
-            }.getOrElse { ZipLoad.Failed("It may be damaged or not a ZIP archive.") }
+            try {
+                val p = Archives.probe(zipFile)
+                ZipLoad.Ready(p.entries, p.encrypted, p.format, p.listLocked)
+            } catch (e: Throwable) {
+                ZipLoad.Failed(Archives.failureMessage(e), Archives.failureTitle(e))
+            }
         }
         if ((value as? ZipLoad.Ready)?.encrypted == true && password == null) askPassword = true
+    }
+    // A locked name list is read again once the password is known.
+    val load by produceState(probe, probe, password) {
+        val p = probe
+        value = if (p is ZipLoad.Ready && p.listLocked && password != null) {
+            withContext(Dispatchers.IO) {
+                runCatching { p.copy(entries = Archives.list(zipFile, password!!.toCharArray()), listLocked = false) }
+                    .getOrElse { ZipLoad.Failed(Archives.failureMessage(it), Archives.failureTitle(it)) }
+            }
+        } else p
     }
     val ready = load as? ZipLoad.Ready
     val nodes = remember(ready, dir) { ready?.let { ArchiveOps.children(it.entries, dir) } }
@@ -95,7 +117,7 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
             context, "Extracting",
             followUp = { AppState.DoneAction("Extracted to ${target.name}", "Open folder", target) },
         ) { report ->
-            val n = ArchiveOps.extract(zipFile, pw(), target, paths = paths, stripPrefix = dir, onProgress = report)
+            val n = Archives.extract(zipFile, pw(), target, paths = paths, stripPrefix = dir, onProgress = report)
             "Extracted $n file" + (if (n == 1) "" else "s") + " to ${target.name}" to listOf(target)
         }
     }
@@ -129,7 +151,7 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
             } else {
                 GlassTopBar(
                     title = zipFile.name,
-                    subtitle = (if (ready?.encrypted == true) "Locked ZIP" else "ZIP archive") + if (dir.isEmpty()) "" else " · $dir",
+                    subtitle = Archives.subtitle(ready?.format ?: Archives.formatOfName(zipFile.name), ready?.encrypted == true) + if (dir.isEmpty()) "" else " · $dir",
                     onBack = onBack,
                     actions = {
                         if (ready?.encrypted == true) Icon(Icons.Filled.Lock, "Password protected", Modifier.padding(end = 4.dp))
@@ -147,9 +169,9 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
     ) { padding ->
         val list = nodes
         when {
-            load is ZipLoad.Failed -> EmptyState(Icons.Filled.FolderZip, "Can't open this archive", (load as ZipLoad.Failed).message, Modifier.padding(padding))
+            load is ZipLoad.Failed -> EmptyState(Icons.Filled.FolderZip, (load as ZipLoad.Failed).title, (load as ZipLoad.Failed).message, Modifier.padding(padding))
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            ready?.encrypted == true && password == null -> EmptyState(Icons.Filled.Lock, "Password-protected ZIP", "Enter the password to open the files inside.", Modifier.padding(padding))
+            ready?.encrypted == true && password == null -> EmptyState(Icons.Filled.Lock, "Password-protected " + ready.format.label, "Enter the password to open the files inside.", Modifier.padding(padding))
             list.isEmpty() -> EmptyState(Icons.Filled.FolderZip, "Empty folder", modifier = Modifier.padding(padding))
             else -> LazyColumn(contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = 24.dp)) {
                 items(list, key = { it.path }) { node ->
@@ -162,7 +184,7 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
                                 val base = File(context.cacheDir, "zip")
                                 val out = File(base, node.path)
                                 if (!out.canonicalPath.startsWith(base.canonicalPath + File.separator)) return@launch
-                                val r = runCatching { ArchiveOps.extractEntry(zipFile, pw(), node.path, out) }
+                                val r = runCatching { Archives.extractEntry(zipFile, pw(), node.path, out) }
                                 r.onSuccess { openExtracted(it) }.onFailure { e ->
                                     if (e is WrongPasswordException) { password = null; passwordError = "Wrong password"; askPassword = true }
                                     else Toast.makeText(context, "Couldn't open this file", Toast.LENGTH_SHORT).show()
@@ -181,7 +203,7 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
         fun check(typed: String, then: () -> Unit) {
             checking = true
             scope.launch {
-                val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zipFile, typed.toCharArray()) }.getOrDefault(false) }
+                val ok = withContext(Dispatchers.IO) { runCatching { Archives.checkPassword(zipFile, typed.toCharArray()) }.getOrDefault(false) }
                 checking = false
                 if (ok) {
                     password = typed

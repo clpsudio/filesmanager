@@ -256,6 +256,8 @@ class VideoPlayerActivity : ComponentActivity() {
         val c = controller
         // Background play off (Settings) and not in picture-in-picture: pause when the player leaves the screen.
         if (c != null && !isChangingConfigurations && !isInPipSafe() && !settings.backgroundPlay) c.pause()
+        // Closed (back, swipe down, task closed): nothing plays on and the notification goes (item 33).
+        if (c != null && isFinishing && !isChangingConfigurations) runCatching { c.stop(); c.clearMediaItems() }
         playerView.player = null
         c?.removeListener(listener)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

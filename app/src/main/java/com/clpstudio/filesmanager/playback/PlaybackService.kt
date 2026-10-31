@@ -14,7 +14,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -36,9 +35,8 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
-        val renderers = DefaultRenderersFactory(this)
-            .setEnableDecoderFallback(true)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        // Phone decoders first, the bundled FFmpeg decoders for what the phone can't play.
+        val renderers = MediaRenderers.factory(this)
         val player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this, extractors))
             .setAudioAttributes(
@@ -74,6 +72,7 @@ class PlaybackService : MediaSessionService() {
                 } == true
                 runCatching { session?.setSessionActivity(if (video) openVideo else open) }
                 // Audio loop (Settings → Loop, shared with videos): count the plays of this track.
+                if (video) updateLoopButton(isVideo = true)
                 if (!video) {
                     AudioLoop.plays = if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) AudioLoop.plays + 1 else 0
                     applyAudioLoop()
@@ -102,8 +101,19 @@ class PlaybackService : MediaSessionService() {
         AudioLoop.mode = s.audioLoopMode
         if (s.audioLoopMode != com.clpstudio.filesmanager.data.LoopMode.OFF) AudioLoop.lastOn = s.audioLoopMode
         AudioLoop.times = s.audioLoopTimes
-        val want = AudioLoop.repeatModeFor(s.audioLoopMode, s.audioLoopTimes, AudioLoop.plays)
+        val want = AudioLoop.repeatModeFor(com.clpstudio.filesmanager.data.PlaylistPlay.loopMode(AudioLoop.playlist, s.audioLoopMode), s.audioLoopTimes, AudioLoop.plays)
         if (p.repeatMode != want) p.repeatMode = want
+        updateLoopButton(isVideo = false)
+    }
+
+    private var shownLoop: Pair<com.clpstudio.filesmanager.data.LoopMode, Boolean>? = null
+
+    /** Keeps the notification's Loop button in step with the audio loop setting (item 30). */
+    private fun updateLoopButton(isVideo: Boolean) {
+        val key = AudioLoop.mode to isVideo
+        if (shownLoop == key) return
+        shownLoop = key
+        runCatching { session?.setMediaButtonPreferences(loopButtons(AudioLoop.mode, isVideo)) }
     }
 
     /** Audio deleted / moved through the app leaves the queue (videos are handled by the video player). */
@@ -129,7 +139,10 @@ class PlaybackService : MediaSessionService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val p = session?.player
-        if (p == null || !p.playWhenReady || p.mediaItemCount == 0) stopSelf()
+        // Files swiped away from recents: a video playing in the background stops with it (item 33); music plays on.
+        val isVideo = p?.currentMediaItem?.mediaMetadata?.let { it.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO || it.extras?.getBoolean(EXTRA_IS_VIDEO) == true } == true
+        if (p != null && isVideo) runCatching { p.stop(); p.clearMediaItems() }
+        if (p == null || isVideo || !p.playWhenReady || p.mediaItemCount == 0) stopSelf()
     }
 
     override fun onDestroy() {
@@ -149,6 +162,29 @@ class PlaybackService : MediaSessionService() {
 
     /** Items from a controller may arrive without their uri: rebuild it from the extras. */
     private class Callback : MediaSession.Callback {
+        // The notification (and any controller) gets the audio Loop button (item 30), same setting as the full player.
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(androidx.media3.session.SessionCommand(CMD_AUDIO_LOOP, Bundle.EMPTY)).build(),
+                )
+                .setMediaButtonPreferences(loopButtons(AudioLoop.mode, isVideo = false))
+                .build()
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: androidx.media3.session.SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<androidx.media3.session.SessionResult> {
+            if (customCommand.customAction == CMD_AUDIO_LOOP) {
+                AudioLoop.toggle()
+                return Futures.immediateFuture(androidx.media3.session.SessionResult(androidx.media3.session.SessionResult.RESULT_SUCCESS))
+            }
+            return super.onCustomCommand(session, controller, customCommand, args)
+        }
+
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -158,6 +194,23 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        const val CMD_AUDIO_LOOP = "com.clpstudio.filesmanager.AUDIO_LOOP"
+
+        /** The notification's Loop button for the audio loop [mode]; none while a video plays (pure, unit tested). */
+        fun loopButtons(mode: com.clpstudio.filesmanager.data.LoopMode, isVideo: Boolean): List<androidx.media3.session.CommandButton> {
+            if (isVideo) return emptyList()
+            val on = mode != com.clpstudio.filesmanager.data.LoopMode.OFF
+            return listOf(
+                androidx.media3.session.CommandButton.Builder(
+                    if (on) androidx.media3.session.CommandButton.ICON_REPEAT_ONE else androidx.media3.session.CommandButton.ICON_REPEAT_OFF,
+                )
+                    .setDisplayName(if (on) "Loop on" else "Loop off")
+                    .setSessionCommand(androidx.media3.session.SessionCommand(CMD_AUDIO_LOOP, Bundle.EMPTY))
+                    .setSlots(androidx.media3.session.CommandButton.SLOT_OVERFLOW)
+                    .build(),
+            )
+        }
+
         const val EXTRA_SUBTITLES = "subs"
         const val EXTRA_IS_VIDEO = "isVideo"
 
@@ -199,6 +252,8 @@ class PlaybackService : MediaSessionService() {
 /** The audio loop as the music player shows it (same process as the service). */
 object AudioLoop {
     var plays by androidx.compose.runtime.mutableIntStateOf(0)
+    /** The queue is a "Play N" playlist (item 37): each song once, then the next, the first after the last. */
+    @Volatile var playlist: Boolean = false
     var mode by androidx.compose.runtime.mutableStateOf(com.clpstudio.filesmanager.data.LoopMode.OFF)
     var times by androidx.compose.runtime.mutableIntStateOf(com.clpstudio.filesmanager.data.LoopPolicy.DEFAULT_TIMES)
     /** The looping mode the Loop button turns back on. */
@@ -217,6 +272,17 @@ object AudioLoop {
     fun repeatModeFor(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, playsDone: Int): Int =
         if (com.clpstudio.filesmanager.data.LoopPolicy.repeatCurrent(mode, times, playsDone)) androidx.media3.common.Player.REPEAT_MODE_ONE
         else androidx.media3.common.Player.REPEAT_MODE_ALL
+
+    /**
+     * The Loop button of the full player, the mini player and the notification (item 30): Off <-> the last looping
+     * mode, saved as Settings -> Audio player -> Audio loop; the service applies it (background too).
+     */
+    fun toggle() {
+        val current = runCatching { com.clpstudio.filesmanager.Graph.settings.value.audioLoopMode }.getOrDefault(mode)
+        val next = toggledMode(current)
+        mode = next
+        com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setAudioLoop(next) }
+    }
 
     /** "2/3" while "Play N times" counts (null otherwise). */
     val hint: String? get() = com.clpstudio.filesmanager.data.LoopPolicy.hint(mode, times, plays)

@@ -55,6 +55,9 @@ object CategoryRepository {
     fun state(cat: Category, showHidden: Boolean): StateFlow<Loadable<List<FileItem>>> = loader(cat, showHidden).state
 
     fun refresh(cat: Category, showHidden: Boolean) = loader(cat, showHidden).refresh()
+
+    /** Reloads every list already loaded (an SD card went in / out, "Show SD card" switched). */
+    fun refreshAll() = loaders.values.forEach { it.refresh() }
 }
 
 /** What Home shows. A null / pending field means "still loading" (shown as "…", never as 0). */
@@ -63,6 +66,8 @@ data class HomeSnapshot(
     val counts: Map<Category, Loadable<Int>> = emptyMap(),
     val recent: Loadable<List<FileItem>> = Loadable(),
     val bin: Loadable<Int> = Loadable(),
+    /** Mounted SD cards shown on Home (empty: no card, or "Show SD card" off). */
+    val sdCards: Loadable<List<StorageBox>> = Loadable(),
 )
 
 /** Home counts, category sizes, recent files and the Bin count, each loaded and kept independently. */
@@ -76,12 +81,17 @@ object HomeRepository {
             (vol.total - vol.free).coerceAtLeast(0) to vol.total
         }
         val bin = KeepLastGoodLoader(CategoryRepository.scope) { Graph.bin.list().size }
+        val sd = KeepLastGoodLoader(CategoryRepository.scope) {
+            StoragePaths.volumes(Graph.app).filter { it.removable }.map { v ->
+                StorageBox(v.path, v.label, (v.total - v.free).coerceAtLeast(0), v.total, removable = true)
+            }
+        }
         val recent = CategoryRepository.loader(Category.RECENT, showHidden)
         val cats = counted.associateWith { CategoryRepository.loader(it, showHidden) }
         @Volatile var lastTick = Int.MIN_VALUE
 
         val snapshot: StateFlow<HomeSnapshot> = combine(
-            listOf(storage.state, bin.state, recent.state) + cats.values.map { it.state },
+            listOf(storage.state, bin.state, recent.state) + cats.values.map { it.state } + listOf(sd.state),
         ) { arr ->
             @Suppress("UNCHECKED_CAST")
             val counts = counted.mapIndexed { i, c -> c to (arr[3 + i] as Loadable<List<FileItem>>).map { it.size } }.toMap()
@@ -91,11 +101,12 @@ object HomeRepository {
                 bin = arr[1] as Loadable<Int>,
                 recent = arr[2] as Loadable<List<FileItem>>,
                 counts = counts + (Category.MEDIA to mediaCount(counts[Category.PHOTOS], counts[Category.VIDEOS])),
+                sdCards = arr[3 + counted.size] as Loadable<List<StorageBox>>,
             )
         }.stateIn(CategoryRepository.scope, SharingStarted.Eagerly, HomeSnapshot())
 
         fun refreshAll() {
-            storage.refresh(); bin.refresh(); recent.refresh()
+            storage.refresh(); bin.refresh(); recent.refresh(); sd.refresh()
             cats.values.forEach { it.refresh() }
         }
     }

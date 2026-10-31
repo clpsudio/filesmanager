@@ -127,12 +127,13 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                         HomeTile.HIDDEN -> nav.navigate(Routes.HIDDEN)
                         // Our own storage screen: never the system Files / Settings app (it may be removed or disabled).
                         HomeTile.INTERNAL -> nav.navigate(Routes.STORAGE)
-                        HomeTile.VAULT -> Toast.makeText(context, "The encrypted vault comes in the next update", Toast.LENGTH_SHORT).show()
+                        HomeTile.VAULT -> nav.navigate(Routes.VAULT)
                     }
                 },
                 onSearch = { nav.navigate(Routes.search()) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
                 onBrowse = { nav.navigate(Routes.browse()) },
+                onBrowseRoot = { nav.navigate(Routes.browse(it)) },
                 onOpenRecent = { item, list -> opener.open(item, list) },
                 player = player,
                 onOpenPlayer = { nav.navigate(Routes.MUSIC) },
@@ -173,7 +174,8 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         }
         composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste) }
         composable(Routes.BIN) { BinScreen(back) }
-        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }, onFolderFilters = { nav.navigate(Routes.FOLDER_FILTERS) }) }
+        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }, onFolderFilters = { nav.navigate(Routes.FOLDER_FILTERS) }, onAppLock = { nav.navigate(Routes.APP_LOCK) }, onVaultSettings = { nav.navigate(Routes.VAULT_SETTINGS) }) }
+        vaultRoutes(nav, back)
         composable(Routes.FOLDER_FILTERS) { com.clpstudio.filesmanager.ui.screens.FolderFiltersScreen(back) }
         composable(Routes.CRASH_REPORTS) { com.clpstudio.filesmanager.crash.CrashReportsScreen(back) }
         composable(Routes.FAVORITES) { com.clpstudio.filesmanager.ui.screens.FavoritesScreen(opener, back, onPaste = toPaste) }
@@ -192,8 +194,10 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                 onCleanup = { mode, vol -> nav.navigate(Routes.storageCleanup(mode, vol)) },
                 onApps = { nav.navigate(Routes.APPS) },
                 onBin = { nav.navigate(Routes.BIN) },
+                onUnused = { nav.navigate(Routes.UNUSED_APPS) },
             )
         }
+        composable(Routes.UNUSED_APPS) { com.clpstudio.filesmanager.ui.screens.UnusedAppsScreen(back) }
         composable(
             "storage_kind?kind={kind}&vol={vol}",
             arguments = listOf(navArgument("kind") { type = NavType.StringType; defaultValue = "VIDEOS" }, navArgument("vol") { type = NavType.StringType; defaultValue = "" }),
@@ -219,13 +223,18 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
             )
         }
         composable("pdf?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
+            VaultDocGuard(Uri.parse(e.arguments?.getString("uri")), back)
             PdfViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
         composable("text?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
+            VaultDocGuard(Uri.parse(e.arguments?.getString("uri")), back)
             TextViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
         composable("zip?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             ZipViewerScreen(e.arguments?.getString("path").orEmpty(), back) { extracted -> opener.open(FileItem.of(extracted)) }
+        }
+        composable("epub?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
+            com.clpstudio.filesmanager.viewer.EpubReaderScreen(File(e.arguments?.getString("path").orEmpty()), back)
         }
         composable("info?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             val path = e.arguments?.getString("path").orEmpty()
@@ -269,6 +278,6 @@ val LocalMiniPlayerInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 /** Screens that show the floating mini player: lists and pages, not Home (own bar), viewers or the full player. */
 internal fun miniPlayerRoute(route: String): Boolean {
     if (route == Routes.HOME || route == Routes.MUSIC || route == Routes.SLIDESHOW) return false
-    val viewers = listOf("view?", "pdf?", "text?", "zip?", "info?", "font?", "hex?")
+    val viewers = listOf("view?", "pdf?", "text?", "zip?", "info?", "font?", "hex?", "epub?")
     return viewers.none { route.startsWith(it) }
 }

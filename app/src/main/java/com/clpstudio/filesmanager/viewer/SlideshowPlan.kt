@@ -7,7 +7,8 @@ import kotlin.random.Random
 /** Slideshow settings chosen in the options sheet. */
 data class SlideshowOptions(
     val seconds: Int = 5,
-    val repeat: Boolean = false,
+    /** On by default (item 37): a finished slideshow / playlist starts again from the first item. */
+    val repeat: Boolean = true,
     val shuffle: Boolean = false,
 ) {
     init { require(seconds in MIN_SECONDS..MAX_SECONDS) { "seconds out of range: $seconds" } }

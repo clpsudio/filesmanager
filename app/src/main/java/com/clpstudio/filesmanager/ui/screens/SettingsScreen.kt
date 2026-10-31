@@ -35,7 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -68,7 +70,7 @@ import com.clpstudio.filesmanager.ui.glass.glassPanel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onCrashReports: () -> Unit = {}, onFolderFilters: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onCrashReports: () -> Unit = {}, onFolderFilters: () -> Unit = {}, onAppLock: () -> Unit = {}, onVaultSettings: () -> Unit = {}) {
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     SettingsContent(
@@ -85,12 +87,16 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onCrashReports = onCrashReports,
         onBackgroundPlay = { scope.launch { Graph.settingsRepo.setBackgroundPlay(it) } },
         onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
+        onHiddenInSearch = { scope.launch { Graph.settingsRepo.setHiddenInSearch(it) } },
         onDoubleTapSkip = { scope.launch { Graph.settingsRepo.setDoubleTapSkip(it) } },
         onLoop = { mode, times -> scope.launch { Graph.settingsRepo.setLoop(mode, times) } },
         onDateGrouping = { scope.launch { Graph.settingsRepo.setDateGrouping(it) } },
         onDefaultSort = { by, asc -> scope.launch { Graph.settingsRepo.setDefaultSort(by, asc) } },
         onFolderFilters = onFolderFilters,
         onDuck = { scope.launch { Graph.settingsRepo.setDuckForNotifications(it) } },
+        onShowSdCard = { scope.launch { Graph.settingsRepo.setShowSdCard(it) } },
+        onAppLock = onAppLock,
+        onVaultSettings = onVaultSettings,
     )
 }
 
@@ -109,12 +115,16 @@ fun SettingsContent(
     onCrashReports: () -> Unit = {},
     onBackgroundPlay: (Boolean) -> Unit = {},
     onAutoPip: (Boolean) -> Unit = {},
+    onHiddenInSearch: (Boolean) -> Unit = {},
     onDoubleTapSkip: (Int) -> Unit = {},
     onLoop: (com.clpstudio.filesmanager.data.LoopMode, Int) -> Unit = { _, _ -> },
     onDateGrouping: (com.clpstudio.filesmanager.data.DateGrouping) -> Unit = {},
     onDefaultSort: (com.clpstudio.filesmanager.data.SortBy, Boolean) -> Unit = { _, _ -> },
     onFolderFilters: () -> Unit = {},
     onDuck: (Boolean) -> Unit = {},
+    onShowSdCard: (Boolean) -> Unit = {},
+    onAppLock: () -> Unit = {},
+    onVaultSettings: () -> Unit = {},
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -181,6 +191,12 @@ fun SettingsContent(
             item {
                 SwitchCard(Icons.Filled.Visibility, "Show hidden files", "Shows dot-files, dot-folders and folders with .nomedia. Vault items are never shown here.", settings.showHidden, onHidden)
             }
+            if (settings.showHidden) item {
+                SwitchCard(Icons.Filled.Search, "Show hidden files in search", "Search results also list hidden files and folders. Off: search skips them even while browsing shows them.", settings.hiddenInSearch, onHiddenInSearch)
+            }
+            item {
+                SwitchCard(Icons.Filled.SdCard, "Show SD card", "SD card files appear in Photos, Videos, Audios, Documents, Downloads, Recent and search together with phone files. Off hides them everywhere.", settings.showSdCard, onShowSdCard)
+            }
             item {
                 Card(Modifier.clickable(onClick = onBin)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -227,8 +243,7 @@ fun SettingsContent(
             item {
                 SwitchCard(Icons.Filled.Lock, "Hide content while switching apps", "Your files don't show in the app switcher (Recents).", settings.hideInRecents, onHideInRecents)
             }
-            item { InfoCard(Icons.Filled.Lock, "App lock", "PIN (4–10 digits) or password (8–72 characters). Coming in the next update.") }
-            item { InfoCard(Icons.Filled.Shield, "Vault", "Hardware-encrypted private vault with its own PIN or password. Coming in the next update.") }
+            item { com.clpstudio.filesmanager.ui.security.SecuritySettingsRows(onAppLock, onVaultSettings) }
             item { Header("About") }
             item {
                 Card {

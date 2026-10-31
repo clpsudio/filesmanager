@@ -22,7 +22,7 @@ class SlideshowPlanTest {
     }
 
     @Test fun keepsSelectionOrder_andStopsAtEnd() {
-        val plan = SlideshowPlan(photos, SlideshowOptions())
+        val plan = SlideshowPlan(photos, SlideshowOptions(repeat = false))
         assertEquals(listOf("a.jpg", "b.png", "c.mp4", "d.jpg", "e.webp"), play(plan, 5))
         assertFalse(plan.hasNext)
         assertFalse(plan.next())
@@ -31,7 +31,7 @@ class SlideshowPlanTest {
     }
 
     @Test fun previousStopsAtStartWithoutRepeat() {
-        val plan = SlideshowPlan(photos, SlideshowOptions())
+        val plan = SlideshowPlan(photos, SlideshowOptions(repeat = false))
         assertFalse(plan.previous())
         assertEquals("a.jpg", plan.current!!.name)
         plan.next(); plan.next()
@@ -75,24 +75,24 @@ class SlideshowPlanTest {
     }
 
     @Test fun shuffleIsDeterministicWithSeed_andDiffersFromSelection() {
-        val a = play(SlideshowPlan(photos, SlideshowOptions(shuffle = true), Random(7)), 5)
-        val b = play(SlideshowPlan(photos, SlideshowOptions(shuffle = true), Random(7)), 5)
+        val a = play(SlideshowPlan(photos, SlideshowOptions(shuffle = true, repeat = false), Random(7)), 5)
+        val b = play(SlideshowPlan(photos, SlideshowOptions(shuffle = true, repeat = false), Random(7)), 5)
         assertEquals(a, b)
-        val orders = (1..20).map { play(SlideshowPlan(photos, SlideshowOptions(shuffle = true), Random(it)), 5) }.toSet()
+        val orders = (1..20).map { play(SlideshowPlan(photos, SlideshowOptions(shuffle = true, repeat = false), Random(it)), 5) }.toSet()
         assertTrue(orders.size > 1)
     }
 
     @Test fun shuffleWithoutRepeatEndsAfterOneRound() {
-        val plan = SlideshowPlan(photos, SlideshowOptions(shuffle = true), Random(3))
+        val plan = SlideshowPlan(photos, SlideshowOptions(shuffle = true, repeat = false), Random(3))
         val seen = play(plan, 5)
         assertEquals(photos.map { it.name }.sorted(), seen.sorted())
         assertFalse(plan.next())
     }
 
     @Test fun startAtKeepsCurrentItem() {
-        val plan = SlideshowPlan(photos, SlideshowOptions(), startAt = photos[3])
+        val plan = SlideshowPlan(photos, SlideshowOptions(repeat = false), startAt = photos[3])
         assertEquals("d.jpg", plan.current!!.name)
-        val shuffled = SlideshowPlan(photos, SlideshowOptions(shuffle = true), Random(1), startAt = photos[2])
+        val shuffled = SlideshowPlan(photos, SlideshowOptions(shuffle = true, repeat = false), Random(1), startAt = photos[2])
         assertEquals("c.mp4", shuffled.current!!.name)
         assertEquals(photos.map { it.name }.sorted(), play(shuffled, 5).sorted())
     }
@@ -113,7 +113,7 @@ class SlideshowPlanTest {
 
     @Test fun optionsDefaultsAndRange() {
         val o = SlideshowOptions()
-        assertEquals(5, o.seconds); assertFalse(o.repeat); assertFalse(o.shuffle)
+        assertEquals(5, o.seconds); assertTrue(o.repeat); assertFalse(o.shuffle)
         assertEquals(listOf(2, 3, 5, 8, 10, 15), SlideshowOptions.PRESETS)
         try { SlideshowOptions(seconds = 0); throw AssertionError("expected failure") } catch (_: IllegalArgumentException) {}
         try { SlideshowOptions(seconds = 31); throw AssertionError("expected failure") } catch (_: IllegalArgumentException) {}
