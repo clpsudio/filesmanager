@@ -121,7 +121,7 @@ private fun XlsxBook(book: XlsxWorkbook, contentPadding: PaddingValues, onPageIn
             }
         }
         OfficePage(Modifier.weight(1f).fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp, top = if (book.sheets.size > 1) 0.dp else 10.dp)) {
-            SheetGrid(book.sheets[index])
+            com.clpstudio.filesmanager.ui.components.DocumentSelection { SheetGrid(book.sheets[index]) }
         }
     }
 }

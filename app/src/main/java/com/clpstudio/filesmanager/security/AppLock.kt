@@ -116,9 +116,14 @@ object AppLock {
         get() = prefs?.getBoolean("biometric", false) == true
         set(v) { p().edit().putBoolean("biometric", v).apply() }
 
+    private val attemptStore = AttemptStore { prefs }
+    private fun clock() = LockClock.now(runCatching { Graph.app }.getOrNull())
     var attempts: AttemptState
-        get() = AttemptState(prefs?.getInt("failures", 0) ?: 0, prefs?.getLong("locked_until", 0L) ?: 0L)
-        private set(v) { p().edit().putInt("failures", v.failures).putLong("locked_until", v.lockedUntil).apply() }
+        get() = attemptStore.load(clock())
+        private set(v) { attemptStore.save(v) }
+
+    /** Time left in a wrong-try lockout (0 = can try now). Fingerprint is off during it too. */
+    fun remainingMs(): Long = attemptStore.remainingNow(clock())
 
     /** Locked right now (content of the app should not be shown, the picker shows no roots). */
     val isLocked: Boolean get() = enabled && _locked.value
@@ -128,12 +133,14 @@ object AppLock {
         require(CredentialRules.error(type, secret) == null)
         val (salt, hash, iters) = Verifier.make(secret)
         p().edit().putBoolean("enabled", true).putString("type", type.name).putString("salt", salt)
-            .putString("hash", hash).putInt("iterations", iters).putInt("failures", 0).putLong("locked_until", 0L).apply()
+            .putString("hash", hash).putInt("iterations", iters).apply()
+        attempts = AttemptState()
         _enabledFlow.value = true
     }
 
     fun disable() {
-        p().edit().putBoolean("enabled", false).remove("salt").remove("hash").remove("biometric").putInt("failures", 0).putLong("locked_until", 0L).apply()
+        p().edit().putBoolean("enabled", false).remove("salt").remove("hash").remove("biometric").apply()
+        attempts = AttemptState()
         timer.onDisabled()
         _enabledFlow.value = false
         publish()
@@ -144,20 +151,21 @@ object AppLock {
         data class Wrong(val message: String) : Check
     }
 
-    /** Checks the PIN/password with the wrong-try limits (5 tries, then waits that double up to 15 min). */
+    /** Checks the PIN/password with the wrong-try limit (Settings → Wrong attempts allowed, then escalating lockouts). */
     suspend fun check(secret: String): Check = withContext(Dispatchers.Default) {
-        val now = System.currentTimeMillis()
+        val now = clock()
+        val allowed = AttemptLimiter.allowedNow()
         val a = attempts
-        if (AttemptLimiter.remaining(a, now) > 0) return@withContext Check.Wrong(AttemptLimiter.message(a, now)!!)
+        if (AttemptLimiter.remaining(a, now) > 0) return@withContext Check.Wrong(AttemptLimiter.message(a, now, allowed)!!)
         val pr = p()
         val ok = Verifier.check(secret, pr.getString("salt", "")!!, pr.getString("hash", "")!!, pr.getInt("iterations", ITERATIONS))
         if (ok) {
             attempts = AttemptLimiter.onSuccess()
             Check.Ok
         } else {
-            val n = AttemptLimiter.onFailure(a, now)
+            val n = AttemptLimiter.onFailure(a, now, allowed)
             attempts = n
-            Check.Wrong(AttemptLimiter.message(n, now) ?: "Wrong")
+            Check.Wrong(AttemptLimiter.message(n, now, allowed) ?: "Wrong")
         }
     }
 
@@ -182,6 +190,8 @@ object AppLock {
 
     fun promptBiometric(activity: Activity, onSuccess: () -> Unit) {
         if (Build.VERSION.SDK_INT < 29) return
+        // No fingerprint during a wrong-try lockout (item 53).
+        if (remainingMs() > 0) return
         val b = android.hardware.biometrics.BiometricPrompt.Builder(activity)
             .setTitle("Unlock Files")
             .setNegativeButton("Use ${if (type == CredentialType.PIN) "PIN" else "password"}", activity.mainExecutor) { _, _ -> }
@@ -190,6 +200,7 @@ object AppLock {
         runCatching {
             b.build().authenticate(cancel, activity.mainExecutor, object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?) {
+                    if (remainingMs() > 0) return
                     unlocked()
                     onSuccess()
                 }
@@ -207,6 +218,8 @@ internal object AppLockGuard : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityStarted(activity: Activity) {
         if (activity !is ComponentActivity || installed[activity] == true) return
+        // The camera's lock-screen review shows only the photo just taken, over the lock screen: no PIN on top.
+        if (activity.intent?.action == com.clpstudio.filesmanager.viewer.CameraReview.REVIEW_SECURE) return
         installed[activity] = true
         val view = ComposeView(activity).apply {
             setContent {

@@ -51,6 +51,24 @@ import com.clpstudio.filesmanager.viewer.office.OfficeFormats
 import java.io.File
 
 /**
+ * The camera's "review" intents (item 55): what they are and which uri they carry (data, else the first clip item,
+ * else EXTRA_STREAM). REVIEW_SECURE comes from the lock screen.
+ */
+object CameraReview {
+    const val REVIEW = "android.provider.action.REVIEW"
+    const val REVIEW_SECURE = "android.provider.action.REVIEW_SECURE"
+    const val OLD_REVIEW = "com.android.camera.action.REVIEW"
+
+    fun isReview(action: String?) = action == REVIEW || action == REVIEW_SECURE || action == OLD_REVIEW
+    fun isSecure(intent: Intent?) = intent?.action == REVIEW_SECURE
+
+    fun uriOf(intent: Intent): Uri? = intent.data
+        ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+        ?: (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM))
+}
+
+/**
  * "Open with Files" from any app (WhatsApp, Gmail, Telegram, Drive...): works on content:// uris
  * without a file path. Video and audio play straight from the uri; PDF opens its file descriptor
  * (copied to the cache only if it isn't seekable); unknown types get an info screen.
@@ -63,6 +81,12 @@ class OpenWithActivity : ComponentActivity() {
         com.clpstudio.filesmanager.viewer.VideoPip.register(this)
         com.clpstudio.filesmanager.ui.PrivacyGuard.install(this)
         enableEdgeToEdge()
+        // Item 55: the camera's lock-screen review shows over the lock screen, only the photos it just took.
+        val secure = CameraReview.isSecure(intent)
+        if (secure) {
+            if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true)
+            else @Suppress("DEPRECATION") window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+        }
         val uri = incomingUri(intent)
         if (uri == null) {
             Toast.makeText(this, "Nothing to open", Toast.LENGTH_SHORT).show()
@@ -96,6 +120,11 @@ class OpenWithActivity : ComponentActivity() {
     }
 
     // Picture-in-picture for the gallery video view (item 34); closing the small window stops it (item 33).
+    override fun onResume() {
+        super.onResume()
+        com.clpstudio.filesmanager.viewer.VideoPip.onResumed()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         com.clpstudio.filesmanager.viewer.VideoPip.onUserLeaveHint(this)
@@ -123,7 +152,7 @@ class OpenWithActivity : ComponentActivity() {
     private fun incomingUri(intent: Intent): Uri? = when (intent.action) {
         Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
         else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
-        else -> intent.data
+        else -> CameraReview.uriOf(intent)
     }
 
     @Composable
@@ -139,7 +168,8 @@ class OpenWithActivity : ComponentActivity() {
         // opening it in Files, the gallery pager over its folder (Share / Favorite / Info / Delete, swipe, filmstrip).
         if (ExternalMedia.opensInPager(f)) {
             val file = File(f.path!!)
-            val paths = remember(f.path) { ExternalMedia.siblings(file, Graph.settings.value.showHidden) }
+            // On the lock screen (REVIEW_SECURE): only this photo, never the rest of the folder.
+            val paths = remember(f.path) { if (CameraReview.isSecure(intent)) listOf(file.absolutePath) else ExternalMedia.siblings(file, Graph.settings.value.showHidden) }
             FilePagerScreen(
                 paths = paths,
                 start = file.absolutePath,

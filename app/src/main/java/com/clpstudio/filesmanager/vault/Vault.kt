@@ -12,6 +12,8 @@ import com.clpstudio.filesmanager.data.OpProgress
 import com.clpstudio.filesmanager.data.StoragePaths
 import com.clpstudio.filesmanager.security.AttemptLimiter
 import com.clpstudio.filesmanager.security.AttemptState
+import com.clpstudio.filesmanager.security.AttemptStore
+import com.clpstudio.filesmanager.security.LockClock
 import com.clpstudio.filesmanager.security.CredentialType
 import com.clpstudio.filesmanager.security.KeystoreKeyWrapper
 import com.clpstudio.filesmanager.ui.AppState
@@ -84,9 +86,14 @@ object Vault {
         set(v) { prefs.edit().putString("auto_lock", v.name).apply() }
 
     // --- wrong tries: kept on disk so closing the app doesn't reset the wait ---
+    private val attemptStore = AttemptStore { if (::prefs.isInitialized) prefs else null }
+    private fun clock() = LockClock.now(if (::appContext.isInitialized) appContext else null)
     var attempts: AttemptState
-        get() = AttemptState(prefs.getInt("failures", 0), prefs.getLong("locked_until", 0L))
-        private set(v) { prefs.edit().putInt("failures", v.failures).putLong("locked_until", v.lockedUntil).apply() }
+        get() = attemptStore.load(clock())
+        private set(v) { attemptStore.save(v) }
+
+    /** Time left in a wrong-try lockout (0 = can try now). */
+    fun remainingMs(): Long = attemptStore.remainingNow(clock())
 
     fun hardwareKind(): String = store.keyFile.hardware() ?: "Android Keystore"
 
@@ -103,21 +110,45 @@ object Vault {
     }
 
     suspend fun unlock(secret: String): UnlockResult = withContext(Dispatchers.Default) {
-        val now = System.currentTimeMillis()
+        val now = clock()
+        val allowed = AttemptLimiter.allowedNow()
         val a = attempts
-        if (AttemptLimiter.remaining(a, now) > 0) return@withContext UnlockResult.Wrong(AttemptLimiter.message(a, now)!!)
+        if (AttemptLimiter.remaining(a, now) > 0) return@withContext UnlockResult.Wrong(AttemptLimiter.message(a, now, allowed)!!)
         try {
             store.unlock(secret)
             attempts = AttemptLimiter.onSuccess()
             reload()
             UnlockResult.Ok
         } catch (e: WrongSecretException) {
-            val n = AttemptLimiter.onFailure(a, now)
+            val n = AttemptLimiter.onFailure(a, now, allowed)
             attempts = n
-            UnlockResult.Wrong(AttemptLimiter.message(n, now) ?: "Wrong")
+            UnlockResult.Wrong(AttemptLimiter.message(n, now, allowed) ?: "Wrong")
         } catch (e: VaultKeyLostException) {
             UnlockResult.Lost(e.message ?: "The vault can't be opened on this phone")
         }
+    }
+
+    /** Renames a vault item; returns an error message or null. Same name rules as files (no leading dot). */
+    suspend fun rename(item: VaultItem, typed: String): String? = withContext(Dispatchers.IO) {
+        val name = typed.trim()
+        com.clpstudio.filesmanager.data.InfoEdits.nameError(name, item.name) { false }?.let { return@withContext it }
+        if (name == item.name) return@withContext null
+        try { store.rename(item, name); reload(); null } catch (e: Exception) { e.message ?: "Couldn't rename it" }
+    }
+
+    /**
+     * "Forgot PIN/password? Reset vault" (item 58): deletes every vault file, its keys/salt/metadata and the
+     * thumbnails, and the wrong-try lockout, so the vault is back to "Set up vault". Works during a lockout and
+     * without the PIN (nothing can be recovered: the files are encrypted with a key that is deleted too).
+     * Normal files and the app lock are not touched.
+     */
+    suspend fun resetForgotten() = withContext(Dispatchers.IO) {
+        if (!::store.isInitialized) return@withContext
+        store.deleteVault()
+        thumbs.evictAll()
+        attempts = AttemptState()
+        _items.value = emptyList()
+        withContext(Dispatchers.Main) { refreshState() }
     }
 
     fun lock() {

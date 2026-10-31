@@ -99,7 +99,8 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
     val showMini = player.hasMedia && !player.isVideo && route.isNotEmpty() && miniPlayerRoute(route)
     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
     androidx.compose.runtime.CompositionLocalProvider(
-        LocalMiniPlayerInset provides if (showMini) com.clpstudio.filesmanager.ui.screens.MiniPlayerHeight else 0.dp,
+        // Lists leave room only while the player is docked at the bottom (dragged up, it floats over them).
+        LocalMiniPlayerInset provides if (showMini && com.clpstudio.filesmanager.ui.screens.MiniPlayerPosition.fraction.collectAsState().value == 0f) com.clpstudio.filesmanager.ui.screens.MiniPlayerHeight else 0.dp,
         com.clpstudio.filesmanager.ui.components.LocalDateGrouping provides com.clpstudio.filesmanager.Graph.settings.collectAsState().value.dateGrouping,
     ) {
     NavHost(
@@ -171,7 +172,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                 navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
             ),
         ) { e ->
-            SearchScreen(e.arguments?.getString("root"), e.arguments?.getString("type"), opener, back)
+            SearchScreen(e.arguments?.getString("root"), e.arguments?.getString("type"), opener, back, onPaste = toPaste)
         }
         composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste, onOpenApk = { nav.navigate(Routes.apk(it)) }) }
         composable(Routes.BIN) { BinScreen(back) }
@@ -267,9 +268,9 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         showMini,
         enter = androidx.compose.animation.slideInVertically { it } + fadeIn(),
         exit = androidx.compose.animation.slideOutVertically { it } + fadeOut(),
-        modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+        modifier = androidx.compose.ui.Modifier.fillMaxSize(),
     ) {
-        com.clpstudio.filesmanager.ui.screens.MiniPlayer(player, onOpen = { nav.navigate(Routes.MUSIC) { launchSingleTop = true } })
+        com.clpstudio.filesmanager.ui.screens.DraggableMiniPlayer(player, onOpen = { nav.navigate(Routes.MUSIC) { launchSingleTop = true } })
     }
     }
 
@@ -287,7 +288,7 @@ val LocalMiniPlayerInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 /** Screens that show the floating mini player: lists and pages, not Home (own bar), viewers or the full player. */
 internal fun miniPlayerRoute(route: String): Boolean {
-    if (route == Routes.HOME || route == Routes.MUSIC || route == Routes.SLIDESHOW) return false
+    if (route == Routes.MUSIC || route == Routes.SLIDESHOW) return false
     val viewers = listOf("view?", "pdf?", "text?", "zip?", "info?", "font?", "hex?", "epub?", "apk?")
     return viewers.none { route.startsWith(it) }
 }

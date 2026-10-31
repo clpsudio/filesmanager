@@ -20,6 +20,8 @@ object FileTypes {
         "java", "py", "sh", "bat", "yaml", "yml", "ini", "conf", "cfg", "properties", "srt", "vtt", "ass",
         "ssa", "sql", "c", "cpp", "h", "hpp", "cs", "go", "rs", "swift", "dart", "php", "rb", "gradle",
         "toml", "nfo", "lrc", "tex",
+        // Item 59: plain-text formats that used to fall to the "Open" card.
+        "vcf", "ics", "m3u", "m3u8", "jsonl", "ndjson", "xhtml", "cue", "diff", "patch", "gpx", "kml", "env",
     )
     val officeExt = setOf(
         "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub", "pages",
@@ -27,7 +29,7 @@ object FileTypes {
     )
     /** Camera RAW: shown through their embedded JPEG preview. */
     val rawExt = setOf("dng", "cr2", "nef", "nrw", "arw", "rw2", "orf", "pef", "srw", "raf")
-    val fontExt = setOf("ttf", "otf", "ttc")
+    val fontExt = setOf("ttf", "otf", "ttc", "otc")
     val apkExt = setOf("apk", "apks", "xapk", "apkm")
     val archiveExt = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "zst", "lz", "cab", "iso", "jar")
 

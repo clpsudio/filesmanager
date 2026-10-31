@@ -26,6 +26,8 @@ object InfoEdits {
         val t = newName.trim()
         if (t.isEmpty()) return "Type a name"
         if (t == "." || t == "..") return "That name can't be used"
+        // A leading dot hides the file (and hidden files can't be renamed or unhidden in Files).
+        if (t.startsWith(".") && !oldName.startsWith(".")) return "Names can't start with a dot (.) — that would hide the file"
         t.firstOrNull { it.code < 32 || it.code == 127 }?.let { return "Names can't contain hidden control characters" }
         t.firstOrNull { it in ILLEGAL }?.let { return "Names can't contain $it" }
         if (t.toByteArray(Charsets.UTF_8).size > MAX_NAME_BYTES) return "That name is too long (max $MAX_NAME_BYTES characters)"

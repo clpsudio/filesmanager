@@ -112,6 +112,43 @@ object AppState {
         }
     }
 
+    /**
+     * Delete as [plan] says: ordinary files to the Bin, hidden files permanently (skipping the Bin).
+     * One progress, one toast that says which went where.
+     */
+    fun delete(context: Context, plan: com.clpstudio.filesmanager.data.DeletePlan, onDone: () -> Unit = {}) {
+        if (plan.isEmpty) return
+        if (plan.permanent.isEmpty()) return moveToBin(context, plan.toBin.map { File(it) }, onDone)
+        job = Graph.appScope.launch {
+            try {
+                val total = plan.total
+                progress = OpProgress("Deleting", totalItems = total)
+                val gone = com.clpstudio.filesmanager.data.PermanentDelete.delete(context, plan.permanent.map { File(it) }) { done ->
+                    progress = OpProgress("Deleting", doneItems = done, totalItems = total)
+                }
+                val binned = if (plan.toBin.isEmpty()) 0 else Graph.bin.moveToBin(plan.toBin.map { File(it) }) { done ->
+                    progress = OpProgress("Moving to Bin", doneItems = plan.permanent.size + done, totalItems = total)
+                }
+                if (plan.toBin.isNotEmpty()) com.clpstudio.filesmanager.data.Favorites.onDeleted(plan.toBin.filter { !File(it).exists() })
+                withContext(Dispatchers.Main) {
+                    toast(context, deleteToast(gone, plan.permanent.size, binned))
+                    onDone()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { toast(context, e.message ?: "Couldn't delete") }
+            } finally {
+                progress = null
+                refresh()
+            }
+        }
+    }
+
+    /** "2 deleted permanently", "2 deleted permanently, 3 moved to Bin", "Deleted 1 of 2 (…)". */
+    fun deleteToast(deleted: Int, asked: Int, binned: Int): String {
+        val first = if (deleted == asked) "$deleted deleted permanently" else "Deleted $deleted of $asked permanently (the rest couldn't be deleted)"
+        return if (binned > 0) "$first, $binned moved to Bin" else first
+    }
+
     fun moveToBin(context: Context, files: List<File>, onDone: () -> Unit = {}) {
         job = Graph.appScope.launch {
             try {

@@ -53,6 +53,38 @@ object ArchiveOps {
     }
 
     /** Direct children of [dir] ("" = root), folders first; folders implied by deeper paths are included. */
+    private val APP_PACKAGE_EXT = setOf("apk", "apks", "xapk", "apkm", "aab", "apex")
+
+    /**
+     * An app package (APK or split bundle): its files are read-only in Files — view, open and extract,
+     * never delete (Charan, Oct 31). Known by the extension, or by an AndroidManifest.xml at the top
+     * (an APK shared in from another app may arrive without its extension).
+     */
+    fun isAppPackage(file: File, entries: List<ArchiveEntry> = emptyList()): Boolean =
+        file.extension.lowercase() in APP_PACKAGE_EXT || entries.any { it.path.trimStart('/') == "AndroidManifest.xml" }
+
+    /** Whether the selection bar inside [file] shows Delete at all: never for app packages. */
+    fun showDeleteInside(file: File, entries: List<ArchiveEntry> = emptyList()): Boolean = !isAppPackage(file, entries)
+
+    /** Why entries can't be deleted inside [file] (null = they can): plain ZIPs only (7z/RAR can't be rewritten in place). */
+    fun deleteInsideBlocker(file: File, format: ArchiveFormat, entries: List<ArchiveEntry> = emptyList()): String? = when {
+        isAppPackage(file, entries) -> "Files inside an app package can't be deleted."
+        format != ArchiveFormat.ZIP -> "Deleting inside ${format.label} archives isn't supported. Extract, delete, and compress again."
+        else -> null
+    }
+
+    /** Deletes [paths] (and everything under a folder path) from the ZIP in place, for good. Returns entries removed. */
+    fun removeEntries(zip: File, paths: List<String>): Int {
+        val z = net.lingala.zip4j.ZipFile(zip)
+        val names = z.fileHeaders.map { it.fileName }.filter { n ->
+            val clean = n.trimEnd('/')
+            paths.any { p -> val q = p.trimEnd('/'); clean == q || clean.startsWith("$q/") }
+        }
+        if (names.isEmpty()) return 0
+        z.removeFiles(names)
+        return names.size
+    }
+
     fun children(all: List<ArchiveEntry>, dir: String): List<ArchiveEntry> {
         val prefix = if (dir.isEmpty()) "" else "$dir/"
         val out = LinkedHashMap<String, ArchiveEntry>()

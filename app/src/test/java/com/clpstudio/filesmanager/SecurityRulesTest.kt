@@ -43,23 +43,24 @@ class SecurityRulesTest {
         assertEquals("At least 4 digits", CredentialRules.confirmError(CredentialType.PIN, "12", "12"))
     }
 
-    @Test fun fiveFreeTriesThenDoublingWaits() {
+    @Test fun fiveFreeTriesThenEscalatingLockouts() {
         var s = AttemptState()
-        val t0 = 1_000_000L
+        val c0 = com.clpstudio.filesmanager.security.LockClock(1_000_000L, 7)
         repeat(4) {
-            s = AttemptLimiter.onFailure(s, t0)
-            assertEquals(0L, AttemptLimiter.remaining(s, t0))
+            s = AttemptLimiter.onFailure(s, c0)
+            assertEquals(0L, AttemptLimiter.remaining(s, c0))
         }
-        assertEquals("Wrong. 1 try left", AttemptLimiter.message(s, t0))
-        s = AttemptLimiter.onFailure(s, t0) // 5th
-        assertEquals(30_000L, AttemptLimiter.remaining(s, t0))
-        assertEquals("Too many wrong tries. Try again in 30 s", AttemptLimiter.message(s, t0))
-        assertEquals(0L, AttemptLimiter.remaining(s, t0 + 30_000))
-        s = AttemptLimiter.onFailure(s, t0 + 30_000) // 6th
-        assertEquals(60_000L, AttemptLimiter.remaining(s, t0 + 30_000))
+        assertEquals("Wrong. 1 try left", AttemptLimiter.message(s, c0))
+        s = AttemptLimiter.onFailure(s, c0) // 5th
+        assertEquals(30_000L, AttemptLimiter.remaining(s, c0))
+        assertEquals("Too many wrong tries. Try again in 0:30", AttemptLimiter.message(s, c0))
+        val c1 = c0.copy(elapsed = c0.elapsed + 30_000)
+        assertEquals(0L, AttemptLimiter.remaining(s, c1))
+        s = AttemptLimiter.onFailure(s, c1) // 6th
+        assertEquals(60_000L, AttemptLimiter.remaining(s, c1))
         assertEquals(AttemptLimiter.MAX_WAIT_MS, AttemptLimiter.waitAfter(50))
         assertEquals(AttemptState(), AttemptLimiter.onSuccess())
-        assertNull(AttemptLimiter.message(AttemptState(), t0))
+        assertNull(AttemptLimiter.message(AttemptState(), c0))
     }
 
     @Test fun lockTimerColdStartAndAskAfter() {

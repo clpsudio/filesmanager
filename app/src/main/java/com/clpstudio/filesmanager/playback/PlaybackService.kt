@@ -74,6 +74,8 @@ class PlaybackService : MediaSessionService() {
                 // Audio loop (Settings → Loop, shared with videos): count the plays of this track.
                 if (video) updateLoopButton(isVideo = true)
                 if (!video) {
+                    // Audio keeps the remembered audio speed on every song (item 52); videos keep their own.
+                    if (player.playbackParameters.speed != AudioSpeed.current) player.playbackParameters = AudioSpeed.params()
                     AudioLoop.plays = if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) AudioLoop.plays + 1 else 0
                     applyAudioLoop()
                 }

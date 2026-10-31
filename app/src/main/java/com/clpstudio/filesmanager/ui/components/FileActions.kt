@@ -8,7 +8,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Schedule
 import android.widget.Toast
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.FolderZip
@@ -82,6 +83,8 @@ class SelectionState {
 class FileActions(private val context: Context, private val afterCopyOrMove: () -> Unit, private val afterAction: () -> Unit = {}) {
     fun toast(text: String) = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
     var renameTarget by mutableStateOf<FileItem?>(null)
+    /** "Edit date & time" (same dialog as File info → Modified). */
+    var dateTarget by mutableStateOf<FileItem?>(null)
     var detailsTarget by mutableStateOf<FileItem?>(null)
     var deleteTargets by mutableStateOf<List<FileItem>>(emptyList())
     /** Compress (withPassword = "Locked zip", AES-256). */
@@ -230,22 +233,13 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
         }
     }
 
-    /** Hide = move into a ".hidden" folder next to it (with .nomedia); Unhide reverses it. */
+    /** Hide = move into a ".hidden" folder next to it (with .nomedia). Files has no Unhide: hidden files can only be deleted permanently. */
     fun hide(items: List<FileItem>) {
         Graph.appScope.launch(Dispatchers.Main) {
             val n = withContext(Dispatchers.IO) { items.count { com.clpstudio.filesmanager.data.HideFile.hide(context, File(it.path)) != null } }
             AppState.refresh()
             afterAction()
-            toast(if (n == items.size) "Hidden. Find them in Hidden files." else "Hid $n of ${items.size}")
-        }
-    }
-
-    fun unhide(items: List<FileItem>) {
-        Graph.appScope.launch(Dispatchers.Main) {
-            val n = withContext(Dispatchers.IO) { com.clpstudio.filesmanager.data.HiddenOps.unhideAll(context, items.map { File(it.path) }) }
-            AppState.refresh()
-            afterAction()
-            toast(if (n == items.size) "Unhidden" else "Unhid $n of ${items.size}")
+            toast(if (n == items.size) "Hidden. Find them in Hidden files (they can be deleted there, not unhidden)." else "Hid $n of ${items.size}")
         }
     }
 
@@ -281,6 +275,11 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
             onDismiss = { actions.vaultAsk = null },
         )
     }
+    actions.dateTarget?.let { item ->
+        val st = remember(item.path) { com.clpstudio.filesmanager.viewer.InfoEditState().apply { open = com.clpstudio.filesmanager.viewer.InfoEdit.DATE } }
+        if (st.open == null) actions.dateTarget = null
+        else com.clpstudio.filesmanager.viewer.InfoEditDialogs(st, item.path) { AppState.refresh() }
+    }
     actions.renameTarget?.let { item ->
         RenameFileDialog(
             name = item.name,
@@ -299,12 +298,14 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
     }
     if (actions.deleteTargets.isNotEmpty()) {
         val items = actions.deleteTargets
+        // Hidden files (dot-files, dot-folders, .nomedia media, our Hide folder) skip the Bin: deleted permanently.
+        val plan = remember(items) { com.clpstudio.filesmanager.data.DeleteRules.planFor(context, items) }
         ConfirmDialog(
-            title = if (items.size == 1) "Delete ${items[0].name}?" else "Delete ${items.size} items?",
-            text = "They go to the Bin and are deleted for good after 30 days. You can restore them from the Bin until then.",
-            confirm = "Move to Bin",
+            title = plan.title(items.singleOrNull()?.name),
+            text = plan.message(),
+            confirm = plan.confirmLabel(),
             destructive = true,
-            onConfirm = { AppState.moveToBin(context, items.map { File(it.path) }, onDeleted) },
+            onConfirm = { AppState.delete(context, plan, onDeleted) },
             onDismiss = { actions.deleteTargets = emptyList() },
         )
     }
@@ -406,10 +407,14 @@ fun SelectionActionsRow(
                 else com.clpstudio.filesmanager.data.Favorites.add(selected.map { it.path })
                 actions.toast(if (allFav) "Removed from favorites" else "Added to favorites")
             }
-            // Hidden items get Unhide (never Hide); normal ones Hide.
-            val hideChoice = com.clpstudio.filesmanager.data.HideMenu.decide(selected.map { it.path })
-            if (hideChoice.unhide) MenuRow(Icons.Filled.Visibility, "Unhide") { menu = false; actions.unhide(selected.filter { com.clpstudio.filesmanager.data.HiddenNames.isHidden(it.path) }) }
-            if (hideChoice.hide) MenuRow(Icons.Filled.VisibilityOff, "Hide") { menu = false; actions.hide(selected.filter { !com.clpstudio.filesmanager.data.HiddenNames.isHidden(it.path) }) }
+            // Hidden items: only "Delete permanently" (no Unhide in Files); ordinary ones: Hide.
+            val ctx = LocalContext.current
+            val hideChoice = remember(selected) { com.clpstudio.filesmanager.data.HideMenu.decide(selected.map { it.path }) { com.clpstudio.filesmanager.data.DeleteRules.isHiddenOnPhone(ctx, it) } }
+            if (hideChoice.deletePermanently) MenuRow(Icons.Filled.DeleteForever, "Delete permanently") {
+                menu = false
+                actions.deleteTargets = selected.filter { com.clpstudio.filesmanager.data.DeleteRules.isHiddenOnPhone(ctx, it.path) }
+            }
+            if (hideChoice.hide) MenuRow(Icons.Filled.VisibilityOff, "Hide") { menu = false; actions.hide(selected.filter { !com.clpstudio.filesmanager.data.DeleteRules.isHiddenOnPhone(ctx, it.path) }) }
             MenuRow(Icons.Filled.ContentCopy, "Copy to...") { menu = false; actions.copy(selected) }
             MenuRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to...") { menu = false; actions.move(selected) }
             MenuRow(Icons.Filled.Shield, "Move to vault") { menu = false; actions.moveToVault(selected) }
@@ -428,8 +433,12 @@ fun SelectionActionsRow(
                 if (com.clpstudio.filesmanager.data.PasswordEntry.ADD in pw) MenuRow(Icons.Filled.Lock, "Add password to PDF") { menu = false; actions.pdfLockTarget = selected[0] }
                 if (com.clpstudio.filesmanager.data.PasswordEntry.REMOVE in pw) MenuRow(Icons.Filled.LockOpen, "Remove PDF password") { menu = false; actions.pdfUnlockTarget = selected[0] }
             }
-            if (selected.size == 1) {
+            // Rename and date & time: every normal file or folder; never hidden ones (they only get Delete permanently).
+            if (selected.size == 1 && !hideChoice.deletePermanently) {
                 MenuRow(Icons.Filled.DriveFileRenameOutline, "Rename") { menu = false; actions.renameTarget = selected[0] }
+                MenuRow(Icons.Filled.Schedule, "Edit date & time") { menu = false; actions.dateTarget = selected[0] }
+            }
+            if (selected.size == 1) {
                 MenuRow(Icons.Filled.Info, "Details") { menu = false; actions.detailsTarget = selected[0] }
                 if (!selected[0].isDir) {
                     MenuRow(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") { menu = false; actions.openWith(selected[0]) }

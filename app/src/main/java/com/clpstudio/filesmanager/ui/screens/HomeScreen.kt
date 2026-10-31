@@ -1,5 +1,19 @@
 package com.clpstudio.filesmanager.ui.screens
 
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.WindowInsets
+import kotlin.math.roundToInt
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.Image
@@ -64,6 +78,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -188,6 +204,8 @@ fun HomeContent(
     onOpenRecent: (FileItem, List<FileItem>) -> Unit,
     player: PlayerUi = PlayerUi(),
     onOpenPlayer: () -> Unit = {},
+    /** Tests only: start mid-pull (fraction of the threshold). */
+    initialPull: Float = 0f,
     /** "Hidden files" tile: only while Settings → Show hidden files is on. */
     showHiddenTile: Boolean = false,
     onBrowseRoot: (String) -> Unit = {},
@@ -209,7 +227,8 @@ fun HomeContent(
             }
         },
         bottomBar = {
-            if (player.hasMedia && !player.isVideo) MiniPlayer(player, onOpenPlayer)
+            // The mini player itself floats over every screen (draggable, item 57); docked at the bottom it keeps its room here.
+            if (player.hasMedia && !player.isVideo && MiniPlayerPosition.fraction.collectAsState().value == 0f) Spacer(Modifier.fillMaxWidth().navigationBarsPadding().height(MiniPlayerHeight))
         },
     ) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -218,12 +237,59 @@ fun HomeContent(
             val side = maxOf(16.dp, (maxWidth - HomeMaxContentWidth) / 2)
             // "Hidden files" shows only while Settings → Show hidden files is on.
             val homeTiles = remember(showHiddenTile) { HomeTile.entries.filter { it != HomeTile.HIDDEN || showHiddenTile } }
+            // Pull down past the top to open Search (item 60): only when the pull starts with the list at the top.
+            val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val thresholdPx = with(density) { PullToSearch.THRESHOLD.toPx() }
+            val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+            var pull by remember { androidx.compose.runtime.mutableFloatStateOf(initialPull * thresholdPx) }
+            var startedAtTop by remember { mutableStateOf(false) }
+            val currentOnSearch by androidx.compose.runtime.rememberUpdatedState(onSearch)
+            val connection = remember(thresholdPx) {
+                object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                    override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                        if (pull > 0f && available.y < 0f) {
+                            val c = maxOf(available.y, -pull)
+                            pull += c
+                            return androidx.compose.ui.geometry.Offset(0f, c)
+                        }
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                    override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                        if (source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput && available.y > 0f && startedAtTop) {
+                            val before = pull
+                            pull += PullToSearch.resist(available.y, pull, thresholdPx)
+                            if (PullToSearch.crossed(before, pull, thresholdPx)) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            return androidx.compose.ui.geometry.Offset(0f, available.y)
+                        }
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                    override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                        if (pull <= 0f) return androidx.compose.ui.unit.Velocity.Zero
+                        val open = PullToSearch.shouldOpen(pull, thresholdPx, startedAtTop)
+                        if (open) currentOnSearch()
+                        androidx.compose.animation.core.animate(pull, 0f, animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 400f)) { v, _ -> pull = v }
+                        return available
+                    }
+                }
+            }
+            Box(
+                Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            startedAtTop = !gridState.canScrollBackward
+                        }
+                    }
+                    .nestedScroll(connection),
+            ) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(cols),
+                state = gridState,
                 contentPadding = PaddingValues(start = side, end = side, top = padding.calculateTopPadding() + 12.dp, bottom = padding.calculateBottomPadding() + 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer { translationY = pull * 0.6f },
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "storage") {
                     // "Device" and, while a card is mounted, "SD card": used / total, tap opens that root.
@@ -261,6 +327,25 @@ fun HomeContent(
                     item(span = { GridItemSpan(maxLineSpan) }, key = "playlistHeader") { SectionTitle("Playlists") }
                     item(span = { GridItemSpan(maxLineSpan) }, key = "playlists") { PlaylistHomeSection(playlistCounts, cols, onPlaylists) }
                 }
+            }
+            // The search pill sliding down with the finger.
+            if (pull > 1f) {
+                val prog = PullToSearch.progress(pull, thresholdPx)
+                Box(
+                    Modifier.align(Alignment.TopCenter)
+                        .padding(top = padding.calculateTopPadding())
+                        .graphicsLayer { translationY = pull * 0.6f - 20.dp.toPx(); alpha = prog.coerceIn(0f, 1f) }
+                        .glassBar(RoundedCornerShape(22.dp))
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .testTag("pullSearch"),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.graphicsLayer { scaleX = 0.8f + 0.3f * prog.coerceAtMost(1f); scaleY = scaleX })
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (prog >= 1f) "Release to search" else "Pull to search", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
             }
         }
     }
@@ -398,11 +483,90 @@ val MiniPlayerHeight = 88.dp
  * The audio mini player: artwork, name, play/pause, next, close and a thin progress line. Tap = full player.
  * Close stops playback (and its notification) and hides the bar.
  */
+/** Pull-down-at-the-top opens Search on Home (item 60). */
+object PullToSearch {
+    val THRESHOLD = 88.dp
+
+    /** Rubber band: the finger moves the pill less the further it is pulled. */
+    fun resist(delta: Float, pull: Float, threshold: Float): Float = delta * (if (pull < threshold) 0.55f else 0.2f)
+
+    fun progress(pull: Float, threshold: Float): Float = if (threshold <= 0f) 0f else (pull / threshold).coerceIn(0f, 1.5f)
+
+    /** The moment the pull passes the threshold (light haptic). */
+    fun crossed(before: Float, after: Float, threshold: Float): Boolean = before < threshold && after >= threshold
+
+    /** Released past the threshold, and the pull began with the list already at the top. */
+    fun shouldOpen(pull: Float, threshold: Float, startedAtTop: Boolean): Boolean = startedAtTop && pull >= threshold
+}
+
+/**
+ * Where the floating mini player sits (item 57): 0 = docked at the bottom (default), 1 = as high as it may go
+ * (just under the top bar). Dragged with a finger, remembered across restarts.
+ */
+object MiniPlayerPosition {
+    private const val PREFS = "mini_player"
+    private const val KEY = "lift_fraction"
+    private val _fraction = kotlinx.coroutines.flow.MutableStateFlow(-1f)
+    /** Current position as a fraction of the travel (0 = bottom). */
+    val fraction: kotlinx.coroutines.flow.StateFlow<Float> get() {
+        if (_fraction.value < 0f) _fraction.value = runCatching {
+            com.clpstudio.filesmanager.Graph.app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getFloat(KEY, 0f)
+        }.getOrDefault(0f).coerceIn(0f, 1f)
+        return _fraction
+    }
+
+    /** Keeps the lift (px above the bottom) inside 0..[maxLift]. */
+    fun clampLift(lift: Float, maxLift: Float): Float = lift.coerceIn(0f, maxOf(0f, maxLift))
+
+    fun fractionOf(lift: Float, maxLift: Float): Float = if (maxLift <= 0f) 0f else (lift / maxLift).coerceIn(0f, 1f)
+
+    /** Snaps near the bottom back to docked (so lists get their space back). */
+    fun snap(fraction: Float): Float = if (fraction < 0.04f) 0f else fraction
+
+    fun set(fraction: Float) {
+        val v = snap(fraction.coerceIn(0f, 1f))
+        _fraction.value = v
+        runCatching { com.clpstudio.filesmanager.Graph.app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putFloat(KEY, v).apply() }
+    }
+
+    /** Tests only. */
+    internal fun resetForTest() { _fraction.value = -1f }
+}
+
+/**
+ * The floating mini player, draggable up and down (item 57): between the top bar and the bottom, never over the
+ * status bar or the navigation bar; tap still opens the full player; Close still stops it.
+ */
+@Composable
+fun DraggableMiniPlayer(player: PlayerUi, onOpen: () -> Unit, topReserve: androidx.compose.ui.unit.Dp = 72.dp) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val statusTop = WindowInsets.statusBars.getTop(density)
+        val navBottom = WindowInsets.navigationBars.getBottom(density)
+        val maxLift: Float = with(density) { constraints.maxHeight.toFloat() - statusTop - topReserve.toPx() - MiniPlayerHeight.toPx() - navBottom }
+        val fraction by MiniPlayerPosition.fraction.collectAsState()
+        var lift by remember(maxLift) { androidx.compose.runtime.mutableFloatStateOf(fraction * maxOf(0f, maxLift)) }
+        val drag = androidx.compose.foundation.gestures.rememberDraggableState { d -> lift = MiniPlayerPosition.clampLift(lift - d, maxLift) }
+        MiniPlayer(
+            player, onOpen,
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .offset { androidx.compose.ui.unit.IntOffset(0, -lift.roundToInt()) }
+                .draggable(drag, androidx.compose.foundation.gestures.Orientation.Vertical, onDragStopped = {
+                    MiniPlayerPosition.set(MiniPlayerPosition.fractionOf(lift, maxLift))
+                    lift = MiniPlayerPosition.fraction.value * maxOf(0f, maxLift)
+                })
+                .testTag("miniPlayer"),
+            showHandle = true,
+        )
+    }
+}
+
 @Composable
 fun MiniPlayer(
     player: PlayerUi,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    showHandle: Boolean = false,
     loopMode: com.clpstudio.filesmanager.data.LoopMode = com.clpstudio.filesmanager.playback.AudioLoop.mode,
     onLoop: () -> Unit = { com.clpstudio.filesmanager.playback.AudioLoop.toggle() },
 ) {
@@ -413,6 +577,10 @@ fun MiniPlayer(
         modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp)
             .glassBar(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).clickable(onClick = onOpen),
     ) {
+        // A grip: drag the player up or down with a finger.
+        if (showHandle) Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)))
+        }
         Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF9333EA).copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                 if (art != null) Image(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -427,6 +595,11 @@ fun MiniPlayer(
                 Icon(if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (player.isPlaying) "Pause" else "Play")
             }
             IconButton(onClick = { player.controller?.seekToNext() }) { Icon(Icons.Filled.SkipNext, "Next") }
+            // Audio speed (item 52): the same remembered speed as the full player.
+            if (!player.isVideo) MiniSpeedButton(player.speed) { s ->
+                com.clpstudio.filesmanager.playback.AudioSpeed.set(s)
+                player.controller?.playbackParameters = com.clpstudio.filesmanager.playback.AudioSpeed.params(s)
+            }
             // Same audio Loop as the full player and the notification (item 30).
             val loopOn = loopMode != com.clpstudio.filesmanager.data.LoopMode.OFF
             IconButton(onClick = onLoop) {
@@ -445,5 +618,28 @@ fun MiniPlayer(
             gapSize = 0.dp,
             drawStopIndicator = {},
         )
+    }
+}
+
+/** The mini player's speed: "1x" text, tap → 0.5x … 2x. */
+@Composable
+private fun MiniSpeedButton(speed: Float, onSpeed: (Float) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        androidx.compose.material3.TextButton(onClick = { open = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.defaultMinSize(minWidth = 36.dp)) {
+            Text(
+                com.clpstudio.filesmanager.playback.AudioSpeed.label(speed),
+                color = if (kotlin.math.abs(speed - 1f) > 0.01f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        androidx.compose.material3.DropdownMenu(open, { open = false }) {
+            for (s in com.clpstudio.filesmanager.playback.AudioSpeed.OPTIONS) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(com.clpstudio.filesmanager.playback.AudioSpeed.label(s)) },
+                    onClick = { open = false; onSpeed(s) },
+                )
+            }
+        }
     }
 }

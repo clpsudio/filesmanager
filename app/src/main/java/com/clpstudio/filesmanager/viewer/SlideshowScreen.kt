@@ -412,6 +412,19 @@ private fun InlineMedia(item: FileItem, playing: Boolean, onEnded: () -> Unit) {
         }
     }
     LaunchedEffect(player, playing) { player.playWhenReady = playing }
+    // Leaving the app (Home, recents, screen off) or closing: the slideshow's video/audio doesn't play on.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, player) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> player.pause()
+                androidx.lifecycle.Lifecycle.Event.ON_START -> player.playWhenReady = playing
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (item.kind == FileKind.VIDEO) {

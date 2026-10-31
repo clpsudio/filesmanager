@@ -32,15 +32,4 @@ object FileNames {
      * so a typed ".txt" at the end stays part of the name and the real type is kept.
      */
     fun lockedName(typedBase: String, ext: String): String = typedBase.trim() + ext
-
-    /** Whether going from [old] to [new] changes the file type (case-only changes do not count). */
-    fun extensionChanged(old: String, new: String): Boolean =
-        !split(old).ext.equals(split(new.trim()).ext, ignoreCase = true)
-
-    /** The words for the confirm when the type changes. */
-    fun changeWarning(old: String, new: String): String {
-        val from = split(old).ext.ifEmpty { "no extension" }
-        val to = split(new.trim()).ext.ifEmpty { "no extension" }
-        return "Changing $from to $to may make the file unusable."
-    }
 }

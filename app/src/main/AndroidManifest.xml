@@ -122,6 +122,26 @@
                 <data android:mimeType="application/x-subrip" />
             </intent-filter>
             <!-- "Share to Files" opens the file in the viewer (with "Save a copy"). -->
+            <!-- Item 55: the camera's thumbnail / "view photo" (MediaStore.ACTION_REVIEW, REVIEW_SECURE on the lock
+                 screen, and the older com.android.camera.action.REVIEW many cameras still send). -->
+            <intent-filter>
+                <action android:name="android.provider.action.REVIEW" />
+                <action android:name="android.provider.action.REVIEW_SECURE" />
+                <action android:name="com.android.camera.action.REVIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.provider.action.REVIEW" />
+                <action android:name="android.provider.action.REVIEW_SECURE" />
+                <action android:name="com.android.camera.action.REVIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

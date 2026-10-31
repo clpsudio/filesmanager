@@ -4,6 +4,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistRemove
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Warning
@@ -287,6 +290,7 @@ fun PlaylistDetailScreen(id: String, onBack: () -> Unit, play: (List<FileItem>, 
     }
     var dialog by remember { mutableStateOf<String?>(null) }
     var picker by remember { mutableStateOf<String?>(null) }
+    val fileActions = com.clpstudio.filesmanager.ui.components.rememberFileActions(afterCopyOrMove = {})
     val items = loaded?.first
     val missing = loaded?.second.orEmpty()
     PlaylistDetailContent(
@@ -302,7 +306,13 @@ fun PlaylistDetailScreen(id: String, onBack: () -> Unit, play: (List<FileItem>, 
         onCover = { picker = "cover" },
         onClearCover = { store.setCover(id, null) },
         onDelete = { dialog = "delete" },
+        onRemoveMany = { list -> store.remove(id, list.map { it.path }) },
+        onDeleteFiles = { list -> fileActions.deleteTargets = list },
     )
+    // Deleting a file from inside a playlist deletes the file itself and takes it out of the playlist.
+    com.clpstudio.filesmanager.ui.components.FileActionDialogs(fileActions, onDeleted = {
+        store.remove(id, PlaylistRules.split(p.items, Playlists::exists).second)
+    })
     when (dialog) {
         "rename" -> TextInputDialog(
             "Rename playlist", p.name, "Rename", selectBaseName = false,
@@ -355,8 +365,17 @@ fun PlaylistDetailContent(
     onCover: () -> Unit,
     onClearCover: () -> Unit,
     onDelete: () -> Unit,
+    /** Selection bar: "Remove from playlist" (files stay) for the selected rows. */
+    onRemoveMany: (List<FileItem>) -> Unit = { it.forEach(onRemove) },
+    /** Selection bar: Delete = delete the files themselves (to the Bin; hidden files permanently, after a confirm). */
+    onDeleteFiles: (List<FileItem>) -> Unit = {},
+    initialSelection: Set<String> = emptySet(),
 ) {
     var menu by remember { mutableStateOf(false) }
+    // Long-press a row to select; tap toggles while selecting.
+    var sel by remember { mutableStateOf(initialSelection) }
+    LaunchedEffect(items) { items?.let { l -> val alive = l.map { it.path }.toSet(); if (!alive.containsAll(sel)) sel = sel intersect alive } }
+    androidx.activity.compose.BackHandler(sel.isNotEmpty()) { sel = emptySet() }
     // Local order while dragging; saved when the drag ends.
     val order = remember(items) { mutableStateListOf<FileItem>().apply { addAll(items.orEmpty()) } }
     var dragging by remember { mutableStateOf<String?>(null) }
@@ -365,7 +384,21 @@ fun PlaylistDetailContent(
     val n = items?.size ?: playlist.items.size
     GlassScaffold(
         topBar = {
-            GlassTopBar(playlist.name, onBack = onBack, subtitle = "${playlist.type.title} playlist · ${PlaylistRules.countLabel(n)}", actions = {
+            if (sel.isNotEmpty()) {
+                val chosen = order.filter { it.path in sel }
+                GlassTopBar(
+                    "${sel.size} selected",
+                    navigation = { com.clpstudio.filesmanager.ui.components.CloseSelectionButton { sel = emptySet() } },
+                    actions = {
+                        val allPaths = order.map { it.path }
+                        com.clpstudio.filesmanager.ui.components.SelectAllToggle(allPaths.isNotEmpty() && sel.containsAll(allPaths)) {
+                            sel = if (sel.containsAll(allPaths)) emptySet() else allPaths.toSet()
+                        }
+                        IconButton(onClick = { onRemoveMany(chosen); sel = emptySet() }) { Icon(Icons.Filled.PlaylistRemove, "Remove from playlist") }
+                        IconButton(onClick = { onDeleteFiles(chosen) }) { Icon(Icons.Filled.Delete, "Delete") }
+                    },
+                )
+            } else GlassTopBar(playlist.name, onBack = onBack, subtitle = "${playlist.type.title} playlist · ${PlaylistRules.countLabel(n)}", actions = {
                 IconButton(onClick = onAdd) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add items") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
@@ -426,7 +459,11 @@ fun PlaylistDetailContent(
                         .graphicsLayer { translationY = if (isDragged) dragOffset else 0f; shadowElevation = if (isDragged) 12f else 0f }
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (isDragged) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
-                        .clickable { onPlay(index) }
+                        .background(if (item.path in sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent)
+                        .combinedClickable(
+                            onClick = { if (sel.isNotEmpty()) sel = if (item.path in sel) sel - item.path else sel + item.path else onPlay(index) },
+                            onLongClick = { sel = if (item.path in sel) sel - item.path else sel + item.path },
+                        )
                         .padding(start = 4.dp, end = 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -462,7 +499,14 @@ fun PlaylistDetailContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                         )
                     }
-                    IconButton(onClick = { onRemove(item) }) { Icon(Icons.Filled.Close, "Remove from playlist", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (sel.isNotEmpty()) {
+                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                            if (item.path in sel) Icon(Icons.Filled.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
+                            else Icon(Icons.Filled.RadioButtonUnchecked, "Not selected", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        IconButton(onClick = { onRemove(item) }) { Icon(Icons.Filled.Close, "Remove from playlist", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
                 }
             }
         }

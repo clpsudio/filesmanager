@@ -99,6 +99,7 @@ fun MusicPlayerScreen(ui: PlayerUi, onBack: () -> Unit) {
         // Loop = Settings → Audio player → Audio loop (Off / Forever / Play N times); the service applies and counts it.
         onRepeat = { com.clpstudio.filesmanager.playback.AudioLoop.toggle() },
         onPick = { p?.seekTo(it, 0) },
+        onSpeed = { s -> com.clpstudio.filesmanager.playback.AudioSpeed.set(s); p?.playbackParameters = com.clpstudio.filesmanager.playback.AudioSpeed.params(s) },
     )
 }
 
@@ -113,6 +114,7 @@ fun MusicPlayerContent(
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onPick: (Int) -> Unit,
+    onSpeed: (Float) -> Unit = {},
     artworkOverride: ImageBitmap? = null,
     pill: LevelPillState = remember { LevelPillState() },
 ) {
@@ -215,6 +217,10 @@ fun MusicPlayerContent(
                         )
                     }
                     com.clpstudio.filesmanager.playback.AudioLoop.hint?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
+                }
+                // Playback speed (item 52): 0.5x–2x, natural pitch, kept for every song and remembered.
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    com.clpstudio.filesmanager.playback.AudioSpeedChip(ui.speed, onSpeed)
                 }
             }
             Spacer(Modifier.height(16.dp))

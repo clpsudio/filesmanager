@@ -190,6 +190,16 @@ fun AppLockSettingsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            item { SecHeader("Wrong attempts allowed") }
+            item {
+                SecCard {
+                    val allowed = com.clpstudio.filesmanager.Graph.settings.collectAsState().value.wrongAttemptsAllowed
+                    com.clpstudio.filesmanager.security.AttemptLimiter.ALLOWED_CHOICES.forEach { n ->
+                        Choice("$n tries", allowed == n) { com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setWrongAttemptsAllowed(n) } }
+                    }
+                    Text("Then a wait before the next try: 30 s, then 1, 5, 15 and 30 min (fingerprint is off while waiting). Same for the vault.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             item { SecHeader("Fingerprint") }
             item {
                 SecCard(if (bioAvailable && enabled) Modifier.clickable { bio = !bio; AppLock.biometric = bio } else Modifier) {

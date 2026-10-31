@@ -56,8 +56,14 @@ data class AppSettings(
     val hiddenInSearch: Boolean = false,
     /** Settings → "Block screenshots & screen recording" (item 39, default off): FLAG_SECURE on every screen. */
     val blockScreenshots: Boolean = false,
-    /** Item 45: off = rename edits only the name, the extension stays (e.g. "photo" + ".jpg"). */
-    val allowExtensionChange: Boolean = false,
+    /** Settings → "Allow text selection in documents" (item 51, default on): long-press to select and copy text in every document viewer. */
+    val allowTextSelection: Boolean = true,
+    /** Audio player speed (item 52): 0.5x–2x, remembered. */
+    val audioSpeed: Float = 1f,
+    /** Wrong PIN/password tries before a lockout, vault and app lock (item 53): 3 / 5 / 10. */
+    val wrongAttemptsAllowed: Int = 5,
+    /** Other apps' "choose a file" opens Files' own picker (on) instead of Android's picker showing Files as a folder (off). */
+    val ownPickerInOtherApps: Boolean = true,
     /** Settings → Default sort for every list (Date, newest first, unless changed). */
     val defaultSortBy: SortBy = SortBy.DATE,
     val defaultSortAscending: Boolean = false,
@@ -99,7 +105,10 @@ class SettingsRepository(private val context: Context) {
         val autoPip = booleanPreferencesKey("auto_pip")
         val hiddenInSearch = booleanPreferencesKey("hidden_in_search")
         val blockScreenshots = booleanPreferencesKey("block_screenshots")
-        val allowExtensionChange = booleanPreferencesKey("allow_extension_change")
+        val allowTextSelection = booleanPreferencesKey("allow_text_selection")
+        val audioSpeed = androidx.datastore.preferences.core.floatPreferencesKey("audio_speed")
+        val ownPickerInOtherApps = booleanPreferencesKey("own_picker_in_other_apps")
+        val wrongAttemptsAllowed = androidx.datastore.preferences.core.intPreferencesKey("wrong_attempts_allowed")
         val doubleTapSkip = androidx.datastore.preferences.core.intPreferencesKey("double_tap_skip")
         val loopMode = stringPreferencesKey("loop_mode")
         val dateGrouping = stringPreferencesKey("date_grouping")
@@ -129,7 +138,10 @@ class SettingsRepository(private val context: Context) {
             autoPip = p[Keys.autoPip] ?: true,
             hiddenInSearch = p[Keys.hiddenInSearch] ?: false,
             blockScreenshots = p[Keys.blockScreenshots] ?: false,
-            allowExtensionChange = p[Keys.allowExtensionChange] ?: false,
+            allowTextSelection = p[Keys.allowTextSelection] ?: true,
+            audioSpeed = p[Keys.audioSpeed] ?: 1f,
+            ownPickerInOtherApps = p[Keys.ownPickerInOtherApps] ?: true,
+            wrongAttemptsAllowed = p[Keys.wrongAttemptsAllowed]?.takeIf { it in listOf(3, 5, 10) } ?: 5,
             doubleTapSkipSeconds = DoubleTapSkip.clamp(p[Keys.doubleTapSkip] ?: DoubleTapSkip.DEFAULT),
             loopMode = LoopMode.parse(p[Keys.loopMode]),
             dateGrouping = DateGrouping.parse(p[Keys.dateGrouping]),
@@ -159,11 +171,14 @@ class SettingsRepository(private val context: Context) {
         it[Keys.typeFilters] = encodeFilters(m)
     }
     suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
+    suspend fun setOwnPickerInOtherApps(on: Boolean) = context.dataStore.edit { it[Keys.ownPickerInOtherApps] = on }
+    suspend fun setWrongAttemptsAllowed(n: Int) = context.dataStore.edit { it[Keys.wrongAttemptsAllowed] = n }
+    suspend fun setAudioSpeed(s: Float) = context.dataStore.edit { it[Keys.audioSpeed] = s }
+    suspend fun setAllowTextSelection(on: Boolean) = context.dataStore.edit { it[Keys.allowTextSelection] = on }
     suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
     suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
     suspend fun setHiddenInSearch(on: Boolean) = context.dataStore.edit { it[Keys.hiddenInSearch] = on }
     suspend fun setBlockScreenshots(on: Boolean) = context.dataStore.edit { it[Keys.blockScreenshots] = on }
-    suspend fun setAllowExtensionChange(on: Boolean) = context.dataStore.edit { it[Keys.allowExtensionChange] = on }
     /** Settings → Default sort: every list, and the folder browser too. */
     suspend fun setDefaultSort(by: SortBy, ascending: Boolean) = context.dataStore.edit {
         it[Keys.defaultSortBy] = by.name

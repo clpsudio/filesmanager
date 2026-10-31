@@ -75,7 +75,7 @@ class VideoOverlayState {
     var loop by mutableStateOf(false)
     /** Fill the screen (crop) instead of fitting the whole picture. */
     var fill by mutableStateOf(false)
-    /** The current file is hidden: the ⋮ menu offers Unhide instead of Hide. */
+    /** The current file is hidden: the ⋮ menu offers only "Delete permanently" (no Hide, no Unhide). */
     var hidden by mutableStateOf(false)
     /** "2/3" while "Play N times" is counting. */
     var loopHint by mutableStateOf<String?>(null)
@@ -150,7 +150,6 @@ interface VideoActions {
     fun seekBar(ms: Long, done: Boolean) {}
     fun pip() {}
     fun toggleFit() {}
-    fun unhide() {}
 }
 
 val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f)
@@ -262,7 +261,7 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
                     DropdownMenu(menu, { menu = false }) {
                         DropdownMenuItem(text = { Text("Rotate") }, leadingIcon = { Icon(Icons.Filled.ScreenRotation, null) }, onClick = { menu = false; actions.rotate() })
                         DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; actions.edit() })
-                        if (state.hidden) DropdownMenuItem(text = { Text("Unhide") }, leadingIcon = { Icon(Icons.Filled.Visibility, null) }, onClick = { menu = false; actions.unhide() })
+                        if (state.hidden) DropdownMenuItem(text = { Text("Delete permanently") }, leadingIcon = { Icon(Icons.Filled.DeleteForever, null) }, onClick = { menu = false; actions.delete() })
                         else DropdownMenuItem(text = { Text("Hide") }, leadingIcon = { Icon(Icons.Filled.VisibilityOff, null) }, onClick = { menu = false; actions.hide() })
                         DropdownMenuItem(text = { Text("Info") }, leadingIcon = { Icon(Icons.Filled.Info, null) }, onClick = { menu = false; actions.info() })
                         if (state.photo == null) {

@@ -204,6 +204,14 @@ class VaultStore(
         }
     }
 
+    /** Renames [item] inside the vault (only its sealed metadata changes). */
+    fun rename(item: VaultItem, newName: String): VaultItem {
+        val key = mk()
+        val renamed = item.copy(name = newName)
+        writeMeta(key, renamed, File(filesDir, "${item.id}.m"))
+        return renamed
+    }
+
     /** Removes [item] from the vault for good. */
     fun remove(item: VaultItem): Boolean = remove(item.id)
 

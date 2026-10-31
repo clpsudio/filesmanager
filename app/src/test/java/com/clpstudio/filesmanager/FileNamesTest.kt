@@ -63,10 +63,6 @@ class FileNamesTest {
         assertEquals("holiday.jpg", FileNames.lockedName("holiday", ".jpg"))
         // Typing an extension doesn't replace the real one.
         assertEquals("holiday.txt.jpg", FileNames.lockedName("holiday.txt", ".jpg"))
-        assertTrue(FileNames.extensionChanged("a.jpg", "a.txt"))
-        assertFalse(FileNames.extensionChanged("a.jpg", "b.JPG"))
-        assertTrue(FileNames.extensionChanged("a.jpg", "a"))
-        assertEquals("Changing .jpg to .txt may make the file unusable.", FileNames.changeWarning("a.jpg", "a.txt"))
     }
 
     @Test fun renameWorksForEveryCommonTypeAndKeepsTheExtension() {
@@ -85,14 +81,14 @@ class FileNamesTest {
     }
 
     @Test fun lockedFormEditsOnlyTheName() {
-        val f = RenameForm("Holiday photo.jpg", allowExtensionChange = false)
+        val f = RenameForm("Holiday photo.jpg")
         assertEquals("Holiday photo", f.value.text)
         f.value = TextFieldValue("Beach.txt")
         assertEquals("Beach.txt.jpg", f.submit()) // a typed extension never replaces the real one
         f.value = TextFieldValue("  ")
         assertEquals(null, f.submit()); assertEquals("Type a name", f.error)
         compose.mainClock.autoAdvance = false
-        val shown = RenameForm("Holiday photo.jpg", allowExtensionChange = false)
+        val shown = RenameForm("Holiday photo.jpg")
         compose.setContent {
             FilesTheme(ThemeMode.LIGHT, liquidGlass = true) {
                 Box(Modifier.fillMaxSize().background(Color(0xFF6B7280)), contentAlignment = Alignment.Center) {
@@ -107,18 +103,14 @@ class FileNamesTest {
         compose.onRoot().captureRoboImage("/home/user/tab/files/files_r8_rename_locked.png")
     }
 
-    @Test fun allowedFormAsksBeforeChangingTheType() {
-        val f = RenameForm("report.pdf", allowExtensionChange = true)
-        assertEquals("report.pdf", f.value.text)
-        f.value = TextFieldValue("Q3 report.pdf")
-        assertEquals("Q3 report.pdf", f.submit()) // same type: no question
+    @Test fun theExtensionCanNeverBeChanged_noSettingExists() {
+        val f = RenameForm("report.pdf")
+        assertEquals("report", f.value.text)
         f.value = TextFieldValue("report.txt")
-        assertEquals(null, f.submit())
-        assertEquals("report.txt", f.confirmTypeChange)
-        assertEquals("report.pdf", f.keepType("report.txt"))
-        assertEquals("Changing .pdf to .txt may make the file unusable.", FileNames.changeWarning("report.pdf", "report.txt"))
-        val g = RenameForm("report.pdf", allowExtensionChange = true)
-        g.value = TextFieldValue("Report.PDF")
-        assertEquals("Report.PDF", g.submit()) // case only: no question
+        assertEquals("report.txt.pdf", f.submit())
+        f.value = TextFieldValue("Q3 report")
+        assertEquals("Q3 report.pdf", f.submit())
+        // The "Allow changing file extension" setting is gone.
+        assertFalse(com.clpstudio.filesmanager.data.AppSettings::class.java.declaredFields.any { it.name.contains("extension", ignoreCase = true) })
     }
 }

@@ -59,6 +59,8 @@ fun editableFor(path: String?): Set<InfoEdit> {
     if (!f.exists() || f.parentFile == null) return emptySet()
     val roots = runCatching { StoragePaths.volumes(Graph.app).map { it.path } }.getOrDefault(emptyList())
     if (f.absolutePath in roots) return emptySet()
+    // Hidden files (dot-files, dot-folders, .nomedia media, the Hide folder): no rename, date or move — only Delete permanently.
+    if (com.clpstudio.filesmanager.data.DeleteRules.isHidden(f.absolutePath, roots + StoragePaths.primary)) return emptySet()
     return setOf(InfoEdit.NAME, InfoEdit.DATE, InfoEdit.FOLDER)
 }
 
@@ -168,7 +170,7 @@ private fun renameFile(context: Context, file: File, typed: String, onChanged: (
 }
 
 /** Sets the file's date (and, for JPEG photos when asked, the EXIF taken date). Returns the toast. */
-private fun applyDate(context: Context, file: File, ms: Long, exif: Boolean): String {
+internal fun applyDate(context: Context, file: File, ms: Long, exif: Boolean): String {
     var exifDone = false
     if (exif) {
         // EXIF first: saving it rewrites the file, which would reset the date set below.

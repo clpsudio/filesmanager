@@ -264,6 +264,7 @@ fun MarkdownDocument(text: String, modifier: Modifier = Modifier, topPadding: Dp
     val codeBg = scheme.onSurface.copy(alpha = 0.08f)
     val link = scheme.primary
     val body = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 25.sp, color = scheme.onSurface)
+com.clpstudio.filesmanager.ui.components.DocumentSelection(modifier.fillMaxSize()) {
     LazyColumn(
         modifier.fillMaxSize().background(scheme.background),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = topPadding, bottom = 96.dp),
@@ -322,6 +323,7 @@ fun MarkdownDocument(text: String, modifier: Modifier = Modifier, topPadding: Dp
             }
         }
     }
+}
 }
 
 @Composable

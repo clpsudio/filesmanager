@@ -29,6 +29,20 @@ object ViewerSession {
 }
 
 /** Opens any file inside the app: everything has an in-app viewer or a clear fallback. */
+/** Which files have no viewer in Files (item 59): only those skip the pager for Android's "Open with". */
+object OpenRules {
+    fun opensOutside(name: String): Boolean {
+        val kind = FileTypes.kindOf(name)
+        if (com.clpstudio.filesmanager.data.DesignPreview.isDesign(name)) return false
+        return when (kind) {
+            FileKind.OTHER -> true
+            FileKind.DOCUMENT -> FileTypes.extension(name) != "epub" && !com.clpstudio.filesmanager.viewer.hasOfficeViewer(name)
+            FileKind.ARCHIVE -> !com.clpstudio.filesmanager.data.Archives.canBrowse(name)
+            else -> false
+        }
+    }
+}
+
 class Opener(private val context: Context, private val nav: NavController) {
 
     /**
@@ -69,10 +83,16 @@ class Opener(private val context: Context, private val nav: NavController) {
             // Videos play in the photo / video pager (one video UI everywhere: Videos, Media, Recent, search, folders, Favorites).
             FileKind.VIDEO -> openVideo(item, siblings)
             FileKind.AUDIO, FileKind.APK -> openFull(item, siblings)
-            FileKind.ARCHIVE -> if (com.clpstudio.filesmanager.data.Archives.canBrowse(item.name)) openFull(item, siblings) else openPager(item, siblings)
+            FileKind.ARCHIVE -> if (com.clpstudio.filesmanager.data.Archives.canBrowse(item.name)) openFull(item, siblings) else openOutside(item)
             // E-books open straight in the reader.
-            FileKind.DOCUMENT -> if (item.extension == "epub") nav.navigate(Routes.epub(item.path)) else openPager(item, siblings)
-            else -> openPager(item, siblings)
+            FileKind.DOCUMENT -> when {
+                item.extension == "epub" -> nav.navigate(Routes.epub(item.path))
+                // .doc / .xls / .odt …: no viewer here → straight to Android's "Open with" (no card).
+                !com.clpstudio.filesmanager.viewer.hasOfficeViewer(item.name) -> openOutside(item)
+                else -> openPager(item, siblings)
+            }
+            // Fonts open straight in the pager's font preview.
+            else -> if (OpenRules.opensOutside(item.name)) openOutside(item) else openPager(item, siblings)
         }
     }
 
@@ -91,6 +111,12 @@ class Opener(private val context: Context, private val nav: NavController) {
         val files = siblings.filter { !it.isDir }.map { it.path }
         ViewerSession.files = if (item.path in files) files else listOf(item.path)
         nav.navigate(Routes.view(item.path))
+    }
+
+    /** A type Files can't show: Android's "Open with" chooser at once. */
+    private fun openOutside(item: FileItem) {
+        val f = File(item.path)
+        runCatching { FileOps.openWithOtherApp(context, FileOps.uriFor(context, f), FileTypes.mimeOf(f.name)) }
     }
 
     /** The full-screen player / installer / archive browser for one file. */

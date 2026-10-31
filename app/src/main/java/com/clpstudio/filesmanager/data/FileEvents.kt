@@ -55,6 +55,8 @@ object FileEvents {
         _version.value = _version.value + 1
         val c = Change(removed, added)
         listeners.forEach { runCatching { it(c) } }
+        // Android's picker (when it shows Files as a folder) re-reads the changed folders.
+        runCatching { com.clpstudio.filesmanager.picker.FilesDocumentsProvider.notifyChanged(com.clpstudio.filesmanager.Graph.app, removed + added) }
     }
 
     /**

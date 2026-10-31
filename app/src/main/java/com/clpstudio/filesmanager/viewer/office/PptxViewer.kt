@@ -106,6 +106,7 @@ private fun Slides(deck: PptxPresentation, contentPadding: PaddingValues, onPage
         val ratio = (deck.slideWidthPt / deck.slideHeightPt).coerceIn(0.3f, 4f)
         val textScale = (cardWidth.value / deck.slideWidthPt * 1.5f).coerceIn(0.5f, 1.3f)
         val maxPx = with(LocalDensity.current) { (cardWidth.toPx() * 1.5f).toInt().coerceIn(256, 2048) }
+        com.clpstudio.filesmanager.ui.components.DocumentSelection(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
@@ -131,6 +132,7 @@ private fun Slides(deck: PptxPresentation, contentPadding: PaddingValues, onPage
                     )
                 }
             }
+        }
         }
     }
 }

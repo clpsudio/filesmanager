@@ -50,7 +50,7 @@ class SecurityScreenshotTest {
                     Box(contentAlignment = Alignment.Center) {
                         UnlockForm(
                             type = CredentialType.PIN, title = "Vault is locked", subtitle = "12 files · enter your vault PIN",
-                            check = { "Wrong. 3 tries left" }, onUnlocked = {}, waitUntil = { 0L to 2 },
+                            check = { "Wrong. 3 tries left" }, onUnlocked = {}, remainingMs = { 0L },
                         )
                     }
                 }

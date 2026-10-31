@@ -18,6 +18,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -203,6 +209,7 @@ fun PdfContent(
     }
     val zoom = remember { ZoomState(maxScale = 5f) }
     val listState = rememberLazyListState()
+    var textPage by remember(uri) { mutableStateOf<Int?>(null) }
 
     Box(modifier.fillMaxSize().background(paperDeskColor())) {
         when (val l = load) {
@@ -225,8 +232,31 @@ fun PdfContent(
                     }
                 }
                 PageCounter(listState.firstVisibleItemIndex + 1, l.doc.pageCount, Modifier.align(Alignment.BottomEnd))
+                // Settings → Allow text selection in documents (default on): the page's text, selectable, in a sheet.
+                if (com.clpstudio.filesmanager.ui.components.textSelectionOn()) {
+                    androidx.compose.material3.FilledTonalButton(
+                        onClick = { textPage = listState.firstVisibleItemIndex },
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 12.dp),
+                    ) {
+                        Icon(Icons.Filled.TextFields, null, Modifier.size(18.dp))
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                        Text("Select text")
+                    }
+                }
             }
         }
+    }
+    textPage?.let { index ->
+        val src = ready?.unlockedCopy
+        val text by produceState<String?>(null, index) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val f = src ?: if (uri.scheme == "file") File(uri.path!!) else ExternalFiles.copyToCache(context, uri, name)
+                    com.clpstudio.filesmanager.data.PdfText.page(context, f, index)
+                }.getOrDefault("")
+            }
+        }
+        PdfPageTextDialog(index, text, onDismiss = { textPage = null })
     }
     if (askPassword) {
         EnterPasswordDialog(
@@ -252,4 +282,34 @@ fun PdfViewerScreen(uri: Uri, name: String, onBack: () -> Unit, extraActions: @C
         UriViewerActionPanel(uri, "application/pdf", onInfo = { info = true }, onDeleted = onBack, modifier = Modifier.align(Alignment.BottomCenter))
     }
     if (info) FileInfoSheet(target, emptyList()) { info = false }
+}
+
+
+/** "Select text" on a PDF page: its words in a selectable sheet, with Copy all. Scanned pages have none. */
+@Composable
+fun PdfPageTextDialog(index: Int, text: String?, onDismiss: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val context = LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = com.clpstudio.filesmanager.ui.glass.dialogContainerColor(),
+        title = { Text("Text on page ${index + 1}") },
+        text = {
+            com.clpstudio.filesmanager.ui.glass.DialogGlassEffect()
+            when {
+                text == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                text.isEmpty() -> Text("No selectable text on this page. It looks like a scanned image, so there are no words to select.")
+                else -> androidx.compose.foundation.text.selection.SelectionContainer(Modifier.testTag(com.clpstudio.filesmanager.ui.components.DOC_SELECTION_TAG)) {
+                    Text(text, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()))
+                }
+            }
+        },
+        confirmButton = {
+            if (!text.isNullOrEmpty()) androidx.compose.material3.TextButton(onClick = {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+                android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+            }) { Text("Copy all") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }

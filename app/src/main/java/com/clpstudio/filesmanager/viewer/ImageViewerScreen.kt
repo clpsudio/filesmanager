@@ -206,16 +206,9 @@ fun SingleImageViewer(
                                 }
                             },
                             onInfo = { info = true },
-                            hidden = file != null && com.clpstudio.filesmanager.data.HiddenNames.isHidden(file.absolutePath),
-                            onUnhide = {
-                                if (file != null && com.clpstudio.filesmanager.data.HiddenOps.unhide(context, file) != null) {
-                                    Toast.makeText(context, "Unhidden", Toast.LENGTH_SHORT).show()
-                                    onBack()
-                                } else {
-                                    Toast.makeText(context, "Couldn't unhide it", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                        ).filter { file != null || (it.label != "Hide" && it.label != "Unhide") }
+                            hidden = file != null && com.clpstudio.filesmanager.data.DeleteRules.isHiddenOnPhone(context, file.absolutePath),
+                            onDeletePermanently = { if (file != null) actions.deleteTargets = listOf(FileItem.of(file)) },
+                        ).filter { file != null || (it.label != "Hide" && it.label != "Delete permanently") }
                         entries.forEach { e -> MenuRow(e.icon, e.label) { menu = false; e.onClick() } }
                     }
                 }

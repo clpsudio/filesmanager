@@ -76,24 +76,29 @@ class PickerActivity : ComponentActivity() {
     }
 
     private fun finishWith(items: List<FileItem>) {
-        val files = items.map { File(it.path) }.filter { it.isFile && it.canRead() }
-        if (files.isEmpty()) {
+        val result = resultFor(this, items)
+        if (result == null) {
             Toast.makeText(this, "Couldn't open that file", Toast.LENGTH_SHORT).show()
             return
         }
-        val uris = runCatching { files.map { FileOps.uriFor(this, it) } }.getOrElse {
-            Toast.makeText(this, "Couldn't share that file", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val clip = runCatching { ClipData.newUri(contentResolver, files[0].name, uris[0]) }.getOrElse { ClipData.newRawUri(files[0].name, uris[0]) }
-        uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
-        val result = Intent().apply {
-            data = uris[0]
-            clipData = clip
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
         setResult(RESULT_OK, result)
         finish()
+    }
+
+    companion object {
+        /** The reply to the asking app: content:// links (our FileProvider) with read permission, ClipData for several. */
+        fun resultFor(context: android.content.Context, items: List<FileItem>): Intent? {
+            val files = items.map { File(it.path) }.filter { it.isFile && it.canRead() }
+            if (files.isEmpty()) return null
+            val uris = runCatching { files.map { FileOps.uriFor(context, it) } }.getOrElse { return null }
+            val clip = runCatching { ClipData.newUri(context.contentResolver, files[0].name, uris[0]) }.getOrElse { ClipData.newRawUri(files[0].name, uris[0]) }
+            uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+            return Intent().apply {
+                data = uris[0]
+                clipData = clip
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
     }
 }
 
@@ -111,6 +116,7 @@ private fun PickerHost(
     var query by remember { mutableStateOf("") }
     val selected = remember { mutableStateListOf<String>() }
     var granted by remember { mutableStateOf(StoragePermission.granted(context)) }
+    var preview by remember { mutableStateOf<FileItem?>(null) }
 
     // Back from Android's "All files access" screen: check again.
     val owner = LocalLifecycleOwner.current
@@ -175,6 +181,7 @@ private fun PickerHost(
             query = query,
             searching = query.isNotBlank() && found == null && section == PickerSection.BROWSE,
             needsPermission = !granted,
+            preview = preview,
         ),
         selected = selected.toSet(),
         onToggleAll = {
@@ -192,10 +199,16 @@ private fun PickerHost(
         onTap = { f ->
             when {
                 f.isDir -> { folder = f.path; section = PickerSection.BROWSE }
-                request.multiple -> toggle(f)
-                else -> onPicked(listOf(f))
+                // Choosing several and some already chosen: a tap adds / removes.
+                request.multiple && selected.isNotEmpty() -> toggle(f)
+                // Tap = preview with a Select button (item 54).
+                else -> preview = f
             }
         },
+        onPreviewSelect = { f ->
+            if (request.multiple) { if (f.path !in selected) selected.add(f.path); preview = null } else onPicked(listOf(f))
+        },
+        onPreviewClose = { preview = null },
         onLongPress = { f -> if (!f.isDir) { if (request.multiple) toggle(f) else onPicked(listOf(f)) } },
         onDone = {
             val all = (items.orEmpty() + catItems.orEmpty() + listing.orEmpty() + found.orEmpty()).associateBy { it.path }

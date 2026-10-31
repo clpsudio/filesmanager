@@ -35,6 +35,11 @@ class MainActivity : ComponentActivity() {
     }
 
     // Picture-in-picture for the gallery video view (item 34); closing the small window stops it (item 33).
+    override fun onResume() {
+        super.onResume()
+        com.clpstudio.filesmanager.viewer.VideoPip.onResumed()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         com.clpstudio.filesmanager.viewer.VideoPip.onUserLeaveHint(this)

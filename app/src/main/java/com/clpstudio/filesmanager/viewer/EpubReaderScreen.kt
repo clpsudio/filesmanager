@@ -204,6 +204,7 @@ fun EpubReaderScreen(file: File, onBack: () -> Unit) {
                 Icon(if (night) Icons.Filled.LightMode else Icons.Filled.DarkMode, if (night) "Day mode" else "Night mode")
             }
         }
+        val selectText = com.clpstudio.filesmanager.ui.components.textSelectionOn()
         Box(Modifier.weight(1f).fillMaxWidth()) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -240,6 +241,10 @@ fun EpubReaderScreen(file: File, onBack: () -> Unit) {
                     }
                 },
                 update = { w ->
+                    // Settings → Allow text selection in documents: off = long-press does nothing (no selection).
+                    w.setOnLongClickListener(if (selectText) null else android.view.View.OnLongClickListener { true })
+                    w.isLongClickable = selectText
+                    w.isHapticFeedbackEnabled = selectText
                     w.settings.textZoom = zoom
                     w.setBackgroundColor(if (night) 0xFF121212.toInt() else 0xFFFFFFFF.toInt())
                     val url = assets.urlOf(book.spine[chapter], pendingFragment)

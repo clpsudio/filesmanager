@@ -117,6 +117,7 @@ private fun DocxPages(doc: DocxDocument, pages: List<List<DocBlock>>, contentPad
         )
         val margin = (doc.page.marginLeftPt * pointScale * 0.5f).dp.coerceIn(20.dp, 48.dp)
         val ratio = (doc.page.heightPt / doc.page.widthPt).coerceIn(0.3f, 3f)
+        com.clpstudio.filesmanager.ui.components.DocumentSelection(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             contentPadding = contentPadding.plus(top = 12.dp, bottom = 12.dp),
@@ -140,6 +141,7 @@ private fun DocxPages(doc: DocxDocument, pages: List<List<DocBlock>>, contentPad
                     )
                 }
             }
+        }
         }
     }
 }

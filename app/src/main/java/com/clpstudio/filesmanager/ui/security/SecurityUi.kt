@@ -1,5 +1,8 @@
 package com.clpstudio.filesmanager.ui.security
 
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Timer
 import android.app.Activity
 import android.view.WindowManager
 import androidx.compose.foundation.background
@@ -44,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -151,19 +155,18 @@ fun CredentialSetupForm(
     }
 }
 
-/** Live countdown text for the wrong-try wait (null when another try is allowed now). */
+/** Live countdown for a wrong-try lockout: "Too many wrong tries. Try again in 0:30" (null when a try is allowed). */
 @Composable
-fun rememberWaitMessage(lockedUntil: Long, failures: Int): String? {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(lockedUntil) {
-        while (lockedUntil > System.currentTimeMillis()) {
-            now = System.currentTimeMillis()
-            delay(500)
+fun rememberWaitMessage(remainingMs: () -> Long, key: Any?): String? {
+    var left by remember { mutableLongStateOf(remainingMs()) }
+    LaunchedEffect(key) {
+        while (true) {
+            left = remainingMs()
+            if (left <= 0L) break
+            delay(250)
         }
-        now = System.currentTimeMillis()
     }
-    val s = com.clpstudio.filesmanager.security.AttemptState(failures, lockedUntil)
-    return if (AttemptLimiter.remaining(s, now) > 0) AttemptLimiter.message(s, now) else null
+    return if (left > 0L) AttemptLimiter.lockedMessage(left) else null
 }
 
 /**
@@ -176,15 +179,17 @@ fun UnlockForm(
     subtitle: String?,
     check: suspend (String) -> String?,
     onUnlocked: () -> Unit,
-    waitUntil: () -> Pair<Long, Int>,
-    extra: @Composable () -> Unit = {},
+    /** Time left in a wrong-try lockout (0 = can try now). */
+    remainingMs: () -> Long,
+    /** Below the Unlock button; gets whether a lockout is running (fingerprint is off then). */
+    extra: @Composable (lockedOut: Boolean) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var value by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var waitState by remember { mutableStateOf(waitUntil()) }
-    val waitMsg = rememberWaitMessage(waitState.first, waitState.second)
+    var tries by remember { mutableIntStateOf(0) }
+    val waitMsg = rememberWaitMessage(remainingMs, tries)
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(200); runCatching { focus.requestFocus() } }
     fun submit() {
@@ -199,7 +204,7 @@ fun UnlockForm(
             } else {
                 error = r
                 value = ""
-                waitState = waitUntil()
+                tries++
             }
         }
     }
@@ -217,14 +222,28 @@ fun UnlockForm(
             value, { value = it; error = null }, type,
             if (type == CredentialType.PIN) "PIN" else "Password",
             Modifier.focusRequester(focus),
-            error = waitMsg ?: error,
+            error = if (waitMsg != null) null else error,
             onIme = { submit() },
             enabled = !busy && waitMsg == null,
         )
+        // Lockout: a clear live countdown (the disabled field would grey it out).
+        if (waitMsg != null) {
+            Row(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Timer, null, tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.size(10.dp))
+                Column {
+                    Text("Too many wrong tries", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(waitMsg.substringAfter("tries. "), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("lockoutCountdown"))
+                }
+            }
+        }
         Button(onClick = { submit() }, enabled = !busy && value.isNotEmpty() && waitMsg == null, modifier = Modifier.fillMaxWidth()) {
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Unlock")
         }
-        extra()
+        extra(waitMsg != null)
     }
 }
 
@@ -233,7 +252,7 @@ fun UnlockForm(
 fun AppLockScreen(activity: Activity) {
     val context = LocalContext.current
     val bio = remember { AppLock.biometric && AppLock.biometricAvailable(context) }
-    LaunchedEffect(Unit) { if (bio) AppLock.promptBiometric(activity) {} }
+    LaunchedEffect(Unit) { if (bio && AppLock.remainingMs() <= 0L) AppLock.promptBiometric(activity) {} }
     Surface(
         Modifier.fillMaxSize()
             // swallow every touch so nothing underneath can be used
@@ -252,9 +271,10 @@ fun AppLockScreen(activity: Activity) {
                 subtitle = if (AppLock.type == CredentialType.PIN) "Enter your PIN" else "Enter your password",
                 check = { s -> when (val r = AppLock.check(s)) { AppLock.Check.Ok -> null; is AppLock.Check.Wrong -> r.message } },
                 onUnlocked = { AppLock.unlocked() },
-                waitUntil = { AppLock.attempts.let { it.lockedUntil to it.failures } },
-                extra = {
-                    if (bio) {
+                remainingMs = { AppLock.remainingMs() },
+                extra = { lockedOut ->
+                    // No fingerprint during a lockout.
+                    if (bio && !lockedOut) {
                         OutlinedButton(onClick = { AppLock.promptBiometric(activity) {} }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Filled.Fingerprint, null)
                             Spacer(Modifier.size(8.dp))

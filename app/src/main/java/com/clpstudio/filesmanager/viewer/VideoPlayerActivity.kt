@@ -252,12 +252,32 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
 
+    /** The small window was shown since the last resume: a stop now means it was closed (any event order). */
+    private var pipSinceResume = false
+
+    override fun onResume() {
+        super.onResume()
+        pipSinceResume = false
+    }
+
     override fun onStop() {
         val c = controller
-        // Background play off (Settings) and not in picture-in-picture: pause when the player leaves the screen.
-        if (c != null && !isChangingConfigurations && !isInPipSafe() && !settings.backgroundPlay) c.pause()
-        // Closed (back, swipe down, task closed): nothing plays on and the notification goes (item 33).
-        if (c != null && isFinishing && !isChangingConfigurations) runCatching { c.stop(); c.clearMediaItems() }
+        when (VideoClose.onStop(
+            changingConfig = isChangingConfigurations, finishing = isFinishing,
+            pipNow = isInPipSafe(), pipSinceResume = pipSinceResume,
+            playing = c?.isPlaying == true, hasVideo = ui.photo == null, backgroundPlay = settings.backgroundPlay,
+            screenOff = VideoPip.screenOff(this),
+        )) {
+            // Closed (back, swipe down, the picture-in-picture window's X, task closed): nothing plays on and the
+            // notification goes (item 33).
+            VideoClose.OnStop.CLOSE -> {
+                if (c != null) runCatching { c.stop(); c.clearMediaItems() }
+                if (!isFinishing) finish()
+            }
+            // Background play off (Settings): pause when the player leaves the screen.
+            VideoClose.OnStop.PAUSE -> c?.pause()
+            VideoClose.OnStop.HAND_OFF, VideoClose.OnStop.NOTHING -> Unit
+        }
         playerView.player = null
         c?.removeListener(listener)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -547,6 +567,8 @@ class VideoPlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // Gone for good (not a rotation): make sure nothing plays on behind it.
+        if (isFinishing && !isChangingConfigurations) controller?.let { c -> runCatching { c.stop(); c.clearMediaItems() } }
         WindowBrightness.reset(this) // this window only; the system value comes back
         pageAnim?.cancel()
         runCatching { unregisterReceiver(pipReceiver) }
@@ -558,7 +580,7 @@ class VideoPlayerActivity : ComponentActivity() {
         ui.title = entries.getOrNull(entry)?.name.orEmpty()
         ui.hasPrev = entry > 0
         ui.hasNext = entry < entries.size - 1
-        ui.hidden = currentPath()?.let { com.clpstudio.filesmanager.data.HiddenNames.isHidden(it) } ?: false
+        ui.hidden = currentPath()?.let { com.clpstudio.filesmanager.data.DeleteRules.isHiddenOnPhone(this@VideoPlayerActivity, it) } ?: false
         updatePip()
     }
 
@@ -604,33 +626,24 @@ class VideoPlayerActivity : ComponentActivity() {
                 }
             }
         }
-        override fun unhide() {
-            val path = currentPath() ?: return
-            lifecycleScope.launch {
-                val back = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.clpstudio.filesmanager.data.HiddenOps.unhide(this@VideoPlayerActivity, File(path))
-                }
-                if (back == null) {
-                    android.widget.Toast.makeText(this@VideoPlayerActivity, "Couldn't unhide this file", android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    android.widget.Toast.makeText(this@VideoPlayerActivity, "Unhidden", android.widget.Toast.LENGTH_SHORT).show()
-                    com.clpstudio.filesmanager.ui.AppState.refresh()
-                    ui.hidden = false
-                }
-            }
-        }
         override fun delete() {
             val path = currentPath() ?: return
             controller?.pause()
+            val name = entries.getOrNull(entry)?.name.orEmpty()
+            val item = com.clpstudio.filesmanager.data.FileItem.of(File(path))
+            // Hidden videos (dot-files, dot-folders, .nomedia, the Hide folder) skip the Bin: deleted permanently.
+            val plan = com.clpstudio.filesmanager.data.DeleteRules.planFor(this@VideoPlayerActivity, listOf(item))
             android.app.AlertDialog.Builder(this@VideoPlayerActivity)
-                .setTitle("Move to Bin?")
-                .setMessage(entries.getOrNull(entry)?.name.orEmpty())
-                .setPositiveButton("Move to Bin") { _, _ ->
+                .setTitle(if (plan.allPermanent) plan.title(name) else "Move to Bin?")
+                .setMessage(if (plan.allPermanent) plan.message() else name)
+                .setPositiveButton(plan.confirmLabel()) { _, _ ->
                     lifecycleScope.launch {
-                        val n = com.clpstudio.filesmanager.Graph.bin.moveToBin(listOf(File(path)))
+                        val n = if (plan.allPermanent) com.clpstudio.filesmanager.data.PermanentDelete.delete(this@VideoPlayerActivity, listOf(File(path)))
+                        else com.clpstudio.filesmanager.Graph.bin.moveToBin(listOf(File(path)))
                         if (n > 0) {
                             com.clpstudio.filesmanager.data.Favorites.onDeleted(listOf(path))
                             com.clpstudio.filesmanager.ui.AppState.refresh()
+                            if (plan.allPermanent) android.widget.Toast.makeText(this@VideoPlayerActivity, "Deleted permanently", android.widget.Toast.LENGTH_SHORT).show()
                             removeCurrent()
                         }
                     }
@@ -827,6 +840,7 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         ui.pip = isInPictureInPictureMode
+        if (isInPictureInPictureMode) pipSinceResume = true
         if (isInPictureInPictureMode) {
             ui.controls = false
             pageAnim?.cancel(); setPageOffset(0f); ui.incoming = null

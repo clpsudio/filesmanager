@@ -39,7 +39,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.SdCard
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -85,7 +86,13 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onDefaultView = { scope.launch { Graph.settingsRepo.setDefaultView(it) } },
         onHideInRecents = { scope.launch { Graph.settingsRepo.setHideInRecents(it) } },
         onBlockScreenshots = { scope.launch { Graph.settingsRepo.setBlockScreenshots(it) } },
-        onAllowExtensionChange = { scope.launch { Graph.settingsRepo.setAllowExtensionChange(it) } },
+        onAllowTextSelection = { scope.launch { Graph.settingsRepo.setAllowTextSelection(it) } },
+        onOwnPicker = { on ->
+            scope.launch {
+                Graph.settingsRepo.setOwnPickerInOtherApps(on)
+                runCatching { com.clpstudio.filesmanager.picker.FilesDocumentsProvider.notifyRootsChanged(Graph.app) }
+            }
+        },
         onFileView = { scope.launch { Graph.settingsRepo.setFileView(it) } },
         onDiagnostics = onDiagnostics,
         onLogs = onLogs,
@@ -116,7 +123,8 @@ fun SettingsContent(
     onDefaultView: (DefaultView) -> Unit = {},
     onHideInRecents: (Boolean) -> Unit = {},
     onBlockScreenshots: (Boolean) -> Unit = {},
-    onAllowExtensionChange: (Boolean) -> Unit = {},
+    onAllowTextSelection: (Boolean) -> Unit = {},
+    onOwnPicker: (Boolean) -> Unit = {},
     onFileView: (com.clpstudio.filesmanager.data.FileView) -> Unit = {},
     onDiagnostics: () -> Unit = {},
     onLogs: () -> Unit = {},
@@ -203,7 +211,10 @@ fun SettingsContent(
                 SwitchCard(Icons.Filled.Search, "Show hidden files in search", "Search results also list hidden files and folders. Off: search skips them even while browsing shows them.", settings.hiddenInSearch, onHiddenInSearch)
             }
             item {
-                SwitchCard(Icons.Filled.Edit, "Allow changing file extension", "Off: Rename changes only the name and keeps the type (photo + .jpg). On: the whole name can be edited, and changing the extension asks first.", settings.allowExtensionChange, onAllowExtensionChange)
+                SwitchCard(Icons.Filled.TextFields, "Allow text selection in documents", "Long-press text to select and copy it in PDF, Word, Excel, PowerPoint, text, Markdown, code and EPUB. Off: text can't be selected.", settings.allowTextSelection, onAllowTextSelection)
+            }
+            item {
+                SwitchCard(Icons.Filled.FolderOpen, "Use Files' picker in other apps", "When an app asks you to choose a file (WhatsApp, Gmail…) and you pick Files, it opens with this app's look: search, preview, name, size and date. Off: Android's own picker shows Files as a folder.", settings.ownPickerInOtherApps, onOwnPicker)
             }
             item {
                 SwitchCard(Icons.Filled.SdCard, "Show SD card", "SD card files appear in Photos, Videos, Audios, Documents, Downloads, Recent and search together with phone files. Off hides them everywhere.", settings.showSdCard, onShowSdCard)

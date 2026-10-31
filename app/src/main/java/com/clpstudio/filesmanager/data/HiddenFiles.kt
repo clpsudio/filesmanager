@@ -30,56 +30,21 @@ object HiddenNames {
         while (exists(target)) target = File(dir, "$base (${n++})$ext")
         return target
     }
-
-    /**
-     * Where Unhide puts [file]: out of our ".hidden" folder back next to it (same name), or the
-     * same folder with the leading dots dropped (".notes.txt" → "notes.txt"). Clashes get " (1)".
-     */
-    fun unhideTarget(file: File, isDir: Boolean, exists: (File) -> Boolean): File? {
-        val parent = file.parentFile ?: return null
-        return if (parent.name == HIDDEN_DIR) {
-            val dest = parent.parentFile ?: return null
-            unique(dest, file.name.trimStart('.').ifEmpty { file.name }, isDir, exists)
-        } else {
-            val name = file.name.trimStart('.')
-            if (name.isEmpty() || name == file.name) null else unique(parent, name, isDir, exists)
-        }
-    }
 }
 
-/** Which of Hide / Unhide a menu shows for the selected paths. */
-data class HideChoice(val hide: Boolean, val unhide: Boolean)
+/**
+ * Which hidden-file actions a menu shows for the selected paths. Files has no Unhide: hidden items
+ * get only "Delete permanently"; ordinary items get Hide.
+ */
+data class HideChoice(val hide: Boolean, val deletePermanently: Boolean)
 
 object HideMenu {
-    /** All hidden → only Unhide; none hidden → only Hide; a mix → both. Nothing selected → neither. */
-    fun decide(paths: List<String>): HideChoice {
-        if (paths.isEmpty()) return HideChoice(hide = false, unhide = false)
-        val hidden = paths.count { HiddenNames.isHidden(it) }
-        return HideChoice(hide = hidden < paths.size, unhide = hidden > 0)
+    /** All hidden → only Delete permanently; none hidden → only Hide; a mix → both. Nothing selected → neither. */
+    fun decide(paths: List<String>, isHidden: (String) -> Boolean = HiddenNames::isHidden): HideChoice {
+        if (paths.isEmpty()) return HideChoice(hide = false, deletePermanently = false)
+        val hidden = paths.count(isHidden)
+        return HideChoice(hide = hidden < paths.size, deletePermanently = hidden > 0)
     }
-}
-
-object HiddenOps {
-    /** Reverse of Hide. Returns the new file, or null when it couldn't move. */
-    fun unhide(context: Context, file: File): File? {
-        val target = HiddenNames.unhideTarget(file, file.isDirectory) { it.exists() } ?: return null
-        val ok = file.renameTo(target) || (!file.isDirectory && runCatching { file.copyTo(target); file.delete() }.getOrDefault(false))
-        if (!ok) return null
-        // Our ".hidden" folder: drop it (and the .nomedia we added) once it is empty.
-        val parent = file.parentFile
-        if (parent != null && parent.name == HiddenNames.HIDDEN_DIR) {
-            val left = parent.listFiles()?.filter { it.name != ".nomedia" }.orEmpty()
-            if (left.isEmpty()) { File(parent, ".nomedia").delete(); parent.delete() }
-        }
-        Favorites.init(context)
-        Favorites.onMoved(file.absolutePath, target.absolutePath)
-        FileEvents.moved(file.absolutePath, target.absolutePath)
-        HiddenScan.forget(file.absolutePath)
-        FileOps.scan(context, listOf(file.absolutePath, target.absolutePath))
-        return target
-    }
-
-    fun unhideAll(context: Context, files: List<File>): Int = files.count { unhide(context, it) != null }
 }
 
 /** Every hidden file and folder on storage, found by a bounded walk (MediaStore can't see dot-files). */
@@ -92,6 +57,11 @@ object HiddenScan {
     private const val MAX_RESULTS = 20_000
     private const val MAX_DEPTH = 14
     private val SKIP_NAMES = setOf(".nomedia", ".thumbnails", ".trashed", ".pending")
+
+    /** Tests only. */
+    internal fun setForTest(items: List<FileItem>?) {
+        _state.value = State(items, scanning = false)
+    }
 
     fun forget(path: String) {
         _state.value.items?.let { l -> _state.value = _state.value.copy(items = l.filterNot { it.path == path || it.path.startsWith("$path/") }) }

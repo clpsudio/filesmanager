@@ -1,5 +1,8 @@
 package com.clpstudio.filesmanager.ui.screens
 
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -95,7 +98,7 @@ private fun DateRange.label(): String =
 /** Search by name and/or date (typed or chips), with type filters. Results stream in. */
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
-fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: () -> Unit) {
+fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: () -> Unit, onPaste: () -> Unit = {}) {
     val context = LocalContext.current
     val settings by Graph.settings.collectAsState()
     var text by rememberSaveable { mutableStateOf("") }
@@ -105,6 +108,14 @@ fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: ()
     var showPicker by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<FileItem>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+
+    // Long-press a result to select; the bar has Share, Delete and the ⋮ menu like every other list.
+    val selection = remember { com.clpstudio.filesmanager.ui.components.SelectionState() }
+    val actions = com.clpstudio.filesmanager.ui.components.rememberFileActions(
+        afterCopyOrMove = { selection.clear(); onPaste() },
+        afterAction = { selection.clear() },
+    )
+    androidx.activity.compose.BackHandler(selection.active) { selection.clear() }
 
     val parsed = remember(text) { DateQueryParser.parse(text) }
     val range: DateRange? = parsed.range ?: if (quick == QuickDate.CUSTOM) custom else DateQueryParser.quick(quick, LocalDate.now())
@@ -125,6 +136,7 @@ fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: ()
             }
     }
 
+    val liveResults = com.clpstudio.filesmanager.ui.components.rememberLiveFiles(results).orEmpty()
     SearchContent(
         root = root,
         text = text,
@@ -136,11 +148,19 @@ fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: ()
         types = types,
         onToggleType = { t -> types = if (t in types) types - t else types + t },
         queryEmpty = query.isEmpty,
-        results = com.clpstudio.filesmanager.ui.components.rememberLiveFiles(results).orEmpty(),
+        results = liveResults,
         searching = searching,
         onBack = onBack,
-        onOpen = { item -> opener.open(item, results) },
+        onOpen = { item -> if (selection.active) selection.toggle(item.path) else opener.open(item, results) },
+        selection = selection,
+        selectionActions = {
+            val sel = liveResults.filter { selection.isSelected(it.path) }
+            com.clpstudio.filesmanager.ui.components.SelectionActionsRow(
+                sel, actions, allSelected = com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selection.paths, liveResults.map { it.path }),
+            ) { selection.selectAll(com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selection.paths, liveResults.map { it.path })) }
+        },
     )
+    com.clpstudio.filesmanager.ui.components.FileActionDialogs(actions, onDeleted = { selection.clear() })
 
     if (showPicker) {
         val state = rememberDateRangePickerState()
@@ -169,6 +189,14 @@ fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: ()
     }
 }
 
+/** What a tap on blank space in Search does (item 61). */
+object SearchBlankTap {
+    enum class Action { CLOSE, HIDE_KEYBOARD }
+
+    fun action(text: String, types: Set<TypeFilter>, quick: QuickDate): Action =
+        if (text.isBlank() && types.isEmpty() && quick == QuickDate.ANY) Action.CLOSE else Action.HIDE_KEYBOARD
+}
+
 /** The search screen's visuals (state lives in [SearchScreen]); also rendered by screenshot tests. */
 @Composable
 internal fun SearchContent(
@@ -187,11 +215,19 @@ internal fun SearchContent(
     onBack: () -> Unit,
     onOpen: (FileItem) -> Unit,
     autoFocus: Boolean = true,
+    selection: com.clpstudio.filesmanager.ui.components.SelectionState? = null,
+    selectionActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
     val chipColors = searchChipColors()
     GlassScaffold(
         topBar = {
-            Column(Modifier.fillMaxWidth().glassBar().statusBarsPadding().padding(bottom = 8.dp)) {
+            if (selection != null && selection.active) {
+                com.clpstudio.filesmanager.ui.components.GlassTopBar(
+                    title = "${selection.paths.size} selected",
+                    navigation = { com.clpstudio.filesmanager.ui.components.CloseSelectionButton { selection.clear() } },
+                    actions = selectionActions,
+                )
+            } else Column(Modifier.fillMaxWidth().glassBar().statusBarsPadding().padding(bottom = 8.dp)) {
                 Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     SearchField(
@@ -244,6 +280,18 @@ internal fun SearchContent(
             }
         },
     ) { padding ->
+        // Item 61: a tap on blank space closes Search when nothing is typed; otherwise it only hides the keyboard.
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val blank = androidx.compose.runtime.rememberUpdatedState(SearchBlankTap.action(text, types, quick))
+        Box(
+            Modifier.fillMaxSize().testTag("searchBlank").pointerInput(Unit) {
+                detectTapGestures {
+                    keyboard?.hide(); focus.clearFocus()
+                    if (blank.value == SearchBlankTap.Action.CLOSE) onBack()
+                }
+            },
+        ) {
         when {
             queryEmpty -> SearchHint(
                 Icons.Filled.Search, "Search by name or date",
@@ -268,12 +316,13 @@ internal fun SearchContent(
                 }
                 items(results, key = { it.path }, contentType = { it.kind }) { item ->
                     FileRow(
-                        item = item, selected = false, selectionMode = false,
-                        onClick = { onOpen(item) }, onLongClick = {},
+                        item = item, selected = selection?.isSelected(item.path) == true, selectionMode = selection?.active == true,
+                        onClick = { onOpen(item) }, onLongClick = { selection?.toggle(item.path) },
                         extraLine = StoragePaths.relative(item.parentPath) + " · " + formatDate(item.modified),
                     )
                 }
             }
+        }
         }
     }
 }

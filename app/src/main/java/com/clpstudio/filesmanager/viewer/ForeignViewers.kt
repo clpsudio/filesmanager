@@ -146,7 +146,7 @@ fun ForeignVideoScreen(f: OpenedFile, onBack: () -> Unit, extraActions: @Composa
     val context = LocalContext.current
     val item = remember(f.uri) { FileItem(f.uri.toString(), f.name, false, f.size.coerceAtLeast(0L), 0L, FileKind.VIDEO) }
     val video = remember { PagerVideo(context) }
-    DisposableEffect(video) { onDispose { video.release() } }
+    DisposableEffect(video) { onDispose { video.closeAll(context); video.release() } }
     var chrome by remember { mutableStateOf(true) }
     var info by remember { mutableStateOf(false) }
     val pill = remember { LevelPillState() }
@@ -162,7 +162,16 @@ fun ForeignVideoScreen(f: OpenedFile, onBack: () -> Unit, extraActions: @Composa
             if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 val act = context.findActivity()
                 // Closing the screen or the small window stops it (item 33); otherwise it waits paused.
-                if (act?.isFinishing == true || VideoPip.inPip) video.closeAll(context) else if (act?.isChangingConfigurations != true) video.pause()
+                when (VideoClose.onStop(
+                    changingConfig = act?.isChangingConfigurations == true, finishing = act?.isFinishing == true,
+                    pipNow = VideoPip.inPip, pipSinceResume = VideoPip.pipSinceResume,
+                    playing = video.playing, hasVideo = true, backgroundPlay = false, // shared videos never hand off
+                    screenOff = VideoPip.screenOff(context),
+                )) {
+                    VideoClose.OnStop.CLOSE -> video.closeAll(context)
+                    VideoClose.OnStop.PAUSE, VideoClose.OnStop.HAND_OFF -> video.pause()
+                    VideoClose.OnStop.NOTHING -> Unit
+                }
             }
         }
         lifecycle.addObserver(obs)

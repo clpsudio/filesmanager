@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Lock
@@ -83,6 +84,8 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
     var pickFolderFor by remember { mutableStateOf<List<String>?>(null) }
     var menu by remember { mutableStateOf(false) }
     val selected = remember { mutableStateListOf<String>() }
+    /** Entries waiting for "Delete from archive" (archives have no Bin: permanent, after a confirm). */
+    var confirmDeleteEntries by remember { mutableStateOf<List<String>?>(null) }
 
     val probe by produceState<ZipLoad>(ZipLoad.Loading, path, AppState.refreshTick) {
         value = withContext(Dispatchers.IO) {
@@ -146,6 +149,12 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
                         }
                         IconButton(onClick = { extract(selected.toList(), if (dir.isEmpty()) defaultTarget() else defaultTarget()) }) { Icon(Icons.Filled.Unarchive, "Extract") }
                         IconButton(onClick = { pickFolderFor = selected.toList() }) { Icon(Icons.Filled.DriveFolderUpload, "Extract to...") }
+                        // No Delete at all inside an APK / app bundle: its files are read-only (view, open, extract).
+                        val entriesNow = ready?.entries.orEmpty()
+                        if (ArchiveOps.showDeleteInside(zipFile, entriesNow)) IconButton(onClick = {
+                            val why = ArchiveOps.deleteInsideBlocker(zipFile, ready?.format ?: Archives.formatOfName(zipFile.name), entriesNow)
+                            if (why != null) Toast.makeText(context, why, Toast.LENGTH_LONG).show() else confirmDeleteEntries = selected.toList()
+                        }) { Icon(Icons.Filled.Delete, "Delete") }
                     },
                 )
             } else {
@@ -245,6 +254,23 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
             confirm = "Extract here",
             onPick = { dest -> pickFolderFor = null; extract(paths.ifEmpty { null }, dest) },
             onDismiss = { pickFolderFor = null },
+        )
+    }
+    confirmDeleteEntries?.let { paths ->
+        com.clpstudio.filesmanager.ui.components.ConfirmDialog(
+            title = if (paths.size == 1) "Delete ${paths[0].substringAfterLast('/')} from ${zipFile.name}?" else "Delete ${paths.size} items from ${zipFile.name}?",
+            text = "They're removed from the archive for good (archives have no Bin). This can't be undone.",
+            confirm = "Delete",
+            destructive = true,
+            onConfirm = {
+                selected.clear()
+                // Belt and braces: never rewrite an app package.
+                if (!ArchiveOps.isAppPackage(zipFile, ready?.entries.orEmpty())) AppState.runOperation(context, "Deleting from archive") {
+                    val n = withContext(Dispatchers.IO) { ArchiveOps.removeEntries(zipFile, paths) }
+                    "Deleted $n item" + (if (n == 1) "" else "s") + " from ${zipFile.name}" to listOf(zipFile)
+                }
+            },
+            onDismiss = { confirmDeleteEntries = null },
         )
     }
 }

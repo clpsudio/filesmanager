@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager.viewer
 
+import androidx.compose.ui.platform.testTag
 import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
@@ -113,6 +114,15 @@ fun HexViewerScreen(uri: Uri, name: String, onBack: () -> Unit) {
 /** TTF / OTF: the font's own letters in a few sizes. */
 @Composable
 fun FontPreviewScreen(uri: Uri, name: String, onBack: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        FontPreviewContent(uri, name)
+        ViewerTopBar(name, "Font preview", onBack)
+    }
+}
+
+/** The font itself (item 59): shown straight away, in the full screen and inside the pager (no "Open" card). */
+@Composable
+fun FontPreviewContent(uri: Uri, name: String, modifier: Modifier = Modifier, topPadding: androidx.compose.ui.unit.Dp = 110.dp) {
     val context = LocalContext.current
     val font by produceState<Result<FontFamily>?>(null, uri) {
         value = withContext(Dispatchers.IO) {
@@ -122,32 +132,36 @@ fun FontPreviewScreen(uri: Uri, name: String, onBack: () -> Unit) {
             }
         }
     }
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Box(modifier.fillMaxSize()) {
         val f = font
         when {
             f == null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             f.isFailure -> EmptyState(Icons.Filled.FontDownload, "This font couldn't be read")
             else -> LazyColumn(
-                contentPadding = PaddingValues(top = 110.dp, bottom = 40.dp, start = 16.dp, end = 16.dp),
+                Modifier.fillMaxSize().testTag(FONT_PREVIEW_TAG),
+                contentPadding = PaddingValues(top = topPadding, bottom = 80.dp, start = 16.dp, end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 val family = f.getOrThrow()
                 item {
                     Column(Modifier.fillMaxWidth().glassPanel(RoundedCornerShape(24.dp)).padding(18.dp)) {
-                        Text("Aa Bb Cc", fontFamily = family, fontSize = 56.sp)
+                        Text("Aa Bb Cc", fontFamily = family, fontSize = 56.sp, lineHeight = 68.sp)
                         Text("ABCDEFGHIJKLMNOPQRSTUVWXYZ", fontFamily = family, fontSize = 20.sp)
                         Text("abcdefghijklmnopqrstuvwxyz", fontFamily = family, fontSize = 20.sp)
                         Text("0123456789 !@#₹%&*()", fontFamily = family, fontSize = 20.sp)
+                        // Telugu sample (shown in the system font when this font has no Telugu letters).
+                        Text("అ ఆ ఇ ఈ ఉ ఊ క ఖ గ", fontFamily = family, fontSize = 24.sp)
                     }
                 }
                 items(listOf(12, 16, 24, 32, 48)) { size ->
-                    Text("The quick brown fox jumps over the lazy dog", fontFamily = family, fontSize = size.sp)
+                    Text("The quick brown fox jumps over the lazy dog", fontFamily = family, fontSize = size.sp, lineHeight = (size * 1.25f).sp)
                 }
             }
         }
-        ViewerTopBar(name, "Font preview", onBack)
     }
 }
+
+const val FONT_PREVIEW_TAG = "fontPreview"
 
 private suspend fun localFile(context: Context, uri: Uri, name: String): File =
     if (uri.scheme == "file") File(uri.path!!) else ExternalFiles.copyToCache(context, uri, name)

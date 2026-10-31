@@ -69,7 +69,8 @@ class InfoEditsTest {
         assertNull(InfoEdits.nameError("Holiday 2026.jpg", "IMG_1.jpg", none))
         assertNull(InfoEdits.nameError("  trimmed.pdf  ", "a.pdf", none))
         assertNull(InfoEdits.nameError("नमस्ते.txt", "a.txt", none))
-        assertNull(InfoEdits.nameError(".hidden", "a", none))
+        // Item 56: a leading dot would hide the file, so it's refused.
+        assertNotNull(InfoEdits.nameError(".hidden", "a", none))
     }
 
     @Test fun emptyAndDotNamesFail() {

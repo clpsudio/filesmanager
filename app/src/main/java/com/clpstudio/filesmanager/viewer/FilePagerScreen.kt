@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.ScreenLockRotation
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
@@ -142,8 +144,15 @@ fun FilePagerScreen(
     ResetBrightnessOnExit()
     // Videos play inline, right in the pager (Media, Recent, Favorites, folders): no "Play" card.
     val video = remember { PagerVideo(context) }
-    DisposableEffect(video) { onDispose { video.release() } }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(video) {
+        onDispose {
+            val act = context.findActivity()
+            // Back / swipe down / the app closing: nothing plays on, background copy and notification included.
+            if (VideoClose.onDispose(act?.isChangingConfigurations == true, act?.isFinishing == true, androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))) video.closeAll(context)
+            video.release()
+        }
+    }
     // Leaving the app with a video playing: Background play (Settings, on by default) keeps the sound going in the
     // media service with its notification; coming back picks it up here at the same spot.
     DisposableEffect(lifecycle) {
@@ -155,14 +164,23 @@ fun FilePagerScreen(
                     val videos = list.filter { pagerPageType(it.kind) == PagerPage.VIDEO }
                     val idx = videos.indexOfFirst { it.path == cur }
                     val pipShown = VideoPip.inPip || (android.os.Build.VERSION.SDK_INT >= 24 && act?.isInPictureInPictureMode == true)
-                    when {
-                        act?.isChangingConfigurations == true -> Unit
+                    when (VideoClose.onStop(
+                        changingConfig = act?.isChangingConfigurations == true,
+                        finishing = act?.isFinishing == true,
+                        pipNow = pipShown,
+                        pipSinceResume = VideoPip.pipSinceResume,
+                        playing = video.playing,
+                        hasVideo = idx >= 0,
+                        backgroundPlay = runCatching { Graph.settings.value.backgroundPlay }.getOrDefault(true),
+                        screenOff = VideoPip.screenOff(context),
+                    )) {
+                        VideoClose.OnStop.NOTHING -> Unit
                         // Closing the screen or the picture-in-picture window stops the video and its notification (item 33).
-                        act?.isFinishing == true || pipShown -> video.closeAll(context)
+                        VideoClose.OnStop.CLOSE -> video.closeAll(context)
                         // Leaving the app without picture-in-picture (Auto picture-in-picture off, or not allowed):
                         // Background play keeps the sound going.
-                        video.playing && idx >= 0 && Graph.settings.value.backgroundPlay -> video.handOff(context, videos, idx)
-                        else -> video.pause()
+                        VideoClose.OnStop.HAND_OFF -> video.handOff(context, videos, idx)
+                        VideoClose.OnStop.PAUSE -> video.pause()
                     }
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_START -> video.takeBack(context) { p, _, _ ->
@@ -318,6 +336,8 @@ fun FilePagerScreen(
                 FileKind.PDF -> PdfContent(uri, item.name, paper, topPadding = top)
                 FileKind.TEXT -> if (Markdown.isMarkdown(item.name)) MarkdownContent(uri, mdSource, paper, topPadding = top) else TextContent(uri, paper, topPadding = top)
                 FileKind.DOCUMENT -> OfficePage(item, paper, top) { openFull(item, list.toList()) }
+                // Fonts show straight away (item 59), no "Open" card.
+                FileKind.FONT -> FontPreviewContent(uri, item.name, swipe, topPadding = top)
                 else -> if (com.clpstudio.filesmanager.data.DesignPreview.isDesign(item.name)) {
                     DesignPage(File(item.path), item.name, zoom, swipe, topPadding = top) { chrome = !chrome }
                 } else PreviewCard(item, swipe) { openFull(item, list.toList()) }
@@ -363,6 +383,7 @@ fun FilePagerScreen(
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                     DropdownMenu(menu, { menu = false }) {
                         val file = File(current.path)
+                        val currentHidden = remember(current.path) { com.clpstudio.filesmanager.data.DeleteRules.isHiddenOnPhone(context, current.path) }
                         val entries = viewerMenuEntries(
                             kind = current.kind,
                             onEdit = { PhotoActions.edit(context, file) },
@@ -376,18 +397,13 @@ fun FilePagerScreen(
                                 }
                             },
                             onInfo = { info = true },
-                            hidden = com.clpstudio.filesmanager.data.HiddenNames.isHidden(current.path),
-                            onUnhide = {
-                                if (com.clpstudio.filesmanager.data.HiddenOps.unhide(context, file) != null) {
-                                    Toast.makeText(context, "Unhidden", Toast.LENGTH_SHORT).show()
-                                    dropPages(listOf(current.path))
-                                } else {
-                                    Toast.makeText(context, "Couldn't unhide it", Toast.LENGTH_SHORT).show()
-                                }
-                            },
+                            hidden = currentHidden,
+                            onDeletePermanently = { actions.deleteTargets = listOf(current) },
                         ) + listOfNotNull(
                             // Only a real file on storage can be renamed (not one shared in by another app).
-                            if (File(current.path).exists()) ViewerMenuEntry(Icons.Filled.DriveFileRenameOutline, "Rename") { renaming = current } else null,
+                            // Hidden files: no Rename / date (only Delete permanently).
+                            if (File(current.path).exists() && !currentHidden) ViewerMenuEntry(Icons.Filled.DriveFileRenameOutline, "Rename") { renaming = current } else null,
+                            if (File(current.path).exists() && !currentHidden) ViewerMenuEntry(Icons.Filled.Schedule, "Edit date & time") { actions.dateTarget = current } else null,
                             ViewerMenuEntry(Icons.Filled.Share, "Share") { actions.share(listOf(current)) },
                             ViewerMenuEntry(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") { actions.openWith(current) },
                             ViewerMenuEntry(Icons.Filled.Folder, "Show in folder") { showInFolder(current.parentPath) },
@@ -395,7 +411,8 @@ fun FilePagerScreen(
                             // Only the one that applies: Add for a PDF without a password, Remove for a protected one.
                             if (com.clpstudio.filesmanager.data.PasswordEntry.ADD in pwEntries) ViewerMenuEntry(Icons.Filled.Lock, "Add password") { actions.pdfLockTarget = current } else null,
                             if (com.clpstudio.filesmanager.data.PasswordEntry.REMOVE in pwEntries) ViewerMenuEntry(Icons.Filled.LockOpen, "Remove password") { actions.pdfUnlockTarget = current } else null,
-                            ViewerMenuEntry(Icons.Filled.Delete, "Delete") { actions.deleteTargets = listOf(current) },
+                            // Hidden files already have "Delete permanently" above.
+                            if (!currentHidden) ViewerMenuEntry(Icons.Filled.Delete, "Delete") { actions.deleteTargets = listOf(current) } else null,
                         )
                         entries.forEach { e -> MenuRow(e.icon, e.label) { menu = false; e.onClick() } }
                     }
@@ -502,13 +519,13 @@ data class ViewerMenuEntry(val icon: ImageVector, val label: String, val onClick
 /** The photo-specific rows of the viewer menu: Edit and Set as (photos only), then Hide and Info. */
 fun viewerMenuEntries(
     kind: FileKind, onEdit: () -> Unit, onSetAs: () -> Unit, onHide: () -> Unit, onInfo: () -> Unit,
-    hidden: Boolean = false, onUnhide: (() -> Unit)? = null,
+    hidden: Boolean = false, onDeletePermanently: (() -> Unit)? = null,
 ): List<ViewerMenuEntry> =
     listOfNotNull(
         if (kind == FileKind.IMAGE) ViewerMenuEntry(Icons.Filled.Edit, "Edit", onEdit) else null,
         if (kind == FileKind.IMAGE) ViewerMenuEntry(Icons.Filled.Wallpaper, "Set as", onSetAs) else null,
-        // A hidden file gets Unhide (never Hide); a normal one gets Hide.
-        if (hidden && onUnhide != null) ViewerMenuEntry(Icons.Filled.Visibility, "Unhide", onUnhide)
+        // A hidden file gets only "Delete permanently" (no Unhide in Files, no Hide again); a normal one gets Hide.
+        if (hidden && onDeletePermanently != null) ViewerMenuEntry(Icons.Filled.DeleteForever, "Delete permanently", onDeletePermanently)
         else if (!hidden) ViewerMenuEntry(Icons.Filled.VisibilityOff, "Hide", onHide) else null,
         ViewerMenuEntry(Icons.Filled.Info, "Info", onInfo),
     )

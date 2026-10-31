@@ -1,5 +1,7 @@
 package com.clpstudio.filesmanager.ui.vault
 
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.mutableIntStateOf
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -201,6 +204,16 @@ fun VaultSetup(onBack: () -> Unit) {
 @Composable
 private fun VaultUnlock(onBack: () -> Unit, onSettings: () -> Unit) {
     var lost by remember { mutableStateOf<String?>(null) }
+    var resetStep by remember { mutableIntStateOf(0) }
+    val resetScope = rememberCoroutineScope()
+    val resetContext = androidx.compose.ui.platform.LocalContext.current
+    VaultResetDialogs(resetStep, onStep = { resetStep = it }, onReset = {
+        resetStep = 0
+        resetScope.launch {
+            Vault.resetForgotten()
+            android.widget.Toast.makeText(resetContext.applicationContext, "Vault reset. Set it up again with a new PIN or password.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    })
     GlassScaffold(topBar = {
         GlassTopBar("Vault", onBack = onBack, actions = { IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Vault settings") } })
     }) { padding ->
@@ -222,7 +235,13 @@ private fun VaultUnlock(onBack: () -> Unit, onSettings: () -> Unit) {
                     }
                 },
                 onUnlocked = {},
-                waitUntil = { Vault.attempts.let { it.lockedUntil to it.failures } },
+                remainingMs = { Vault.remainingMs() },
+                // Always available, also during a lockout.
+                extra = { _ ->
+                    androidx.compose.material3.TextButton(onClick = { resetStep = 1 }) {
+                        Text("Forgot ${if (type == CredentialType.PIN) "PIN" else "password"}? Reset vault", color = MaterialTheme.colorScheme.error)
+                    }
+                },
             )
         }
     }
@@ -234,6 +253,22 @@ private fun VaultList(onBack: () -> Unit, onOpen: (VaultItem) -> Unit, onSetting
     val context = LocalContext.current
     val items by Vault.items.collectAsState()
     val selected = remember { mutableStateListOf<String>() }
+    var renameItem by remember { mutableStateOf<VaultItem?>(null) }
+    renameItem?.let { item ->
+        val scope = rememberCoroutineScope()
+        com.clpstudio.filesmanager.ui.components.RenameFileDialog(
+            name = item.name, isDir = false,
+            onRename = { typed ->
+                // Checked first so a bad name keeps the dialog open with the message.
+                com.clpstudio.filesmanager.data.InfoEdits.nameError(typed.trim(), item.name) { false } ?: run {
+                    scope.launch { Vault.rename(item, typed); selected.clear() }
+                    renameItem = null
+                    null
+                }
+            },
+            onDismiss = { renameItem = null },
+        )
+    }
     var confirmDelete by remember { mutableStateOf<List<VaultItem>?>(null) }
     var pickDestFor by remember { mutableStateOf<List<VaultItem>?>(null) }
     var menu by remember { mutableStateOf(false) }
@@ -278,6 +313,7 @@ private fun VaultList(onBack: () -> Unit, onOpen: (VaultItem) -> Unit, onSetting
                                 })
                                 DropdownMenuItem(text = { Text("Move out (back where it was)") }, leadingIcon = { Icon(Icons.Filled.DriveFolderUpload, null) }, onClick = { menu = false; Vault.moveOut(context, selItems, null) { selected.clear() } })
                                 DropdownMenuItem(text = { Text("Move out to...") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) }, onClick = { menu = false; pickDestFor = selItems })
+                                if (selItems.size == 1) DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Filled.DriveFileRenameOutline, null) }, onClick = { menu = false; renameItem = selItems[0] })
                                 DropdownMenuItem(text = { Text("Delete forever") }, leadingIcon = { Icon(Icons.Filled.DeleteForever, null) }, onClick = { menu = false; confirmDelete = selItems })
                             }
                         }
@@ -418,4 +454,51 @@ object VaultUris {
         context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), sel, args, null)?.use { c ->
             if (c.moveToFirst() && !c.isNull(0)) File(c.getString(0)) else null
         }
+}
+
+
+/** Typed word that confirms the vault reset. */
+const val RESET_WORD = "DELETE"
+
+/** The confirm button unlocks only when the word is typed and 5 s have passed. */
+fun resetConfirmEnabled(typed: String, secondsLeft: Int): Boolean = typed.trim() == RESET_WORD && secondsLeft <= 0
+
+/**
+ * "Forgot PIN/password? Reset vault" (item 58): 1 = the warning, 2 = type DELETE (button waits 5 s).
+ */
+@Composable
+fun VaultResetDialogs(step: Int, onStep: (Int) -> Unit, onReset: () -> Unit, waitSeconds: Int = 5, initialTyped: String = "") {
+    when (step) {
+        1 -> androidx.compose.material3.AlertDialog(
+            onDismissRequest = { onStep(0) },
+            icon = { Icon(Icons.Filled.DeleteForever, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Reset the vault?") },
+            text = { Text("This permanently deletes ALL vault files and the vault PIN/password. They cannot be recovered (there is no recovery, by design). Your other files and the app lock are not touched.") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { onStep(2) }) { Text("Continue", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { onStep(0) }) { Text("Cancel") } },
+        )
+        2 -> {
+            var typed by remember { mutableStateOf(initialTyped) }
+            var left by remember { mutableIntStateOf(waitSeconds) }
+            LaunchedEffect(Unit) { while (left > 0) { kotlinx.coroutines.delay(1000); left-- } }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { onStep(0) },
+                title = { Text("Delete everything in the vault") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Type $RESET_WORD to confirm.")
+                        androidx.compose.material3.OutlinedTextField(typed, { typed = it }, singleLine = true, placeholder = { Text(RESET_WORD) }, modifier = Modifier.fillMaxWidth().testTag("resetWord"))
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.Button(
+                        onClick = onReset,
+                        enabled = resetConfirmEnabled(typed, left),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    ) { Text(if (left > 0) "Reset vault ($left)" else "Reset vault") }
+                },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { onStep(0) }) { Text("Cancel") } },
+            )
+        }
+    }
 }

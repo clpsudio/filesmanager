@@ -1,6 +1,5 @@
 package com.clpstudio.filesmanager.ui.screens
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,8 +11,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -40,7 +39,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.clpstudio.filesmanager.data.FileItem
 import com.clpstudio.filesmanager.data.FileKind
-import com.clpstudio.filesmanager.data.HiddenOps
 import com.clpstudio.filesmanager.data.HiddenScan
 import com.clpstudio.filesmanager.data.FileView
 import com.clpstudio.filesmanager.ui.Opener
@@ -52,10 +50,7 @@ import com.clpstudio.filesmanager.ui.components.SelectionState
 import com.clpstudio.filesmanager.ui.components.rememberLiveFiles
 import com.clpstudio.filesmanager.ui.components.swipeTabs
 import com.clpstudio.filesmanager.ui.glass.GlassScaffold
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
 /** The type chips of the Hidden files screen. */
 enum class HiddenChip(val label: String) {
@@ -72,7 +67,7 @@ enum class HiddenChip(val label: String) {
     }
 }
 
-/** Every hidden file and folder in one place, with Unhide (one or many). */
+/** Every hidden file and folder in one place. Files has no Unhide: select and Delete permanently (one or many). */
 @Composable
 fun HiddenFilesScreen(opener: Opener, onBack: () -> Unit, onFolder: (String) -> Unit) {
     val context = LocalContext.current
@@ -84,14 +79,8 @@ fun HiddenFilesScreen(opener: Opener, onBack: () -> Unit, onFolder: (String) -> 
     val shown = remember(all, chip) { all?.filter { chip.matches(it) } }
     val selection = remember { SelectionState() }
     BackHandler(selection.active) { selection.clear() }
-    fun unhide(items: List<FileItem>) {
-        scope.launch {
-            val n = withContext(Dispatchers.IO) { HiddenOps.unhideAll(context.applicationContext, items.map { File(it.path) }) }
-            selection.clear()
-            com.clpstudio.filesmanager.ui.AppState.refresh()
-            Toast.makeText(context, if (n == items.size) "Unhidden: $n" else "Unhidden $n of ${items.size}", Toast.LENGTH_SHORT).show()
-        }
-    }
+    // Delete here = permanent (hidden files skip the Bin), after a confirm that says it can't be undone.
+    val actions = com.clpstudio.filesmanager.ui.components.rememberFileActions(afterCopyOrMove = {})
     GlassScaffold(
         topBar = {
             val chips: @Composable () -> Unit = {
@@ -122,7 +111,9 @@ fun HiddenFilesScreen(opener: Opener, onBack: () -> Unit, onFolder: (String) -> 
                         com.clpstudio.filesmanager.ui.components.SelectAllToggle(com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selection.paths, allP)) {
                             selection.selectAll(com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selection.paths, allP))
                         }
-                        IconButton(onClick = { unhide(shown.orEmpty().filter { selection.isSelected(it.path) }) }) { Icon(Icons.Filled.Visibility, "Unhide") }
+                        IconButton(onClick = { actions.deleteTargets = shown.orEmpty().filter { selection.isSelected(it.path) } }) {
+                            Icon(Icons.Filled.DeleteForever, "Delete permanently", tint = MaterialTheme.colorScheme.error)
+                        }
                     },
                     below = chips,
                 )
@@ -131,7 +122,7 @@ fun HiddenFilesScreen(opener: Opener, onBack: () -> Unit, onFolder: (String) -> 
                     title = "Hidden files",
                     subtitle = when {
                         st.scanning -> "Searching storage... ${st.scannedFolders} folders"
-                        all != null -> "${all.size} hidden · long-press to select, then Unhide"
+                        all != null -> "${all.size} hidden · long-press to select, then Delete permanently"
                         else -> null
                     },
                     onBack = onBack,
@@ -161,4 +152,5 @@ fun HiddenFilesScreen(opener: Opener, onBack: () -> Unit, onFolder: (String) -> 
             }
         }
     }
+    com.clpstudio.filesmanager.ui.components.FileActionDialogs(actions, onDeleted = { selection.clear() })
 }

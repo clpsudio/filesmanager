@@ -52,6 +52,13 @@ object VideoPip {
 
     var inPip by mutableStateOf(false)
         private set
+    /**
+     * The small window was shown since the screen was last resumed (cleared on resume = the user opened it back up).
+     * A stop while this is set means the small window was closed — whatever order Android reports
+     * "left picture-in-picture" and "stopped" in (it differs between phones and Android versions).
+     */
+    var pipSinceResume = false
+        private set
     private var host: Host? = null
     private var playing = false
     private var aspect: Rational? = null
@@ -136,7 +143,25 @@ object VideoPip {
     /** From the activity: the small window opened or closed. Closed while not visible = the user dismissed it. */
     fun onModeChanged(activity: Activity, isInPip: Boolean, lifecycle: Lifecycle) {
         inPip = isInPip
+        if (isInPip) pipSinceResume = true
         if (!isInPip && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) host?.stop()
+    }
+
+    /** From the activity's onResume: back on screen full size (not a closed small window). */
+    fun onResumed() {
+        pipSinceResume = false
+    }
+
+    /** Whether the phone's screen is off (power button / timeout). */
+    fun screenOff(context: Context): Boolean =
+        runCatching { !(context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive }.getOrDefault(false)
+
+    /** Tests only. */
+    internal fun resetForTest() {
+        inPip = false
+        pipSinceResume = false
+        host = null
+        playing = false
     }
 
     val receiver = object : BroadcastReceiver() {
@@ -157,6 +182,42 @@ object VideoPip {
     fun unregister(activity: Activity) {
         runCatching { activity.unregisterReceiver(receiver) }
     }
+}
+
+/**
+ * What a video screen does when it stops (pure, unit tested; item 33 / item 48 "audio keeps playing after close").
+ * CLOSE = stop the player, any background copy and its notification. HAND_OFF = Background play (Settings) keeps
+ * the sound going in the media service. PAUSE = wait paused. NOTHING = rotating.
+ */
+object VideoClose {
+    enum class OnStop { NOTHING, CLOSE, HAND_OFF, PAUSE }
+
+    fun onStop(
+        changingConfig: Boolean,
+        finishing: Boolean,
+        pipNow: Boolean,
+        pipSinceResume: Boolean,
+        playing: Boolean,
+        hasVideo: Boolean,
+        backgroundPlay: Boolean,
+        /** The screen just turned off (a stop then is not a closed window). */
+        screenOff: Boolean = false,
+    ): OnStop = when {
+        changingConfig -> OnStop.NOTHING
+        finishing -> OnStop.CLOSE
+        // The picture-in-picture window was closed (its X, or dragged away).
+        !screenOff && (pipNow || pipSinceResume) -> OnStop.CLOSE
+        playing && hasVideo && backgroundPlay -> OnStop.HAND_OFF
+        else -> OnStop.PAUSE
+    }
+
+    /**
+     * The video screen left the composition. Leaving it inside the app (back, swipe down) or with the
+     * app closing stops everything; being torn down while the app sits in the background (Android
+     * reclaiming memory) leaves a Background-play copy playing.
+     */
+    fun onDispose(changingConfig: Boolean, finishing: Boolean, appVisible: Boolean): Boolean =
+        !changingConfig && (finishing || appVisible)
 }
 
 /** Wires a gallery video view to picture-in-picture while it is on screen. */

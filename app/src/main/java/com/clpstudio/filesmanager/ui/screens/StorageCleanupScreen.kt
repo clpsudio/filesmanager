@@ -160,12 +160,14 @@ fun StorageCleanupScreen(mode: String, volumePath: String, onBack: () -> Unit) {
     )
     if (confirm) {
         val files = visible.filter { it.path in selected }
+        val plan = remember(files) { com.clpstudio.filesmanager.data.DeleteRules.planFor(context, files) }
         ConfirmDialog(
-            title = "Move to Bin?",
-            text = "${files.size} item" + (if (files.size == 1) "" else "s") + " (${formatSize(files.sumOf { it.size })}) will be moved to the Bin and kept for 30 days.",
-            confirm = "Move to Bin",
+            title = if (plan.permanent.isEmpty()) "Move to Bin?" else plan.title(files.singleOrNull()?.name),
+            text = if (plan.permanent.isEmpty()) "${files.size} item" + (if (files.size == 1) "" else "s") + " (${formatSize(files.sumOf { it.size })}) will be moved to the Bin and kept for 30 days."
+            else plan.message(),
+            confirm = plan.confirmLabel(),
             destructive = true,
-            onConfirm = { AppState.moveToBin(context, files.map { File(it.path) }) { selected = emptySet() } },
+            onConfirm = { AppState.delete(context, plan) { selected = emptySet() } },
             onDismiss = { confirm = false },
         )
     }

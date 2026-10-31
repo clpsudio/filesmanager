@@ -45,6 +45,8 @@ object PlayerConnection {
         AudioLoop.plays = 0
         c.repeatMode = AudioLoop.repeatModeFor(com.clpstudio.filesmanager.data.PlaylistPlay.loopMode(playlist, s?.audioLoopMode ?: com.clpstudio.filesmanager.data.LoopMode.OFF), s?.audioLoopTimes ?: 3, 0)
         c.shuffleModeEnabled = false
+        // The remembered audio speed (item 52), natural pitch; a video may have left its own speed on the shared player.
+        c.playbackParameters = AudioSpeed.params()
         play(context, items, index)
     }
 
@@ -71,6 +73,8 @@ data class PlayerUi(
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val index: Int = 0,
     val queue: List<MediaMetadata> = emptyList(),
+    /** Playback speed (item 52). */
+    val speed: Float = 1f,
 )
 
 @Composable
@@ -99,6 +103,7 @@ fun rememberPlayerUi(connect: Boolean = true): PlayerUi {
             repeatMode = p.repeatMode,
             index = p.currentMediaItemIndex,
             queue = (0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaMetadata },
+            speed = p.playbackParameters.speed,
         )
     }
     if (c != null) {

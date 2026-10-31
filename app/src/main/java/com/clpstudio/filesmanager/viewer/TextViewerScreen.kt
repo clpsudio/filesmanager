@@ -81,6 +81,7 @@ fun TextContent(uri: Uri, modifier: Modifier = Modifier, topPadding: Dp = 100.dp
                 val pages = (list.size + TEXT_LINES_PER_PAGE - 1) / TEXT_LINES_PER_PAGE
                 val hScroll = rememberScrollState()
                 val edge = Color(0xFFD5D9E0)
+                com.clpstudio.filesmanager.ui.components.DocumentSelection(Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(top = topPadding, bottom = 64.dp, start = 12.dp, end = 12.dp),
@@ -109,6 +110,7 @@ fun TextContent(uri: Uri, modifier: Modifier = Modifier, topPadding: Dp = 100.dp
                     if (truncated) item {
                         Text("Showing the first 4 MB.", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                     }
+                }
                 }
                 val page = listState.firstVisibleItemIndex / TEXT_LINES_PER_PAGE + 1
                 PageCounter(page.coerceAtMost(pages.coerceAtLeast(1)), pages.coerceAtLeast(1), Modifier.align(Alignment.BottomEnd))

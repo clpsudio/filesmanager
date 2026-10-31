@@ -170,6 +170,8 @@ private fun VaultMediaPage(item: VaultItem, active: Boolean) {
             val source = ProgressiveMediaSource.Factory(VaultDataSource.Factory { Vault.store.openReader(item) })
                 .createMediaSource(MediaItem.fromUri("vault://item/${item.id}"))
             setMediaSource(source)
+            // Vault audio starts at the remembered audio speed (item 52), natural pitch.
+            if (item.kind == com.clpstudio.filesmanager.data.FileKind.AUDIO) playbackParameters = com.clpstudio.filesmanager.playback.AudioSpeed.params()
             prepare()
             playWhenReady = true
         }
@@ -178,12 +180,29 @@ private fun VaultMediaPage(item: VaultItem, active: Boolean) {
         val focus = com.clpstudio.filesmanager.playback.FocusController(
             context, player, duckEnabled = { runCatching { com.clpstudio.filesmanager.Graph.settings.value.duckForNotifications }.getOrDefault(true) }, movie = true,
         )
-        onDispose { focus.release(); player.release() }
+        onDispose { focus.release(); player.stop(); player.release() }
     }
-    AndroidView(
-        factory = { ctx -> PlayerView(ctx).apply { this.player = player; setShowNextButton(false); setShowPreviousButton(false) } },
-        modifier = Modifier.fillMaxSize().padding(top = 72.dp),
-    )
+    // Leaving the app (Home, recents, screen off): vault video/audio pauses (no background play from the vault).
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, player) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) player.pause() }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { ctx -> PlayerView(ctx).apply { this.player = player; setShowNextButton(false); setShowPreviousButton(false) } },
+            modifier = Modifier.fillMaxSize().padding(top = 72.dp),
+        )
+        if (item.kind == com.clpstudio.filesmanager.data.FileKind.AUDIO) {
+            var speed by remember(item.id) { mutableStateOf(com.clpstudio.filesmanager.playback.AudioSpeed.current) }
+            com.clpstudio.filesmanager.playback.AudioSpeedChip(
+                speed,
+                onSpeed = { s -> com.clpstudio.filesmanager.playback.AudioSpeed.set(s); player.playbackParameters = com.clpstudio.filesmanager.playback.AudioSpeed.params(s); speed = s },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp),
+            )
+        }
+    }
 }
 
 @Composable
@@ -290,6 +309,16 @@ fun VaultSettingsScreen(onBack: () -> Unit, onSetUp: () -> Unit) {
                         Choice(a.label, autoLock == a) { autoLock = a; Vault.autoLock = a }
                     }
                     Text("Locking also stops anything playing from the vault.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item { SecHeader("Wrong attempts allowed") }
+            item {
+                SecCard {
+                    val allowed = com.clpstudio.filesmanager.Graph.settings.collectAsState().value.wrongAttemptsAllowed
+                    com.clpstudio.filesmanager.security.AttemptLimiter.ALLOWED_CHOICES.forEach { n ->
+                        Choice("$n tries", allowed == n) { com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setWrongAttemptsAllowed(n) } }
+                    }
+                    Text("After that, the vault and the app lock wait before the next try: 30 s, then 1, 5, 15 and 30 min. A right PIN resets it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             item { SecHeader("Delete vault") }
