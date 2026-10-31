@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -108,28 +109,46 @@ fun ZoomableImage(uri: Uri, zoom: ZoomState, onTap: () -> Unit) {
     }
 }
 
-/** A single image opened from another app. */
+/** A single image opened from another app: zoom, swipe up for info, full screen and rotate. */
 @Composable
 fun SingleImageViewer(uri: Uri, name: String, onBack: () -> Unit, extraActions: @Composable () -> Unit = {}) {
     val zoom = remember { ZoomState() }
     var chrome by remember { mutableStateOf(true) }
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    var info by remember { mutableStateOf(false) }
+    var orientation by remember { mutableStateOf<Int?>(null) }
+    val landscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    ImmersiveEffect(!chrome)
+    OrientationEffect(orientation)
+    Box(Modifier.fillMaxSize().background(Color.Black).swipeUpToOpen(enabled = !zoom.zoomed) { info = true }) {
         ZoomableImage(uri, zoom) { chrome = !chrome }
         AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut()) {
-            ViewerTopBar(name, null, onBack, extraActions)
+            ViewerTopBar(name, null, onBack) {
+                IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
+                IconButton(onClick = {
+                    orientation = if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }) { Icon(Icons.Filled.ScreenRotation, "Rotate") }
+                extraActions()
+            }
         }
     }
+    if (info) FileInfoSheet(InfoTarget(uri, name, uri.takeIf { it.scheme == "file" }?.path), emptyList()) { info = false }
 }
 
 @Composable
-fun ViewerTopBar(title: String, subtitle: String?, onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
+fun ViewerTopBar(
+    title: String,
+    subtitle: String?,
+    onBack: () -> Unit,
+    titleColor: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Unspecified,
+    actions: @Composable () -> Unit = {},
+) {
     Row(
         Modifier.fillMaxWidth().glassBar().statusBarsPadding().padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
         androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.titleMedium)
+            Text(title, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.titleMedium, color = titleColor)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         actions()

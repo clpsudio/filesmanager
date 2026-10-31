@@ -9,13 +9,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -26,117 +32,167 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.clpstudio.filesmanager.data.ArchiveEntry
+import com.clpstudio.filesmanager.data.ArchiveOps
 import com.clpstudio.filesmanager.data.FileItem
-import com.clpstudio.filesmanager.data.FileOps
+import com.clpstudio.filesmanager.data.WrongPasswordException
 import com.clpstudio.filesmanager.data.uniqueName
 import com.clpstudio.filesmanager.ui.AppState
+import com.clpstudio.filesmanager.ui.components.CloseSelectionButton
 import com.clpstudio.filesmanager.ui.components.EmptyState
+import com.clpstudio.filesmanager.ui.components.EnterPasswordDialog
 import com.clpstudio.filesmanager.ui.components.FileRow
+import com.clpstudio.filesmanager.ui.components.FolderPickerDialog
 import com.clpstudio.filesmanager.ui.components.GlassTopBar
+import com.clpstudio.filesmanager.ui.components.MenuRow
 import com.clpstudio.filesmanager.ui.glass.GlassScaffold
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
 
-data class ZipNode(val path: String, val name: String, val isDir: Boolean, val size: Long, val time: Long)
-
-object ZipBrowser {
-    /** Direct children of [dir] ("" = root) inside the archive, folders first. */
-    fun list(zip: ZipFile, dir: String): List<ZipNode> {
-        val prefix = if (dir.isEmpty()) "" else "$dir/"
-        val out = LinkedHashMap<String, ZipNode>()
-        for (e in zip.entries()) {
-            val name = e.name.trimEnd('/')
-            if (!name.startsWith(prefix) || name == dir) continue
-            val rest = name.removePrefix(prefix)
-            val first = rest.substringBefore('/')
-            val isDir = rest.contains('/') || e.isDirectory
-            val path = prefix + first
-            if (!out.containsKey(path)) out[path] = ZipNode(path, first, isDir, if (isDir) 0 else e.size, e.time)
-        }
-        return out.values.sortedWith(compareBy<ZipNode> { !it.isDir }.thenBy { it.name.lowercase() })
-    }
-
-    fun extractEntry(zip: ZipFile, entry: ZipEntry, out: File) {
-        out.parentFile?.mkdirs()
-        zip.getInputStream(entry).use { i -> out.outputStream().use { i.copyTo(it) } }
-    }
-
-    /** Extracts everything into [target], refusing paths that escape it ("zip slip"). */
-    fun extractAll(zip: ZipFile, target: File) {
-        val root = target.canonicalPath + File.separator
-        for (e in zip.entries()) {
-            val out = File(target, e.name)
-            if (!(out.canonicalPath + if (e.isDirectory) File.separator else "").startsWith(root)) continue
-            if (e.isDirectory) out.mkdirs() else extractEntry(zip, e, out)
-        }
-    }
+private sealed interface ZipLoad {
+    data object Loading : ZipLoad
+    data class Ready(val entries: List<ArchiveEntry>, val encrypted: Boolean) : ZipLoad
+    data class Failed(val message: String) : ZipLoad
 }
 
-/** Browse a ZIP without extracting; open any file inside; extract all. */
+/**
+ * Browse a ZIP (normal or password-protected: AES or ZipCrypto) without extracting; open any file
+ * inside; extract all or selected entries, here or to a folder of your choice, with progress.
+ */
 @Composable
 fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val zipFile = remember(path) { File(path) }
     var dir by rememberSaveable { mutableStateOf("") }
-    val zip by produceState<Result<ZipFile>?>(null, path) {
-        value = withContext(Dispatchers.IO) { runCatching { ZipFile(path) } }
+    var password by remember { mutableStateOf<String?>(null) }
+    var askPassword by remember { mutableStateOf(false) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+    var pickFolderFor by remember { mutableStateOf<List<String>?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    val selected = remember { mutableStateListOf<String>() }
+
+    val load by produceState<ZipLoad>(ZipLoad.Loading, path, AppState.refreshTick) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                ArchiveOps.open(zipFile).use { z -> ZipLoad.Ready(ArchiveOps.entries(z), z.isEncrypted || z.fileHeaders.any { it.isEncrypted }) }
+            }.getOrElse { ZipLoad.Failed("It may be damaged or not a ZIP archive.") }
+        }
+        if ((value as? ZipLoad.Ready)?.encrypted == true && password == null) askPassword = true
     }
-    val nodes by produceState<List<ZipNode>?>(null, zip, dir) {
-        value = zip?.getOrNull()?.let { z -> withContext(Dispatchers.IO) { runCatching { ZipBrowser.list(z, dir) }.getOrNull() } }
+    val ready = load as? ZipLoad.Ready
+    val nodes = remember(ready, dir) { ready?.let { ArchiveOps.children(it.entries, dir) } }
+
+    fun pw(): CharArray? = password?.toCharArray()
+
+    fun extract(paths: List<String>?, target: File) {
+        selected.clear()
+        AppState.runOperation(context, "Extracting") { report ->
+            val n = ArchiveOps.extract(zipFile, pw(), target, paths = paths, stripPrefix = dir, onProgress = report)
+            "Extracted $n file" + (if (n == 1) "" else "s") + " to ${target.name}" to listOf(target)
+        }
     }
-    BackHandler(dir.isNotEmpty()) { dir = dir.substringBeforeLast('/', "") }
-    val name = File(path).name
+
+    fun defaultTarget(): File {
+        val parent = zipFile.parentFile!!
+        return File(parent, uniqueName(zipFile.nameWithoutExtension, true) { File(parent, it).exists() })
+    }
+
+    BackHandler(selected.isNotEmpty()) { selected.clear() }
+    BackHandler(selected.isEmpty() && dir.isNotEmpty()) { dir = dir.substringBeforeLast('/', "") }
+
     GlassScaffold(
         topBar = {
-            GlassTopBar(
-                title = name, subtitle = if (dir.isEmpty()) "ZIP archive" else dir, onBack = onBack,
-                actions = {
-                    IconButton(onClick = {
-                        val z = zip?.getOrNull() ?: return@IconButton
-                        scope.launch {
-                            val parent = File(path).parentFile!!
-                            val folder = File(parent, uniqueName(File(path).nameWithoutExtension, true) { File(parent, it).exists() })
-                            val ok = withContext(Dispatchers.IO) { runCatching { ZipBrowser.extractAll(z, folder); FileOps.scan(context, listOf(folder.absolutePath)) }.isSuccess }
-                            Toast.makeText(context, if (ok) "Extracted to ${folder.name}" else "Couldn't extract (password-protected ZIPs come in the next update)", Toast.LENGTH_LONG).show()
-                            AppState.refresh()
+            if (selected.isNotEmpty()) {
+                GlassTopBar(
+                    title = "${selected.size} selected",
+                    navigation = { CloseSelectionButton { selected.clear() } },
+                    actions = {
+                        IconButton(onClick = { selected.clear(); selected.addAll(nodes.orEmpty().map { it.path }) }) { Icon(Icons.Filled.SelectAll, "Select all") }
+                        IconButton(onClick = { extract(selected.toList(), if (dir.isEmpty()) defaultTarget() else defaultTarget()) }) { Icon(Icons.Filled.Unarchive, "Extract") }
+                        IconButton(onClick = { pickFolderFor = selected.toList() }) { Icon(Icons.Filled.DriveFolderUpload, "Extract to...") }
+                    },
+                )
+            } else {
+                GlassTopBar(
+                    title = zipFile.name,
+                    subtitle = (if (ready?.encrypted == true) "Locked ZIP" else "ZIP archive") + if (dir.isEmpty()) "" else " · $dir",
+                    onBack = onBack,
+                    actions = {
+                        if (ready?.encrypted == true) Icon(Icons.Filled.Lock, "Password protected", Modifier.padding(end = 4.dp))
+                        Box {
+                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                            DropdownMenu(menu, { menu = false }) {
+                                MenuRow(Icons.Filled.Unarchive, "Extract all here") { menu = false; extract(null, defaultTarget()) }
+                                MenuRow(Icons.Filled.DriveFolderUpload, "Extract all to...") { menu = false; pickFolderFor = emptyList() }
+                            }
                         }
-                    }) { Icon(Icons.Filled.Unarchive, "Extract all") }
-                },
-            )
+                    },
+                )
+            }
         },
     ) { padding ->
-        val z = zip
         val list = nodes
         when {
-            z == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            z.isFailure -> EmptyState(Icons.Filled.FolderZip, "Can't open this archive", "It may be damaged or use an unsupported format.", Modifier.padding(padding))
+            load is ZipLoad.Failed -> EmptyState(Icons.Filled.FolderZip, "Can't open this archive", (load as ZipLoad.Failed).message, Modifier.padding(padding))
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            ready?.encrypted == true && password == null -> EmptyState(Icons.Filled.Lock, "Password-protected ZIP", "Enter the password to open the files inside.", Modifier.padding(padding))
             list.isEmpty() -> EmptyState(Icons.Filled.FolderZip, "Empty folder", modifier = Modifier.padding(padding))
             else -> LazyColumn(contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = 24.dp)) {
                 items(list, key = { it.path }) { node ->
                     val item = remember(node) { FileItem(path + "!/" + node.path, node.name, node.isDir, node.size, node.time) }
-                    FileRow(item, false, false, onClick = {
-                        if (node.isDir) {
-                            dir = node.path
-                        } else {
-                            val zf = z.getOrNull() ?: return@FileRow
-                            scope.launch {
+                    FileRow(item, node.path in selected, selected.isNotEmpty(), onClick = {
+                        when {
+                            selected.isNotEmpty() -> if (!selected.remove(node.path)) selected.add(node.path)
+                            node.isDir -> dir = node.path
+                            else -> scope.launch {
                                 val base = File(context.cacheDir, "zip")
                                 val out = File(base, node.path)
-                                val ok = withContext(Dispatchers.IO) {
-                                    out.canonicalPath.startsWith(base.canonicalPath + File.separator) && runCatching { ZipBrowser.extractEntry(zf, zf.getEntry(node.path) ?: zf.getEntry(node.path + "/"), out) }.isSuccess
+                                if (!out.canonicalPath.startsWith(base.canonicalPath + File.separator)) return@launch
+                                val r = runCatching { ArchiveOps.extractEntry(zipFile, pw(), node.path, out) }
+                                r.onSuccess { openExtracted(it) }.onFailure { e ->
+                                    if (e is WrongPasswordException) { password = null; passwordError = "Wrong password"; askPassword = true }
+                                    else Toast.makeText(context, "Couldn't open this file", Toast.LENGTH_SHORT).show()
                                 }
-                                if (ok) openExtracted(out) else Toast.makeText(context, "Couldn't open this file", Toast.LENGTH_SHORT).show()
                             }
                         }
-                    }, onLongClick = {})
+                    }, onLongClick = { if (!selected.remove(node.path)) selected.add(node.path) })
                 }
             }
         }
     }
-    androidx.compose.runtime.DisposableEffect(zip) { onDispose { zip?.getOrNull()?.close() } }
+
+    if (askPassword) {
+        EnterPasswordDialog(
+            fileName = zipFile.name,
+            error = passwordError,
+            onConfirm = { typed ->
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zipFile, typed.toCharArray()) }.getOrDefault(false) }
+                    if (ok) {
+                        password = typed
+                        passwordError = null
+                        askPassword = false
+                    } else {
+                        passwordError = "Wrong password, try again"
+                    }
+                }
+            },
+            onDismiss = {
+                askPassword = false
+                if (password == null) onBack()
+            },
+        )
+    }
+    pickFolderFor?.let { paths ->
+        FolderPickerDialog(
+            start = zipFile.parentFile ?: File("/"),
+            title = "Extract to",
+            confirm = "Extract here",
+            onPick = { dest -> pickFolderFor = null; extract(paths.ifEmpty { null }, dest) },
+            onDismiss = { pickFolderFor = null },
+        )
+    }
 }

@@ -49,6 +49,25 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.Closeable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import com.clpstudio.filesmanager.data.PdfSecurity
+import com.clpstudio.filesmanager.ui.components.EnterPasswordDialog
+import com.clpstudio.filesmanager.ui.components.MenuRow
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import java.io.File
+
 
 /** Renders PDF pages on demand (PdfRenderer is single-threaded, so one page at a time). */
 class PdfDocument private constructor(private val pfd: ParcelFileDescriptor) : Closeable {
@@ -103,60 +122,133 @@ class PdfDocument private constructor(private val pfd: ParcelFileDescriptor) : C
 
 private sealed interface PdfLoad {
     data object Loading : PdfLoad
-    data class Ready(val doc: PdfDocument) : PdfLoad
-    data class Locked(val message: String) : PdfLoad
+    data class Ready(val doc: PdfDocument, val unlockedCopy: File? = null) : PdfLoad
+    data object Locked : PdfLoad
     data class Failed(val message: String) : PdfLoad
 }
 
+/** The grey (light) / dark desk the white paper pages sit on, as in Charan's reference. */
 @Composable
-fun PdfViewerScreen(uri: Uri, name: String, onBack: () -> Unit, extraActions: @Composable () -> Unit = {}) {
+fun paperDeskColor(): Color = if (MaterialTheme.colorScheme.background.luminanceIsDark()) Color(0xFF1B1D22) else Color(0xFFEDEFF2)
+
+private fun Color.luminanceIsDark(): Boolean = (0.299f * red + 0.587f * green + 0.114f * blue) < 0.5f
+
+/** One white paper page with a thin outline and a soft shadow. */
+fun Modifier.paperPage(): Modifier = this
+    .shadow(3.dp, RoundedCornerShape(3.dp))
+    .clip(RoundedCornerShape(3.dp))
+    .background(Color.White)
+    .border(1.dp, Color(0xFFD5D9E0), RoundedCornerShape(3.dp))
+
+/** The small page counter at the bottom right ("1/12"). */
+@Composable
+fun PageCounter(current: Int, total: Int, modifier: Modifier = Modifier) {
+    Text(
+        "$current/$total",
+        style = MaterialTheme.typography.labelLarge,
+        modifier = modifier.navigationBarsPadding().padding(14.dp)
+            .glassBar(RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp),
+    )
+}
+
+/**
+ * PDF pages as separate white paper pages, pinch zoom, vertical scroll, page counter.
+ * A password-protected PDF asks for its password; the pages are then read from a private
+ * decrypted temp copy that is deleted when the viewer closes.
+ */
+@Composable
+fun PdfContent(
+    uri: Uri,
+    name: String,
+    modifier: Modifier = Modifier,
+    topPadding: androidx.compose.ui.unit.Dp = 96.dp,
+    onLockedChanged: (Boolean) -> Unit = {},
+) {
     val context = LocalContext.current
-    val load by produceState<PdfLoad>(PdfLoad.Loading, uri) {
+    var password by remember(uri) { mutableStateOf<String?>(null) }
+    var passwordError by remember(uri) { mutableStateOf<String?>(null) }
+    var askPassword by remember(uri) { mutableStateOf(false) }
+    val load by produceState<PdfLoad>(PdfLoad.Loading, uri, password) {
+        val pw = password
         value = try {
-            PdfLoad.Ready(PdfDocument.open(context, uri, name))
+            if (pw == null) {
+                PdfLoad.Ready(PdfDocument.open(context, uri, name))
+            } else {
+                withContext(Dispatchers.IO) {
+                    PdfSecurity.init(context)
+                    val src = if (uri.scheme == "file") File(uri.path!!) else ExternalFiles.copyToCache(context, uri, name)
+                    val dir = File(context.cacheDir, "pdf_unlocked").apply { mkdirs() }
+                    val out = File(dir, "${System.nanoTime()}.pdf")
+                    PdfSecurity.decrypt(src, pw, out)
+                    PdfLoad.Ready(PdfDocument.open(context, Uri.fromFile(out), name), out)
+                }
+            }
         } catch (e: SecurityException) {
-            PdfLoad.Locked("This PDF has a password. Opening password-protected PDFs comes in the next update.")
+            PdfLoad.Locked
+        } catch (e: InvalidPasswordException) {
+            passwordError = "Wrong password, try again"
+            PdfLoad.Locked
         } catch (e: Exception) {
             PdfLoad.Failed("This PDF couldn't be opened. It may be damaged.")
         }
+        if (value is PdfLoad.Locked) askPassword = true
     }
-    val doc = (load as? PdfLoad.Ready)?.doc
-    DisposableEffect(doc) { onDispose { doc?.close() } }
+    LaunchedEffect(load) { onLockedChanged(load is PdfLoad.Locked) }
+    val ready = load as? PdfLoad.Ready
+    DisposableEffect(ready) {
+        onDispose {
+            ready?.doc?.close()
+            ready?.unlockedCopy?.delete()
+        }
+    }
     val zoom = remember { ZoomState(maxScale = 5f) }
     val listState = rememberLazyListState()
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+    Box(modifier.fillMaxSize().background(paperDeskColor())) {
         when (val l = load) {
             PdfLoad.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            is PdfLoad.Locked -> EmptyState(Icons.Filled.Lock, "Password-protected PDF", l.message)
+            PdfLoad.Locked -> EmptyState(Icons.Filled.Lock, "Password-protected PDF", "Enter the password to open it.")
             is PdfLoad.Failed -> EmptyState(Icons.Filled.Lock, "Can't open", l.message)
             is PdfLoad.Ready -> BoxWithConstraints(Modifier.fillMaxSize()) {
-                val widthPx = with(LocalDensity.current) { (maxWidth - 16.dp).roundToPx() }
+                val widthPx = with(LocalDensity.current) { (maxWidth - 24.dp).roundToPx() }
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(top = 96.dp, bottom = 48.dp, start = 8.dp, end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(top = topPadding, bottom = 64.dp, start = 12.dp, end = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxSize().zoomable(zoom, verticalScrollOwner = true),
                 ) {
                     items(l.doc.pageCount, key = { it }) { index ->
                         val bmp by produceState<Bitmap?>(null, index) { value = runCatching { l.doc.render(index, (widthPx * 1.5f).toInt()) }.getOrNull() }
-                        Box(
-                            Modifier.fillMaxWidth().aspectRatio(l.doc.ratios[index]).shadow(2.dp, RoundedCornerShape(4.dp))
-                                .clip(RoundedCornerShape(4.dp)).background(Color.White),
-                        ) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(l.doc.ratios[index]).paperPage()) {
                             bmp?.let { Image(it.asImageBitmap(), "Page ${index + 1}", contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxSize()) }
                         }
                     }
                 }
-                val page = listState.firstVisibleItemIndex + 1
-                Text(
-                    "$page / ${l.doc.pageCount}",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)
-                        .glassBar(RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
-                )
+                PageCounter(listState.firstVisibleItemIndex + 1, l.doc.pageCount, Modifier.align(Alignment.BottomEnd))
             }
         }
-        ViewerTopBar(name, null, onBack, extraActions)
     }
+    if (askPassword) {
+        EnterPasswordDialog(
+            fileName = name,
+            error = passwordError,
+            onConfirm = { askPassword = false; password = it },
+            onDismiss = { askPassword = false },
+        )
+    }
+}
+
+/** Standalone PDF viewer (files from other apps). */
+@Composable
+fun PdfViewerScreen(uri: Uri, name: String, onBack: () -> Unit, extraActions: @Composable () -> Unit = {}) {
+    var info by remember { mutableStateOf(false) }
+    val target = remember(uri, name) { InfoTarget(uri, name, uri.takeIf { it.scheme == "file" }?.path, "application/pdf") }
+    Box(Modifier.fillMaxSize()) {
+        PdfContent(uri, name, Modifier.swipeUpToOpen { info = true })
+        ViewerTopBar(name, null, onBack, titleColor = MaterialTheme.colorScheme.primary) {
+            IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
+            extraActions()
+        }
+    }
+    if (info) FileInfoSheet(target, emptyList()) { info = false }
 }

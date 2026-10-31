@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Info
 import androidx.media3.common.util.UnstableApi
 import com.clpstudio.filesmanager.Graph
 import com.clpstudio.filesmanager.data.ExternalFiles
@@ -73,6 +75,9 @@ class OpenWithActivity : ComponentActivity() {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 } else {
                     ExternalViewer(f)
+                }
+                com.clpstudio.filesmanager.ui.AppState.progress?.let {
+                    com.clpstudio.filesmanager.ui.components.ProgressDialog(it) { com.clpstudio.filesmanager.ui.AppState.cancelOperation() }
                 }
             }
         }
@@ -127,6 +132,24 @@ class OpenWithActivity : ComponentActivity() {
                 }
             }
             FileKind.FONT -> FontPreviewScreen(f.uri, f.name, back)
+            FileKind.DOCUMENT -> if (hasOfficeViewer(f.name)) {
+                val local by produceState<File?>(null, f) {
+                    value = f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
+                }
+                var info by remember { mutableStateOf(false) }
+                Box(Modifier.fillMaxSize()) {
+                    val file = local
+                    if (file == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    else OfficeBody(file, Modifier.swipeUpToOpen { info = true }, 100.dp) { FileInfoScreen(f, back) }
+                    ViewerTopBar(f.name, null, back, titleColor = androidx.compose.material3.MaterialTheme.colorScheme.primary) {
+                        IconButton(onClick = { info = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Info, "File info") }
+                        actions()
+                    }
+                }
+                if (info) FileInfoSheet(InfoTarget(f.uri, f.name, f.path, f.mime), emptyList()) { info = false }
+            } else {
+                FileInfoScreen(f, back)
+            }
             else -> {
                 var mode by remember { mutableStateOf(0) }
                 when (mode) {

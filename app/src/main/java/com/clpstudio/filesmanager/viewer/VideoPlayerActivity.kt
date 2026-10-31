@@ -17,6 +17,9 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.compose.ui.platform.ComposeView
+import com.clpstudio.filesmanager.data.ThemeMode
+import com.clpstudio.filesmanager.ui.theme.FilesTheme
 import androidx.annotation.OptIn
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -40,7 +43,9 @@ import kotlin.math.abs
 /**
  * Video player. The player lives in [PlaybackService]: leaving the app or locking the phone keeps
  * the sound playing (with a notification); the screen stays on while a video plays.
- * Gestures: double-tap left/right = -/+10 s, swipe up/down on the left = brightness, right = volume.
+ * Gestures: double-tap left/right = -/+10 s, swipe up/down on the left = brightness, right = volume,
+ * swipe up in the middle = file info, swipe left/right = next / previous video,
+ * long press = 2x speed while held ("2x ▶▶" pill). Rotate button: landscape / portrait / auto.
  */
 @OptIn(UnstableApi::class)
 class VideoPlayerActivity : ComponentActivity() {
@@ -48,6 +53,12 @@ class VideoPlayerActivity : ComponentActivity() {
     private lateinit var hud: TextView
     private var controller: MediaController? = null
     private var started = false
+    private val ui = VideoOverlayState()
+    private var uris: List<Uri> = emptyList()
+    private var names: List<String> = emptyList()
+    /** Before the user rotates by hand, the orientation follows the video's shape. */
+    private var userOrientation: Int? = null
+    private var normalSpeed = 1f
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -56,7 +67,7 @@ class VideoPlayerActivity : ComponentActivity() {
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
-            if (videoSize.width > 0 && videoSize.height > 0) {
+            if (userOrientation == null && videoSize.width > 0 && videoSize.height > 0) {
                 val w = videoSize.width * videoSize.pixelWidthHeightRatio
                 requestedOrientation = if (w > videoSize.height) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
@@ -87,9 +98,28 @@ class VideoPlayerActivity : ComponentActivity() {
             setBackgroundColor(0x88000000.toInt())
             visibility = View.GONE
         }
+        playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> ui.controls = v == View.VISIBLE })
+        val compose = ComposeView(this).apply {
+            setContent {
+                FilesTheme(ThemeMode.DARK, liquidGlass = false) {
+                    VideoOverlay(
+                        state = ui,
+                        onInfo = { showInfo() },
+                        onRotate = { rotate() },
+                        onAutoRotate = { setUserOrientation(null) },
+                        sheetActions = videoSheetActions(
+                            onShare = { currentUri()?.let { shareCurrent(it) } },
+                            onOpenWith = { currentUri()?.let { openWithOther(it) } },
+                            onFolder = null,
+                        ),
+                    )
+                }
+            }
+        }
         val root = FrameLayout(this).apply {
             addView(playerView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(hud, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+            addView(compose, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         }
         setContentView(root)
         setupGestures()
@@ -140,6 +170,8 @@ class VideoPlayerActivity : ComponentActivity() {
         val uris = intent.getStringArrayListExtra(EXTRA_URIS).orEmpty()
         val names = intent.getStringArrayListExtra(EXTRA_NAMES).orEmpty()
         val list = if (uris.isNotEmpty()) uris else listOfNotNull(intent.data?.toString())
+        this.uris = list.map { Uri.parse(it) }
+        this.names = list.indices.map { i -> names.getOrNull(i) ?: Uri.parse(list[i]).lastPathSegment ?: "Video" }
         return list.mapIndexed { i, s ->
             val uri = Uri.parse(s)
             val subs = if (uri.scheme == "file") Subtitles.siblings(File(uri.path ?: "")) else emptyList()
@@ -150,9 +182,10 @@ class VideoPlayerActivity : ComponentActivity() {
     @SuppressLint("ClickableViewAccessibility")
     private fun setupGestures() {
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        var mode = 0 // 0 none, 1 brightness, 2 volume
+        var mode = 0 // 0 none, 1 brightness, 2 volume, 3 swipe-up for info, 4 sideways (next / previous)
         var startY = 0f
         var startValue = 0f
+        var longPress = false
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent): Boolean {
                 mode = 0
@@ -172,33 +205,130 @@ class VideoPlayerActivity : ComponentActivity() {
                 return true
             }
 
+            override fun onLongPress(e: MotionEvent) {
+                val c = controller ?: return
+                longPress = true
+                normalSpeed = c.playbackParameters.speed.takeIf { it > 0f && it != 2f } ?: 1f
+                c.setPlaybackSpeed(2f)
+                if (!c.isPlaying) c.play()
+                ui.fast = true
+                playerView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            }
+
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
                 val start = e1 ?: return false
+                if (longPress) return true
+                val ddx = e2.x - start.x
+                val ddy = e2.y - start.y
                 if (mode == 0) {
-                    if (abs(e2.y - start.y) < 24 || abs(e2.x - start.x) > abs(e2.y - start.y)) return false
-                    mode = if (start.x < playerView.width / 2f) 1 else 2
+                    if (abs(ddx) < 24 && abs(ddy) < 24) return false
+                    val w = playerView.width.toFloat()
+                    mode = when {
+                        abs(ddx) > abs(ddy) -> 4
+                        start.x < w * 0.3f -> 1
+                        start.x > w * 0.7f -> 2
+                        ddy < 0 -> 3
+                        else -> 0
+                    }
                     startY = e2.y
-                    startValue = if (mode == 1) {
-                        val b = window.attributes.screenBrightness
-                        if (b < 0) 0.5f else b
-                    } else {
-                        audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    startValue = when (mode) {
+                        1 -> window.attributes.screenBrightness.let { if (it < 0) 0.5f else it }
+                        2 -> audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        else -> 0f
                     }
                 }
-                val delta = (startY - e2.y) / (playerView.height * 0.8f)
-                val v = (startValue + delta).coerceIn(0.01f, 1f)
-                if (mode == 1) {
-                    window.attributes = window.attributes.apply { screenBrightness = v }
-                    show("Brightness ${(v * 100).toInt()}%")
-                } else {
-                    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, (v * max).toInt(), 0)
-                    show("Volume ${(v * 100).toInt()}%")
+                if (mode == 1 || mode == 2) {
+                    val delta = (startY - e2.y) / (playerView.height * 0.8f)
+                    val v = (startValue + delta).coerceIn(0.01f, 1f)
+                    if (mode == 1) {
+                        window.attributes = window.attributes.apply { screenBrightness = v }
+                        show("Brightness ${(v * 100).toInt()}%")
+                    } else {
+                        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, (v * max).toInt(), 0)
+                        show("Volume ${(v * 100).toInt()}%")
+                    }
                 }
                 return true
             }
         })
-        playerView.setOnTouchListener { _, ev -> detector.onTouchEvent(ev); true }
+        playerView.setOnTouchListener { _, ev ->
+            detector.onTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                if (longPress) {
+                    longPress = false
+                    controller?.setPlaybackSpeed(normalSpeed)
+                    ui.fast = false
+                } else if (ev.actionMasked == MotionEvent.ACTION_UP && ev.historySize >= 0) {
+                    finishSwipe(ev)
+                }
+                mode = 0
+            } else if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                downX = ev.x
+                downY = ev.y
+            }
+            true
+        }
+        swipeMode = { mode }
+    }
+
+    private var downX = 0f
+    private var downY = 0f
+    private var swipeMode: () -> Int = { 0 }
+
+    /** End of a drag: sideways = next / previous video, up in the middle = file info. */
+    private fun finishSwipe(ev: MotionEvent) {
+        val dx = ev.x - downX
+        val dy = ev.y - downY
+        when (swipeMode()) {
+            4 -> if (abs(dx) > playerView.width * 0.18f) {
+                val c = controller ?: return
+                if (dx < 0) {
+                    if (c.hasNextMediaItem()) { c.seekToNextMediaItem(); show("Next: " + (names.getOrNull(c.currentMediaItemIndex) ?: "")) } else show("Last video")
+                } else {
+                    if (c.hasPreviousMediaItem()) { c.seekToPreviousMediaItem(); show("Previous: " + (names.getOrNull(c.currentMediaItemIndex) ?: "")) } else show("First video")
+                }
+            }
+            3 -> if (-dy > playerView.height * 0.12f) showInfo()
+        }
+    }
+
+    private fun currentIndex(): Int = controller?.currentMediaItemIndex?.coerceIn(0, (uris.size - 1).coerceAtLeast(0)) ?: 0
+
+    private fun currentUri(): Uri? = uris.getOrNull(currentIndex())
+
+    private fun showInfo() {
+        val uri = currentUri() ?: return
+        val name = names.getOrNull(currentIndex()) ?: uri.lastPathSegment ?: "Video"
+        ui.info = InfoTarget(uri, name, uri.takeIf { it.scheme == "file" }?.path)
+    }
+
+    /** Rotate button: landscape <-> portrait (locked until "Auto-rotate"). */
+    private fun rotate() {
+        val landscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        setUserOrientation(if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
+    }
+
+    /** null = follow the phone's sensor (when auto-rotate is on in the phone's settings). */
+    private fun setUserOrientation(o: Int?) {
+        userOrientation = o
+        ui.orientationLocked = o != null
+        requestedOrientation = o ?: ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+    }
+
+    private fun shareCurrent(uri: Uri) {
+        val shareUri = if (uri.scheme == "file") com.clpstudio.filesmanager.data.FileOps.uriFor(this, File(uri.path!!)) else uri
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("video/*").putExtra(Intent.EXTRA_STREAM, shareUri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"))
+    }
+
+    private fun openWithOther(uri: Uri) {
+        val u = if (uri.scheme == "file") com.clpstudio.filesmanager.data.FileOps.uriFor(this, File(uri.path!!)) else uri
+        com.clpstudio.filesmanager.data.FileOps.openWithOtherApp(this, u, "video/*")
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
     }
 
     private val hideOverlay = Runnable { hud.visibility = View.GONE }

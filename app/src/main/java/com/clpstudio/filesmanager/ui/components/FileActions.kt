@@ -1,5 +1,19 @@
 package com.clpstudio.filesmanager.ui.components
 
+import android.widget.Toast
+import androidx.compose.material.icons.filled.DriveFolderUpload
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Unarchive
+import com.clpstudio.filesmanager.Graph
+import com.clpstudio.filesmanager.data.ArchiveOps
+import com.clpstudio.filesmanager.data.FileKind
+import com.clpstudio.filesmanager.data.PdfSecurity
+import com.clpstudio.filesmanager.data.uniqueName
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+
 import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
@@ -52,10 +66,121 @@ class SelectionState {
 }
 
 @Stable
-class FileActions(private val context: Context, private val afterCopyOrMove: () -> Unit) {
+class FileActions(private val context: Context, private val afterCopyOrMove: () -> Unit, private val afterAction: () -> Unit = {}) {
     var renameTarget by mutableStateOf<FileItem?>(null)
     var detailsTarget by mutableStateOf<FileItem?>(null)
     var deleteTargets by mutableStateOf<List<FileItem>>(emptyList())
+    /** Compress (withPassword = "Locked zip", AES-256). */
+    var compressRequest by mutableStateOf<Pair<List<FileItem>, Boolean>?>(null)
+    /** "Extract to...": the ZIPs waiting for a destination folder. */
+    var extractPickFor by mutableStateOf<List<FileItem>?>(null)
+    var passwordAsk by mutableStateOf<PasswordAsk?>(null)
+    var pdfLockTarget by mutableStateOf<FileItem?>(null)
+    var pdfUnlockTarget by mutableStateOf<FileItem?>(null)
+    var pdfUnlockError by mutableStateOf<String?>(null)
+
+    class PasswordAsk(val fileName: String, val error: String?, val answer: CompletableDeferred<String?>)
+
+    /** Shows the password dialog and waits for the answer (null = cancelled). */
+    suspend fun askPassword(fileName: String, error: String? = null): String? {
+        val d = CompletableDeferred<String?>()
+        passwordAsk = PasswordAsk(fileName, error, d)
+        return try { d.await() } finally { passwordAsk = null }
+    }
+
+    fun compress(items: List<FileItem>, withPassword: Boolean) {
+        compressRequest = items to withPassword
+    }
+
+    fun doCompress(items: List<FileItem>, name: String, password: String?) {
+        val sources = items.map { File(it.path) }
+        val dir = sources.first().parentFile ?: return
+        val out = File(dir, uniqueName(name, false) { File(dir, it).exists() })
+        afterAction()
+        AppState.runOperation(context, "Compressing") { report ->
+            ArchiveOps.compress(sources, out, password?.toCharArray(), report)
+            (if (password != null) "Locked zip saved: " else "Saved: ") + out.name to listOf(out)
+        }
+    }
+
+    /** Extract each ZIP into a folder next to it, or everything into [dest]. Asks for passwords first. */
+    fun extract(items: List<FileItem>, dest: File?) {
+        val zips = items.filter { !it.isDir && ArchiveOps.isZip(it.name) }.map { File(it.path) }
+        if (zips.isEmpty()) {
+            Toast.makeText(context, "Select ZIP files to extract", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Graph.appScope.launch(Dispatchers.Main) {
+            val plan = ArrayList<Triple<File, CharArray?, File>>()
+            for (zip in zips) {
+                val encrypted = withContext(Dispatchers.IO) { runCatching { ArchiveOps.isEncrypted(zip) } }.getOrElse {
+                    Toast.makeText(context, "Can't open ${zip.name}: it may be damaged", Toast.LENGTH_LONG).show()
+                    continue
+                }
+                var password: CharArray? = null
+                if (encrypted) {
+                    var error: String? = null
+                    while (true) {
+                        val typed = askPassword(zip.name, error) ?: return@launch
+                        val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zip, typed.toCharArray()) }.getOrDefault(false) }
+                        if (ok) {
+                            password = typed.toCharArray()
+                            break
+                        }
+                        error = "Wrong password, try again"
+                    }
+                }
+                val parent = zip.parentFile ?: continue
+                val target = when {
+                    dest == null -> File(parent, uniqueName(zip.nameWithoutExtension, true) { File(parent, it).exists() })
+                    zips.size == 1 -> dest
+                    else -> File(dest, uniqueName(zip.nameWithoutExtension, true) { File(dest, it).exists() })
+                }
+                plan += Triple(zip, password, target)
+            }
+            if (plan.isEmpty()) return@launch
+            afterAction()
+            AppState.runOperation(context, "Extracting") { report ->
+                var files = 0
+                for ((zip, pw, target) in plan) files += ArchiveOps.extract(zip, pw, target, onProgress = report)
+                val where = plan.map { it.third }.distinct()
+                "Extracted $files file" + (if (files == 1) "" else "s") + " to " + where.joinToString { it.name } to where
+            }
+        }
+    }
+
+    fun lockPdf(item: FileItem, user: String, owner: String?, replace: Boolean) {
+        val src = File(item.path)
+        val out = if (replace) src else PdfSecurity.copyName(src, "_locked")
+        AppState.runOperation(context, "Adding password") {
+            withContext(Dispatchers.IO) {
+                PdfSecurity.init(context)
+                PdfSecurity.encrypt(src, user, out, ownerPassword = owner)
+            }
+            "Password added: " + out.name to listOf(out)
+        }
+    }
+
+    fun unlockPdf(item: FileItem, password: String, replace: Boolean) {
+        val src = File(item.path)
+        Graph.appScope.launch(Dispatchers.Main) {
+            val ok = withContext(Dispatchers.IO) {
+                PdfSecurity.init(context)
+                runCatching { PdfSecurity.checkPassword(src, password) }.getOrDefault(false)
+            }
+            if (!ok) {
+                pdfUnlockError = "Wrong password"
+                return@launch
+            }
+            pdfUnlockTarget = null
+            pdfUnlockError = null
+            val out = if (replace) src else PdfSecurity.copyName(src, "_unlocked")
+            AppState.runOperation(context, "Removing password") {
+                withContext(Dispatchers.IO) { PdfSecurity.decrypt(src, password, out) }
+                "Password removed: " + out.name to listOf(out)
+            }
+        }
+    }
 
     fun share(items: List<FileItem>) = FileOps.share(context, items.map { File(it.path) })
     fun copy(items: List<FileItem>) {
@@ -73,9 +198,9 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
 }
 
 @Composable
-fun rememberFileActions(afterCopyOrMove: () -> Unit): FileActions {
+fun rememberFileActions(afterCopyOrMove: () -> Unit, afterAction: () -> Unit = {}): FileActions {
     val context = LocalContext.current
-    return remember { FileActions(context, afterCopyOrMove) }
+    return remember { FileActions(context, afterCopyOrMove, afterAction) }
 }
 
 /** The dialogs that file actions open (rename, delete to Bin, details). */
@@ -111,6 +236,48 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
             onDismiss = { actions.deleteTargets = emptyList() },
         )
     }
+    actions.compressRequest?.let { (items, withPassword) ->
+        CompressDialog(
+            defaultName = ArchiveOps.defaultZipName(items.map { File(it.path) }),
+            withPassword = withPassword,
+            onConfirm = { name, password -> actions.compressRequest = null; actions.doCompress(items, name, password) },
+            onDismiss = { actions.compressRequest = null },
+        )
+    }
+    actions.extractPickFor?.let { items ->
+        FolderPickerDialog(
+            start = File(items.first().path).parentFile ?: File(StoragePaths.primary),
+            title = "Extract to",
+            confirm = "Extract here",
+            onPick = { dir -> actions.extractPickFor = null; actions.extract(items, dir) },
+            onDismiss = { actions.extractPickFor = null },
+        )
+    }
+    actions.passwordAsk?.let { ask ->
+        EnterPasswordDialog(
+            fileName = ask.fileName,
+            error = ask.error,
+            onConfirm = { ask.answer.complete(it) },
+            onDismiss = { ask.answer.complete(null) },
+            confirm = "Extract",
+        )
+    }
+    androidx.compose.runtime.DisposableEffect(actions) { onDispose { actions.passwordAsk?.answer?.complete(null) } }
+    actions.pdfLockTarget?.let { item ->
+        PdfLockDialog(
+            fileName = item.name,
+            onConfirm = { user, owner, replace -> actions.pdfLockTarget = null; actions.lockPdf(item, user, owner, replace) },
+            onDismiss = { actions.pdfLockTarget = null },
+        )
+    }
+    actions.pdfUnlockTarget?.let { item ->
+        PdfUnlockDialog(
+            fileName = item.name,
+            error = actions.pdfUnlockError,
+            onConfirm = { pass, replace -> actions.unlockPdf(item, pass, replace) },
+            onDismiss = { actions.pdfUnlockTarget = null; actions.pdfUnlockError = null },
+        )
+    }
     actions.detailsTarget?.let { item ->
         val size by produceState<Long?>(if (item.isDir) null else item.size, item.path) {
             if (item.isDir) value = withContext(Dispatchers.IO) { FileOps.sizeOf(File(item.path)) }
@@ -144,6 +311,16 @@ fun SelectionActionsRow(
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             MenuRow(Icons.Filled.ContentCopy, "Copy to...") { menu = false; actions.copy(selected) }
             MenuRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to...") { menu = false; actions.move(selected) }
+            MenuRow(Icons.Filled.FolderZip, "Compress") { menu = false; actions.compress(selected, withPassword = false) }
+            MenuRow(Icons.Filled.Lock, "Compress with password") { menu = false; actions.compress(selected, withPassword = true) }
+            if (selected.isNotEmpty() && selected.all { !it.isDir && ArchiveOps.isZip(it.name) }) {
+                MenuRow(Icons.Filled.Unarchive, "Extract") { menu = false; actions.extract(selected, null) }
+                MenuRow(Icons.Filled.DriveFolderUpload, "Extract to...") { menu = false; actions.extractPickFor = selected }
+            }
+            if (selected.size == 1 && selected[0].kind == FileKind.PDF) {
+                MenuRow(Icons.Filled.Lock, "Add password to PDF") { menu = false; actions.pdfLockTarget = selected[0] }
+                MenuRow(Icons.Filled.LockOpen, "Remove PDF password") { menu = false; actions.pdfUnlockTarget = selected[0] }
+            }
             if (selected.size == 1) {
                 MenuRow(Icons.Filled.DriveFileRenameOutline, "Rename") { menu = false; actions.renameTarget = selected[0] }
                 MenuRow(Icons.Filled.Info, "Details") { menu = false; actions.detailsTarget = selected[0] }

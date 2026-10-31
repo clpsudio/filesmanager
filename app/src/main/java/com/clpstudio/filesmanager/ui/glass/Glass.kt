@@ -153,9 +153,11 @@ fun Modifier.pressScale(interaction: InteractionSource, pressed: Float = 0.95f):
 fun DialogGlassEffect() {
     val g = LocalGlass.current
     val view = LocalView.current
-    SideEffect {
-        if (!g.enabled || !blurSupported) return@SideEffect
-        val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+    // Applied once per dialog window (setting window attributes on every recomposition makes
+    // the window relayout again and again).
+    androidx.compose.runtime.LaunchedEffect(view, g.enabled) {
+        if (!g.enabled || !blurSupported) return@LaunchedEffect
+        val window = (view.parent as? DialogWindowProvider)?.window ?: return@LaunchedEffect
         window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
         window.attributes = window.attributes.apply { blurBehindRadius = 48 }
         window.setDimAmount(0.25f)
