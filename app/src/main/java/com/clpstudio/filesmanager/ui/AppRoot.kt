@@ -1,5 +1,8 @@
 package com.clpstudio.filesmanager.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.currentBackStackEntryAsState
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
@@ -89,6 +92,12 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
     val back: () -> Unit = { nav.popBackStack() }
     val toPaste: () -> Unit = { nav.navigate(Routes.browse()) }
 
+    // Audio mini player above every list screen (Home draws its own; hidden in viewers and the full player).
+    val entry by nav.currentBackStackEntryAsState()
+    val route = entry?.destination?.route.orEmpty()
+    val showMini = player.hasMedia && !player.isVideo && route.isNotEmpty() && miniPlayerRoute(route)
+    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalMiniPlayerInset provides if (showMini) com.clpstudio.filesmanager.ui.screens.MiniPlayerHeight else 0.dp) {
     NavHost(
         navController = nav,
         startDestination = Routes.HOME,
@@ -202,6 +211,16 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
             HexViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
     }
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        showMini,
+        enter = androidx.compose.animation.slideInVertically { it } + fadeIn(),
+        exit = androidx.compose.animation.slideOutVertically { it } + fadeOut(),
+        modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+    ) {
+        com.clpstudio.filesmanager.ui.screens.MiniPlayer(player, onOpen = { nav.navigate(Routes.MUSIC) { launchSingleTop = true } })
+    }
+    }
 
     AppState.progress?.let { ProgressDialog(it) { AppState.cancelOperation() } }
     com.clpstudio.filesmanager.ui.components.DoneActionHost { target ->
@@ -210,4 +229,14 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
     }
     // One-time "The app closed unexpectedly…" snackbar on the first launch after a crash.
     com.clpstudio.filesmanager.crash.CrashNoticeHost { nav.navigate(Routes.CRASH_REPORTS) { launchSingleTop = true } }
+}
+
+/** Bottom space lists leave for the floating audio mini player (0 when it isn't showing). */
+val LocalMiniPlayerInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/** Screens that show the floating mini player: lists and pages, not Home (own bar), viewers or the full player. */
+internal fun miniPlayerRoute(route: String): Boolean {
+    if (route == Routes.HOME || route == Routes.MUSIC || route == Routes.SLIDESHOW) return false
+    val viewers = listOf("view?", "pdf?", "text?", "zip?", "info?", "font?", "hex?")
+    return viewers.none { route.startsWith(it) }
 }
