@@ -1,6 +1,5 @@
 package com.clpstudio.filesmanager.ui.screens
 
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -345,45 +344,28 @@ private fun CategoryTile(tile: HomeTile, subtitle: String?, onClick: () -> Unit)
     }
 }
 
-/** Height the floating mini player takes at the bottom of a screen (lists add it to their bottom padding). */
-val MiniPlayerHeight = 88.dp
-
-/**
- * The audio mini player: artwork, name, play/pause, next, close and a thin progress line. Tap = full player.
- * Close stops playback (and its notification) and hides the bar.
- */
 @Composable
-fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit) {
     val art = remember(player.artwork) {
         player.artwork?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
     }
-    Column(
-        modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp)
-            .glassBar(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).clickable(onClick = onOpen),
+    Row(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)
+            .glassBar(RoundedCornerShape(24.dp)).clickable(onClick = onOpen).padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF9333EA).copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
-                if (art != null) Image(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                else Icon(Icons.Filled.MusicNote, null, tint = Color(0xFFB57BFF))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(player.title.ifEmpty { "Playing" }, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                if (player.artist.isNotEmpty()) Text(player.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = { player.controller?.let { if (it.isPlaying) it.pause() else it.play() } }) {
-                Icon(if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (player.isPlaying) "Pause" else "Play")
-            }
-            IconButton(onClick = { player.controller?.seekToNext() }) { Icon(Icons.Filled.SkipNext, "Next") }
-            IconButton(onClick = { player.controller?.let { runCatching { it.stop(); it.clearMediaItems() } } }) { Icon(Icons.Filled.Close, "Close player") }
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF9333EA).copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+            if (art != null) Image(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            else Icon(Icons.Filled.MusicNote, null, tint = Color(0xFF9333EA))
         }
-        LinearProgressIndicator(
-            progress = { if (player.duration > 0) (player.position.toFloat() / player.duration).coerceIn(0f, 1f) else 0f },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 6.dp).height(2.dp).clip(RoundedCornerShape(1.dp)),
-            strokeCap = StrokeCap.Round,
-            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-            gapSize = 0.dp,
-            drawStopIndicator = {},
-        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(player.title.ifEmpty { "Playing" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+            if (player.artist.isNotEmpty()) Text(player.artist, maxLines = 1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = { player.controller?.let { if (it.isPlaying) it.pause() else it.play() } }) {
+            Icon(if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (player.isPlaying) "Pause" else "Play")
+        }
+        IconButton(onClick = { player.controller?.seekToNext() }) { Icon(Icons.Filled.SkipNext, "Next") }
     }
 }

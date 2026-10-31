@@ -1,7 +1,5 @@
 package com.clpstudio.filesmanager.viewer
 
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -117,10 +115,7 @@ fun MusicPlayerContent(
     onRepeat: () -> Unit,
     onPick: (Int) -> Unit,
     artworkOverride: ImageBitmap? = null,
-    pill: LevelPillState = remember { LevelPillState() },
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val volume = remember { MediaVolume(context) }
     val art = artworkOverride ?: remember(ui.artwork) {
         ui.artwork?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
     }
@@ -156,19 +151,7 @@ fun MusicPlayerContent(
             } else {
                 Spacer(Modifier.weight(0.4f))
                 Box(
-                    Modifier.fillMaxWidth().aspectRatio(1f).padding(12.dp).glassPanel(RoundedCornerShape(32.dp))
-                        // Swipe up / down on the artwork: media volume (no system popup), with the volume pill.
-                        .pointerInput(Unit) {
-                            var startLevel = 0f
-                            var dy = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = { startLevel = volume.level(); dy = 0f },
-                            ) { change, amount ->
-                                change.consume()
-                                dy += amount
-                                pill.show(PillKind.VOLUME, volume.set(ViewerGestureMath.levelFromDrag(startLevel, dy, size.height.toFloat())))
-                            }
-                        },
+                    Modifier.fillMaxWidth().aspectRatio(1f).padding(12.dp).glassPanel(RoundedCornerShape(32.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (art != null) {
@@ -219,6 +202,5 @@ fun MusicPlayerContent(
             }
             Spacer(Modifier.height(16.dp))
         }
-        LevelPillHost(pill)
     }
 }

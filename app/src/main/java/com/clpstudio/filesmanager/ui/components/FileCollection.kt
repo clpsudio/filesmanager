@@ -1,7 +1,5 @@
 package com.clpstudio.filesmanager.ui.components
 
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.material.icons.filled.Slideshow
 import com.clpstudio.filesmanager.data.distinctByPath
 import com.clpstudio.filesmanager.data.uniqueSections
@@ -260,16 +258,6 @@ fun FileCollection(
     initialIndex: Int = 0,
     onFirstVisible: (Int) -> Unit = {},
 ) {
-    // Leave room for the floating audio mini player when it shows.
-    val miniInset = com.clpstudio.filesmanager.ui.LocalMiniPlayerInset.current
-    @Suppress("NAME_SHADOWING")
-    val contentPadding = if (miniInset > 0.dp) {
-        val dir = androidx.compose.ui.platform.LocalLayoutDirection.current
-        PaddingValues(
-            start = contentPadding.calculateStartPadding(dir), end = contentPadding.calculateEndPadding(dir),
-            top = contentPadding.calculateTopPadding(), bottom = contentPadding.calculateBottomPadding() + miniInset,
-        )
-    } else contentPadding
     // Unique paths and section labels: duplicate keys crash lazy grids (see data/UniqueKeys.kt).
     val unique = remember(items) { items.distinctByPath() }
     val groups = remember(unique, sections) { uniqueSections(if (sections) DateSections.group(unique) else listOf("" to unique)) }
