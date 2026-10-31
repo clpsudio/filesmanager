@@ -28,10 +28,30 @@ object ViewerSession {
 /** Opens any file inside the app: everything has an in-app viewer or a clear fallback. */
 class Opener(private val context: Context, private val nav: NavController) {
 
-    /** Selected photos, videos and audio as a slideshow / playlist. */
+    /**
+     * "Play N": only audio → the music player's playlist (keeps playing in the background and when
+     * you go back, with the mini player); only videos → the video player's playlist; anything with
+     * photos → the slideshow (its "Time per photo" only shows when there are photos).
+     */
     fun playSelected(items: List<FileItem>) {
-        ViewerSession.playItems = items
-        nav.navigate(Routes.SLIDESHOW)
+        when (PlayRoute.of(items)) {
+            PlayRoute.NONE -> return
+            PlayRoute.MUSIC -> {
+                val audios = items.filter { it.kind == FileKind.AUDIO }
+                Graph.appScope.launch(Dispatchers.Main) {
+                    runCatching { PlayerConnection.playAudio(context, audios, 0) }
+                }
+                nav.navigate(Routes.MUSIC) { launchSingleTop = true }
+            }
+            PlayRoute.VIDEO -> {
+                val videos = items.filter { it.kind == FileKind.VIDEO }
+                VideoPlayerActivity.startFiles(context, videos, 0)
+            }
+            PlayRoute.SLIDESHOW -> {
+                ViewerSession.playItems = items
+                nav.navigate(Routes.SLIDESHOW)
+            }
+        }
     }
 
     fun open(item: FileItem, siblings: List<FileItem> = emptyList()) {

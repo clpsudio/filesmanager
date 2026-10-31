@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -120,7 +121,7 @@ class MediaQueries(private val context: Context) {
         // Time to the first non-empty items (shown in Settings > Diagnostics).
         var t0 = 0L
         var first = true
-        upstream.onStart { t0 = System.currentTimeMillis() }.onEach { load ->
+        upstream.map { load -> load.copy(items = FileEvents.filter(load.items)) }.onStart { t0 = System.currentTimeMillis() }.onEach { load ->
             if (first && (load.items.isNotEmpty() || load.done)) {
                 first = false
                 Diagnostics.timing(cat.title, System.currentTimeMillis() - t0, load.items.size)

@@ -50,6 +50,8 @@ data class AppSettings(
     val backgroundPlay: Boolean = true,
     /** Home / app switch while a video plays opens picture-in-picture. */
     val autoPip: Boolean = true,
+    /** Seconds a double-tap on the left / right side skips in the video player. */
+    val doubleTapSkipSeconds: Int = DoubleTapSkip.DEFAULT,
     /** Last type-filter chip per category name (e.g. "PHOTOS" -> "PNG"). */
     val typeFilters: Map<String, String> = emptyMap(),
 )
@@ -70,6 +72,7 @@ class SettingsRepository(private val context: Context) {
         val typeFilters = stringPreferencesKey("type_filters")
         val backgroundPlay = booleanPreferencesKey("background_play")
         val autoPip = booleanPreferencesKey("auto_pip")
+        val doubleTapSkip = androidx.datastore.preferences.core.intPreferencesKey("double_tap_skip")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -86,6 +89,7 @@ class SettingsRepository(private val context: Context) {
             typeFilters = decodeFilters(p[Keys.typeFilters]),
             backgroundPlay = p[Keys.backgroundPlay] ?: true,
             autoPip = p[Keys.autoPip] ?: true,
+            doubleTapSkipSeconds = DoubleTapSkip.clamp(p[Keys.doubleTapSkip] ?: DoubleTapSkip.DEFAULT),
         )
     }
 
@@ -106,6 +110,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
     suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
     suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
+    suspend fun setDoubleTapSkip(seconds: Int) = context.dataStore.edit { it[Keys.doubleTapSkip] = DoubleTapSkip.clamp(seconds) }
     suspend fun setDefaultView(view: DefaultView) = context.dataStore.edit { it[Keys.defaultView] = view.name }
 }
 
@@ -114,3 +119,19 @@ internal fun decodeFilters(s: String?): Map<String, String> = s.orEmpty().split(
     val i = it.indexOf('=')
     if (i <= 0) null else it.substring(0, i) to it.substring(i + 1)
 }.toMap()
+
+/** Settings → Video player → Double-tap skip: 5 / 10 / 15 / 20 / 30 s or a custom 1–60 s. Default 10 s. */
+object DoubleTapSkip {
+    const val DEFAULT = 10
+    const val MIN = 1
+    const val MAX = 60
+    val PRESETS = listOf(5, 10, 15, 20, 30)
+
+    fun clamp(seconds: Int): Int = seconds.coerceIn(MIN, MAX)
+    fun isPreset(seconds: Int): Boolean = seconds in PRESETS
+    fun ms(seconds: Int): Long = clamp(seconds) * 1000L
+    /** "10 s" */
+    fun label(seconds: Int): String = "${clamp(seconds)} s"
+    /** Parses what the user typed in "Custom"; null when it isn't a whole number in range. */
+    fun parse(text: String): Int? = text.trim().removeSuffix("s").trim().toIntOrNull()?.takeIf { it in MIN..MAX }
+}

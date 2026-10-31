@@ -15,6 +15,7 @@ object HideFile {
         val ok = file.renameTo(target) || runCatching { file.copyTo(target); file.delete() }.getOrDefault(false)
         if (!ok) return null
         Favorites.onMoved(file.absolutePath, target.absolutePath)
+        FileEvents.moved(file.absolutePath, target.absolutePath)
         FileOps.scan(context, listOf(file.absolutePath, target.absolutePath))
         return target
     }

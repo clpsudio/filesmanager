@@ -136,7 +136,7 @@ fun SearchScreen(root: String?, initialType: String?, opener: Opener, onBack: ()
         types = types,
         onToggleType = { t -> types = if (t in types) types - t else types + t },
         queryEmpty = query.isEmpty,
-        results = results,
+        results = com.clpstudio.filesmanager.ui.components.rememberLiveFiles(results).orEmpty(),
         searching = searching,
         onBack = onBack,
         onOpen = { item -> opener.open(item, results) },

@@ -43,6 +43,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
         ensureDir()
         var moved = 0
         val scan = ArrayList<String>()
+        val gone = ArrayList<String>()
         files.forEachIndexed { i, f ->
             if (!f.exists()) return@forEachIndexed
             val id = UUID.randomUUID().toString()
@@ -63,13 +64,15 @@ class BinRepository(private val context: Context, private val dir: File = Storag
                     .put("size", size)
                 File(dir, "$id.json").writeText(meta.toString())
                 moved++
+                gone += f.absolutePath
             } else {
                 data.deleteRecursively()
             }
             onEach(i + 1)
         }
-        FileOps.scan(context, emptyList())
-        if (scan.isNotEmpty()) android.media.MediaScannerConnection.scanFile(context, scan.toTypedArray(), null, null)
+        // Every list drops them now; the media index forgets their rows (folder: every file inside).
+        FileEvents.removed(gone)
+        if (gone.isNotEmpty()) FileOps.scan(context, gone + scan.filter { p -> !File(p).exists() })
         moved
     }
 
@@ -110,6 +113,7 @@ class BinRepository(private val context: Context, private val dir: File = Storag
                 n++
             }
         }
+        FileEvents.added(scan)
         FileOps.scan(context, scan)
         n
     }

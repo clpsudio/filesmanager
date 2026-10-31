@@ -22,18 +22,32 @@ object CategoryRepository {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CrashLog.coroutineHandler)
     private val loaders = ConcurrentHashMap<Pair<Category, Boolean>, KeepLastGoodLoader<List<FileItem>>>()
 
+    init {
+        // One deletion bus for every cached list: a deleted / moved file leaves every category,
+        // Recent, Media and the Home counts at once; the reload that follows confirms it.
+        FileEvents.addListener { change ->
+            if (change.removed.isNotEmpty()) prune()
+        }
+    }
+
+    /** Drops removed files from every loaded list and from the per-category cache. */
+    fun prune() {
+        loaders.values.forEach { it.prune(FileEvents::filter) }
+        runCatching { com.clpstudio.filesmanager.ui.screens.CategoryCache.prune() }
+    }
+
     fun loader(cat: Category, showHidden: Boolean): KeepLastGoodLoader<List<FileItem>> =
         loaders.getOrPut(cat to showHidden) {
             KeepLastGoodLoader(
                 scope = scope,
                 onLoaded = { list -> if (list.isNotEmpty()) runCatching { com.clpstudio.filesmanager.ui.screens.CategoryCache[cat] = list } },
             ) {
-                Graph.media.category(cat, Graph.hiddenFilter(showHidden)).distinctByPath()
+                FileEvents.filter(Graph.media.category(cat, Graph.hiddenFilter(showHidden)).distinctByPath())
             }.also { l ->
                 // Seed with last run's list (read off the main thread) so counts show at once.
                 if (!showHidden) scope.launch {
                     runCatching { com.clpstudio.filesmanager.ui.screens.CategoryCache[cat] }.getOrNull()
-                        ?.distinctByPath()?.let { l.seed(it) }
+                        ?.distinctByPath()?.let { l.seed(FileEvents.filter(it)) }
                 }
             }
         }

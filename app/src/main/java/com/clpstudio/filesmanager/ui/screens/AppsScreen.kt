@@ -94,9 +94,10 @@ fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
     val selection = remember { SelectionState() }
     val actions = rememberFileActions(afterCopyOrMove = { selection.clear(); onPaste() }, afterAction = { selection.clear() })
     val settings by Graph.settings.collectAsState()
-    val apks by produceState<List<FileItem>?>(null, settings.showHidden, AppState.refreshTick) {
+    val apksRaw by produceState<List<FileItem>?>(null, settings.showHidden, AppState.refreshTick) {
         value = Graph.media.apkFiles(Graph.hiddenFilter(settings.showHidden))
     }
+    val apks = com.clpstudio.filesmanager.ui.components.rememberLiveFiles(apksRaw)
     LaunchedEffect(apks) {
         apks?.let { l -> val keep = ApkSelectionLogic.prune(selection.paths.toList(), l); if (keep.size != selection.paths.size) selection.selectAll(keep) }
     }

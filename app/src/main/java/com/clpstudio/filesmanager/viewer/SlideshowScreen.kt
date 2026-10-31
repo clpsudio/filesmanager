@@ -129,6 +129,7 @@ fun SlideshowScreen(
     showOptionsFirst: Boolean = true,
 ) {
     var options by remember { mutableStateOf(SlideshowSession.options) }
+    val hasPhotos = remember(items) { com.clpstudio.filesmanager.ui.PlayRoute.hasPhotos(items) }
     var plan by remember(items) { mutableStateOf(SlideshowPlan(items, options)) }
     var slide by remember(items) { mutableStateOf(plan.current?.let { Slide(0, it) }) }
     var started by remember { mutableStateOf(!showOptionsFirst) }
@@ -306,6 +307,7 @@ fun SlideshowScreen(
         ) {
             SlideshowOptionsContent(
                 initial = options,
+                hasPhotos = hasPhotos,
                 startLabel = if (started) "Continue" else "Start",
                 onStart = begin,
                 modifier = Modifier.navigationBarsPadding(),
@@ -553,6 +555,8 @@ fun SlideshowOptionsContent(
     onStart: (SlideshowOptions) -> Unit,
     modifier: Modifier = Modifier,
     startLabel: String = "Start",
+    /** False when the show has no photos: the "Time per photo" option is hidden. */
+    hasPhotos: Boolean = true,
 ) {
     var seconds by remember { mutableFloatStateOf(initial.seconds.toFloat()) }
     var repeat by remember { mutableStateOf(initial.repeat) }
@@ -560,7 +564,8 @@ fun SlideshowOptionsContent(
     val secs = seconds.toInt().coerceIn(SlideshowOptions.MIN_SECONDS, SlideshowOptions.MAX_SECONDS)
 
     Column(modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 20.dp)) {
-        Text("Slideshow", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(if (hasPhotos) "Slideshow" else "Playlist", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        if (hasPhotos) {
         Spacer(Modifier.height(20.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -600,7 +605,14 @@ fun SlideshowOptionsContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )
-
+        } else {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Videos and audio play to the end, one after another.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Repeat, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))

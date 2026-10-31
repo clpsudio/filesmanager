@@ -59,6 +59,7 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(open)
             .setCallback(Callback())
             .build()
+        com.clpstudio.filesmanager.data.FileEvents.addListener(fileListener)
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val video = mediaItem?.mediaMetadata?.let { m ->
@@ -69,6 +70,25 @@ class PlaybackService : MediaSessionService() {
         })
     }
 
+    /** Audio deleted / moved through the app leaves the queue (videos are handled by the video player). */
+    private val fileListener: (com.clpstudio.filesmanager.data.FileEvents.Change) -> Unit = { change ->
+        if (change.removed.isNotEmpty()) main.post { dropRemovedAudio() }
+    }
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun dropRemovedAudio() {
+        val p = session?.player ?: return
+        for (i in p.mediaItemCount - 1 downTo 0) {
+            val item = p.getMediaItemAt(i)
+            val isVideo = item.mediaMetadata.extras?.getBoolean(EXTRA_IS_VIDEO) == true ||
+                item.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
+            if (isVideo) continue
+            val uri = runCatching { Uri.parse(item.mediaId) }.getOrNull() ?: continue
+            val path = uri.path?.takeIf { uri.scheme == "file" } ?: continue
+            if (com.clpstudio.filesmanager.data.FileEvents.isGone(path)) p.removeMediaItem(i)
+        }
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -77,6 +97,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        com.clpstudio.filesmanager.data.FileEvents.removeListener(fileListener)
+        main.removeCallbacksAndMessages(null)
         session?.run {
             player.release()
             release()

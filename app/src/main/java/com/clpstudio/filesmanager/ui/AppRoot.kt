@@ -120,10 +120,8 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                         HomeTile.DOWNLOADS -> nav.navigate(Routes.category(Category.DOWNLOADS))
                         HomeTile.APPS -> nav.navigate(Routes.APPS)
                         HomeTile.BIN -> nav.navigate(Routes.BIN)
-                        HomeTile.INTERNAL -> {
-                            val ok = runCatching { context.startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) }.isSuccess
-                            if (!ok) nav.navigate(Routes.browse())
-                        }
+                        // Our own storage screen: never the system Files / Settings app (it may be removed or disabled).
+                        HomeTile.INTERNAL -> nav.navigate(Routes.STORAGE)
                         HomeTile.VAULT -> Toast.makeText(context, "The encrypted vault comes in the next update", Toast.LENGTH_SHORT).show()
                     }
                 },
@@ -176,6 +174,13 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         composable(Routes.SLIDESHOW) { com.clpstudio.filesmanager.viewer.SlideshowScreen(ViewerSession.playItems, onBack = back) }
         composable(Routes.DIAGNOSTICS) { com.clpstudio.filesmanager.ui.screens.DiagnosticsScreen(back) }
         composable(Routes.MUSIC) { MusicPlayerScreen(player, back) }
+        composable(Routes.STORAGE) {
+            com.clpstudio.filesmanager.ui.screens.StorageScreen(
+                onBack = back,
+                onBrowse = { nav.navigate(Routes.browse(it)) },
+                onCategory = { nav.navigate(Routes.category(it)) },
+            )
+        }
         composable("view?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             val path = e.arguments?.getString("path").orEmpty()
             com.clpstudio.filesmanager.viewer.FilePagerScreen(

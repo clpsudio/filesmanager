@@ -88,6 +88,7 @@ class VideoPlayerActivity : ComponentActivity() {
     /** Before the user rotates by hand, the orientation follows the video's shape. */
     private var userOrientation: Int? = null
     private var normalSpeed = 1f
+    private var lastDoubleTapAt = 0L
     private var videoW = 16
     private var videoH = 9
 
@@ -382,9 +383,16 @@ class VideoPlayerActivity : ComponentActivity() {
                 val c = controller ?: return true
                 if (ui.photo != null) return true
                 val forward = e.x > playerView.width / 2f
-                c.seekTo((c.currentPosition + if (forward) 10_000 else -10_000).coerceAtLeast(0))
-                ui.seekSide = if (forward) 1 else -1
-                ui.seekAmount = 10
+                // Settings → Video player → Double-tap skip (default 10 s). Quick repeated taps on the same side add up.
+                val step = com.clpstudio.filesmanager.data.DoubleTapSkip.clamp(settings.doubleTapSkipSeconds)
+                val now = android.os.SystemClock.uptimeMillis()
+                val side = if (forward) 1 else -1
+                val chained = ui.seekSide == side && now - lastDoubleTapAt < 1_200
+                lastDoubleTapAt = now
+                val dur = c.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                c.seekTo((c.currentPosition + side * step * 1000L).coerceIn(0, dur))
+                ui.seekSide = side
+                ui.seekAmount = if (chained) ui.seekAmount + step else step
                 ui.seekStamp++
                 return true
             }

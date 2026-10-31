@@ -25,6 +25,22 @@ class StorageIndex(private val context: Context) {
     private val jobs = ConcurrentHashMap<Boolean, Job>()
     @Volatile private var generation = 0
 
+    init {
+        // Deleted / moved / renamed through the app: drop them from the walked list right away
+        // (a walk can take seconds, and a failed walk keeps its last list).
+        FileEvents.addListener { change ->
+            if (change.removed.isNotEmpty()) {
+                states.values.forEach { flow ->
+                    flow.value?.let { snap ->
+                        val kept = FileEvents.filter(snap.items)
+                        if (kept !== snap.items) flow.value = snap.copy(items = kept)
+                    }
+                }
+            }
+            invalidate()
+        }
+    }
+
     /** Storage changed: the next observer triggers a fresh walk. */
     fun invalidate() {
         generation++
@@ -32,7 +48,7 @@ class StorageIndex(private val context: Context) {
 
     private fun state(showHidden: Boolean) = states.getOrPut(showHidden) { MutableStateFlow(null) }
 
-    fun cached(showHidden: Boolean): List<FileItem>? = state(showHidden).value?.items
+    fun cached(showHidden: Boolean): List<FileItem>? = state(showHidden).value?.items?.let(FileEvents::filter)
 
     @Synchronized
     fun ensure(showHidden: Boolean) {
@@ -52,7 +68,7 @@ class StorageIndex(private val context: Context) {
                     showHidden = showHidden,
                     privateRoots = StoragePaths.privateRoots(context),
                     accept = ::accept,
-                    onBatch = { partial -> if (!hadList) flow.value = Snapshot(partial, false, gen) },
+                    onBatch = { partial -> if (!hadList) flow.value = Snapshot(FileEvents.filter(partial), false, gen) },
                     isCancelled = { !isActive },
                 )
                 Diagnostics.log(
@@ -67,7 +83,7 @@ class StorageIndex(private val context: Context) {
                 Diagnostics.log("index", "storage walk failed, keeping the previous list", e)
             } finally {
                 // Always end with a complete snapshot: the new list, or the last good one.
-                val keep = result ?: current?.items ?: flow.value?.items.orEmpty()
+                val keep = FileEvents.filter(result ?: current?.items ?: flow.value?.items.orEmpty())
                 flow.value = Snapshot(keep, true, gen)
             }
             if (generation != gen) Graph.appScope.launch {
@@ -84,7 +100,7 @@ class StorageIndex(private val context: Context) {
     }
 
     /** Waits for a complete walk (returns at once if one is already cached). */
-    suspend fun complete(showHidden: Boolean): List<FileItem> = observe(showHidden).first { it.complete }.items
+    suspend fun complete(showHidden: Boolean): List<FileItem> = FileEvents.filter(observe(showHidden).first { it.complete }.items)
 
     companion object {
         fun accept(name: String): Boolean = FileTypes.isDocument(name) || FileTypes.isApk(name) || FileTypes.isArchive(name)

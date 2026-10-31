@@ -21,6 +21,9 @@ import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.FastForward
+import com.clpstudio.filesmanager.data.DoubleTapSkip
+import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
@@ -74,6 +77,7 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onCrashReports = onCrashReports,
         onBackgroundPlay = { scope.launch { Graph.settingsRepo.setBackgroundPlay(it) } },
         onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
+        onDoubleTapSkip = { scope.launch { Graph.settingsRepo.setDoubleTapSkip(it) } },
     )
 }
 
@@ -92,6 +96,7 @@ fun SettingsContent(
     onCrashReports: () -> Unit = {},
     onBackgroundPlay: (Boolean) -> Unit = {},
     onAutoPip: (Boolean) -> Unit = {},
+    onDoubleTapSkip: (Int) -> Unit = {},
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -176,6 +181,7 @@ fun SettingsContent(
             item {
                 SwitchCard(Icons.Filled.PictureInPictureAlt, "Auto picture-in-picture", "Going Home while a video plays shows it in a small window over other apps.", settings.autoPip, onAutoPip)
             }
+            item { DoubleTapSkipCard(settings.doubleTapSkipSeconds, onDoubleTapSkip) }
             item { Header("Security") }
             item {
                 SwitchCard(Icons.Filled.Lock, "Hide content while switching apps", "Your files don't show in the app switcher (Recents).", settings.hideInRecents, onHideInRecents)
@@ -263,5 +269,67 @@ private fun InfoCard(icon: ImageVector, title: String, text: String) {
                 Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+/** Settings → Video player → Double-tap skip: 5 / 10 / 15 / 20 / 30 s chips + Custom (1–60 s). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun DoubleTapSkipCard(seconds: Int, onChange: (Int) -> Unit) {
+    var custom by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Card {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RowIcon(Icons.Filled.FastForward)
+            Column(Modifier.weight(1f)) {
+                Text("Double-tap skip", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Double-tap the left or right side of a video to go back or forward.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(DoubleTapSkip.label(seconds), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.size(10.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            DoubleTapSkip.PRESETS.forEach { p ->
+                androidx.compose.material3.FilterChip(
+                    selected = seconds == p,
+                    onClick = { onChange(p) },
+                    label = { Text("$p s" + if (p == DoubleTapSkip.DEFAULT) " (default)" else "") },
+                )
+            }
+            androidx.compose.material3.FilterChip(
+                selected = !DoubleTapSkip.isPreset(seconds),
+                onClick = { custom = true },
+                label = { Text(if (DoubleTapSkip.isPreset(seconds)) "Custom" else "Custom · ${seconds} s") },
+            )
+        }
+    }
+    if (custom) {
+        var text by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(seconds.toString()) }
+        val value = DoubleTapSkip.parse(text)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { custom = false },
+            title = { Text("Double-tap skip") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = text,
+                    onValueChange = { t -> text = t.filter { it.isDigit() }.take(2) },
+                    label = { Text("Seconds (1–60)") },
+                    singleLine = true,
+                    isError = value == null,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    supportingText = { if (value == null) Text("Enter a number from 1 to 60") },
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(enabled = value != null, onClick = { value?.let(onChange); custom = false }) { Text("Save") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { custom = false }) { Text("Cancel") } },
+        )
     }
 }

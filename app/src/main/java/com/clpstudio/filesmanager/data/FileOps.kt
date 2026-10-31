@@ -51,6 +51,7 @@ object FileOps {
         if (target.exists()) throw FileOpException("A file or folder with that name already exists")
         if (!file.renameTo(target)) throw FileOpException("Couldn't rename it")
         Favorites.onMoved(file.absolutePath, target.absolutePath)
+        FileEvents.moved(file.absolutePath, target.absolutePath)
         scan(context, listOf(file.absolutePath, target.absolutePath))
         return target
     }
@@ -94,6 +95,9 @@ object FileOps {
             if (move) {
                 scanPaths += src.absolutePath
                 Favorites.onMoved(src.absolutePath, dest.absolutePath)
+                FileEvents.moved(src.absolutePath, dest.absolutePath)
+            } else {
+                FileEvents.added(listOf(dest.absolutePath))
             }
             scanPaths += dest.absolutePath
             results += dest
@@ -128,9 +132,23 @@ object FileOps {
     /** Tell the media index about changed paths (folders: their files). */
     fun scan(context: Context, paths: List<String>) {
         val all = ArrayList<String>()
+        val gone = ArrayList<String>()
         for (p in paths) {
             val f = File(p)
-            if (f.isDirectory) f.walkTopDown().take(2000).filter { it.isFile }.forEach { all += it.absolutePath } else all += p
+            when {
+                f.isDirectory -> f.walkTopDown().take(2000).filter { it.isFile }.forEach { all += it.absolutePath }
+                !f.exists() -> gone += p
+                else -> all += p
+            }
+        }
+        if (gone.isNotEmpty()) {
+            // Removed paths: drop their index rows now (a scan of a missing path is slow, and a moved
+            // folder's files were never rescanned), then let the scanner confirm.
+            val app = context.applicationContext
+            kotlin.concurrent.thread(name = "media-forget", isDaemon = true) {
+                runCatching { MediaStoreSync.forget(app, gone) }
+                runCatching { MediaScannerConnection.scanFile(app, gone.toTypedArray(), null, null) }
+            }
         }
         if (all.isNotEmpty()) MediaScannerConnection.scanFile(context.applicationContext, all.toTypedArray(), null, null)
     }

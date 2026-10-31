@@ -127,7 +127,7 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
         watcher.start()
         onDispose { watcher.stop() }
     }
-    val listing by produceState<List<FileItem>?>(null, path, settings.showHidden, settings.sortBy, settings.sortAscending, AppState.refreshTick, folderTick) {
+    val listingRaw by produceState<List<FileItem>?>(null, path, settings.showHidden, settings.sortBy, settings.sortAscending, AppState.refreshTick, folderTick) {
         value = withContext(Dispatchers.IO) {
             val f = Graph.hiddenFilter(settings.showHidden)
             val dir = File(path)
@@ -139,6 +139,7 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
             sortItems(entries, settings.sortBy, settings.sortAscending)
         }
     }
+    val listing = com.clpstudio.filesmanager.ui.components.rememberLiveFiles(listingRaw)
     val items = remember(listing, filter) {
         listing.orEmpty().filter { DateQueryParser.nameMatches(it.name, filter) }
     }

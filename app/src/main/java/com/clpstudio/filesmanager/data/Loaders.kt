@@ -68,6 +68,11 @@ class KeepLastGoodLoader<T>(
         _state.update { if (it.value == null && !it.loaded) it.copy(value = v) else it }
     }
 
+    /** Changes the shown value in place (e.g. drop deleted files) without a reload. */
+    fun prune(transform: (T) -> T) {
+        _state.update { s -> s.value?.let { v -> val n = transform(v); if (n === v) s else s.copy(value = n) } ?: s }
+    }
+
     /** Loads now if nothing was ever loaded and nothing is running (first screen show). */
     fun ensureLoaded() {
         if (!_state.value.loaded && !running.get()) refresh()

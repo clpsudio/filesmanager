@@ -76,6 +76,7 @@ object PhotoActions {
         if (!file.renameTo(target)) return null
         Favorites.init(context)
         Favorites.onMoved(file.absolutePath, target.absolutePath)
+        com.clpstudio.filesmanager.data.FileEvents.moved(file.absolutePath, target.absolutePath)
         FileOps.scan(context, listOf(file.absolutePath, target.absolutePath))
         return target
     }

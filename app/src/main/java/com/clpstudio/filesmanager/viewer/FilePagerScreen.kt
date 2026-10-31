@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -132,6 +133,16 @@ fun FilePagerScreen(
     val dismiss = remember { DismissDragState() }
     val dismissPx = with(androidx.compose.ui.platform.LocalDensity.current) { ViewerGestureMath.DISMISS_DP.dp.toPx() }
     ResetBrightnessOnExit()
+    // Deleted / moved / renamed anywhere (info sheet, another screen, the video player): the page goes too.
+    val fileEvents by com.clpstudio.filesmanager.data.FileEvents.version.collectAsState()
+    LaunchedEffect(fileEvents) {
+        val gone = list.filter { com.clpstudio.filesmanager.data.FileEvents.isGone(it.path, it.modified) }
+        if (gone.isNotEmpty()) {
+            list.removeAll(gone)
+            zooms.clear()
+            if (list.isEmpty()) onBack()
+        }
+    }
     if (list.isEmpty()) {
         LaunchedEffect(Unit) { onBack() }
         return

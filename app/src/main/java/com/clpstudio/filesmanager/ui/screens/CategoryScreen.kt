@@ -85,6 +85,7 @@ import com.clpstudio.filesmanager.ui.glass.GlassScaffold
 import com.clpstudio.filesmanager.ui.glass.glassPanel
 import com.clpstudio.filesmanager.ui.glass.pressScale
 import kotlinx.coroutines.launch
+import com.clpstudio.filesmanager.ui.components.rememberLiveFiles
 
 /**
  * Last loaded list per category, in memory and on disk, so a category opens instantly (also right
@@ -94,7 +95,16 @@ object CategoryCache {
     private val lists = java.util.concurrent.ConcurrentHashMap<Category, List<FileItem>>()
     private fun file(c: Category) = java.io.File(Graph.app.cacheDir, "category_${c.name}.tsv")
 
-    operator fun get(c: Category): List<FileItem>? = lists[c] ?: runCatching { read(c) }.getOrNull()?.also { lists[c] = it }
+    operator fun get(c: Category): List<FileItem>? =
+        (lists[c] ?: runCatching { read(c) }.getOrNull()?.also { lists[c] = it })?.let(com.clpstudio.filesmanager.data.FileEvents::filter)
+
+    /** Deleted / moved files leave the cached lists too (memory and disk). */
+    fun prune() {
+        lists.entries.forEach { (c, v) ->
+            val kept = com.clpstudio.filesmanager.data.FileEvents.filter(v)
+            if (kept !== v) set(c, kept)
+        }
+    }
 
     operator fun set(c: Category, v: List<FileItem>) {
         if (lists[c] === v) return
@@ -171,7 +181,7 @@ private fun rememberCategoryItems(cat: Category): Pair<List<FileItem>?, Boolean>
             }
         }
     }
-    return items to loading
+    return rememberLiveFiles(items) to loading
 }
 
 @Composable
@@ -317,6 +327,8 @@ fun FileListScreen(
     category: Category? = null,
     loading: Boolean = false,
 ) {
+    @Suppress("NAME_SHADOWING")
+    val items = rememberLiveFiles(items)
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     val selection = remember { SelectionState() }

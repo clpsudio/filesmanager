@@ -343,11 +343,12 @@ fun PlaySelectedButtonPreview(n: Int) {
     }
 }
 
-/** "Play slideshow" in a list's top bar when the list has photos or videos: plays them all, in the list's order. */
+/** "Play slideshow" in a list's top bar when the list has photos (mixed with videos is fine): plays them all, in the list's order. */
 @Composable
 fun PlayAllButton(items: List<FileItem>?, opener: com.clpstudio.filesmanager.ui.Opener) {
     val playable = remember(items) { items.orEmpty().filter { !it.isDir && (it.kind == FileKind.IMAGE || it.kind == FileKind.VIDEO) } }
-    if (playable.isEmpty()) return
+    // No photos in the list: no slideshow (its per-photo time means nothing for videos alone).
+    if (!com.clpstudio.filesmanager.ui.PlayRoute.hasPhotos(playable)) return
     androidx.compose.material3.IconButton(onClick = { opener.playSelected(playable) }) {
         Icon(androidx.compose.material.icons.Icons.Filled.Slideshow, "Play slideshow")
     }
