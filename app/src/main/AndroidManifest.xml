@@ -128,8 +128,10 @@
         <activity
             android:name=".viewer.VideoPlayerActivity"
             android:exported="false"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|keyboard|navigation"
             android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:theme="@style/Theme.Files.Player" />
 
         <!-- Runs the APK install flow (system prompt on top, nothing copied). -->

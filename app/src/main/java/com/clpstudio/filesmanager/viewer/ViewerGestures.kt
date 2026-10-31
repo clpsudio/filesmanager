@@ -358,8 +358,17 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
         fun onDismissDrag(offsetPx: Float)
         /** Release of a downward middle drag; [offsetPx] decides close vs spring back. */
         fun onDismissEnd(offsetPx: Float, close: Boolean)
-        /** Release of a sideways drag. */
-        fun onHorizontalEnd(dx: Float)
+        /** True when (x, y) is on the on-screen controls (seek bar, filmstrip, buttons): they keep the touch. */
+        fun overControls(x: Float, y: Float): Boolean = false
+        /** What a sideways drag starting in [zone] does (a photo in the list always pages). */
+        fun horizontalFor(zone: Zone): HorizontalAction = VideoGestureMath.horizontalAction(zone)
+        /** Sideways drag on the left / right third: live timeline scrub. */
+        fun onScrubStart()
+        fun onScrub(dx: Float)
+        fun onScrubEnd(cancelled: Boolean)
+        /** Sideways drag in the middle third: the video follows the finger (next / previous slides in). */
+        fun onPageDrag(dx: Float)
+        fun onPageEnd(dx: Float, velocityPxS: Float)
         fun brightness(): Float
         fun volume(): Float
     }
@@ -377,6 +386,13 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
     private var start = 0f
     private var fired = false
     private var tracking = false
+    private var horizontal = HorizontalAction.PAGE
+    private var velocity: android.view.VelocityTracker? = null
+
+    private fun track(ev: MotionEvent) {
+        val v = velocity ?: android.view.VelocityTracker.obtain().also { velocity = it }
+        v.addMovement(ev)
+    }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         val cb = callbacks ?: return false
@@ -385,17 +401,25 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
                 downX = ev.x; downY = ev.y
                 zone = ViewerGestureMath.zoneOf(ev.x, width.toFloat())
                 axis = Axis.NONE; action = SwipeAction.NONE; fired = false
-                tracking = !cb.blocked()
+                tracking = !cb.blocked() && !cb.overControls(ev.x, ev.y)
+                velocity?.clear()
+                if (tracking) track(ev)
             }
             MotionEvent.ACTION_POINTER_DOWN -> tracking = false
             MotionEvent.ACTION_MOVE -> {
                 if (!tracking || cb.blocked()) { tracking = false; return false }
+                track(ev)
                 val dx = ev.x - downX
                 val dy = ev.y - downY
                 axis = ViewerGestureMath.lockDirection(dx, dy, lockPx)
                 when (axis) {
                     Axis.NONE -> return false
-                    Axis.HORIZONTAL -> { action = SwipeAction.NONE; return true }
+                    Axis.HORIZONTAL -> {
+                        action = SwipeAction.NONE
+                        horizontal = cb.horizontalFor(zone)
+                        if (horizontal == HorizontalAction.SCRUB) cb.onScrubStart()
+                        return true
+                    }
                     Axis.VERTICAL -> {
                         action = ViewerGestureMath.actionFor(ViewerKind.VIDEO, zone, dy)
                         start = when (action) {
@@ -416,8 +440,11 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
         val cb = callbacks ?: return false
         val dx = ev.x - downX
         val dy = ev.y - downY
+        track(ev)
         when (ev.actionMasked) {
-            MotionEvent.ACTION_MOVE -> if (axis == Axis.VERTICAL) when (action) {
+            MotionEvent.ACTION_MOVE -> if (axis == Axis.HORIZONTAL) {
+                if (horizontal == HorizontalAction.SCRUB) cb.onScrub(dx) else cb.onPageDrag(dx)
+            } else if (axis == Axis.VERTICAL) when (action) {
                 SwipeAction.BRIGHTNESS -> cb.onBrightness(ViewerGestureMath.levelFromDrag(start, dy, height.toFloat(), ViewerGestureMath.MIN_BRIGHTNESS))
                 SwipeAction.VOLUME -> cb.onVolume(ViewerGestureMath.levelFromDrag(start, dy, height.toFloat()))
                 SwipeAction.INFO -> if (!fired && -dy > infoPx) { fired = true; cb.onInfo() }
@@ -425,11 +452,20 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
                 else -> Unit
             }
             MotionEvent.ACTION_UP -> {
-                if (axis == Axis.HORIZONTAL) cb.onHorizontalEnd(dx)
+                if (axis == Axis.HORIZONTAL) {
+                    if (horizontal == HorizontalAction.SCRUB) cb.onScrubEnd(false)
+                    else {
+                        val v = velocity?.let { it.computeCurrentVelocity(1000); it.xVelocity } ?: 0f
+                        cb.onPageEnd(dx, v)
+                    }
+                }
                 if (action == SwipeAction.DISMISS) cb.onDismissEnd(dy.coerceAtLeast(0f), dy > dismissPx)
                 reset()
             }
             MotionEvent.ACTION_CANCEL -> {
+                if (axis == Axis.HORIZONTAL) {
+                    if (horizontal == HorizontalAction.SCRUB) cb.onScrubEnd(true) else cb.onPageEnd(0f, 0f)
+                }
                 if (action == SwipeAction.DISMISS) cb.onDismissEnd(0f, false)
                 reset()
             }
@@ -439,5 +475,6 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
 
     private fun reset() {
         axis = Axis.NONE; action = SwipeAction.NONE; tracking = false
+        velocity?.recycle(); velocity = null
     }
 }

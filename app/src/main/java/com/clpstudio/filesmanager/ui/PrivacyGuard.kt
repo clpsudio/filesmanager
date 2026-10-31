@@ -19,27 +19,28 @@ import kotlinx.coroutines.launch
  * Android 8–12: FLAG_SECURE only while the app is in the background (set on pause, cleared on resume).
  */
 object PrivacyGuard {
-    fun install(activity: ComponentActivity) {
+    /** [secureAllowed]: false while FLAG_SECURE would hurt (picture-in-picture on Android 8–12 shows black). */
+    fun install(activity: ComponentActivity, secureAllowed: () -> Boolean = { true }) {
         var on = Graph.settings.value.hideInRecents
-        apply(activity, on, resumed = true)
+        apply(activity, on, resumed = true, secureAllowed)
         activity.lifecycleScope.launch {
             Graph.settingsRepo.settings.map { it.hideInRecents }.distinctUntilChanged().collect {
                 on = it
-                apply(activity, it, resumed = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                apply(activity, it, resumed = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), secureAllowed)
             }
         }
         if (Build.VERSION.SDK_INT < 33) {
             activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
-                override fun onPause(owner: LifecycleOwner) = apply(activity, on, resumed = false)
-                override fun onResume(owner: LifecycleOwner) = apply(activity, on, resumed = true)
+                override fun onPause(owner: LifecycleOwner) = apply(activity, on, resumed = false, secureAllowed)
+                override fun onResume(owner: LifecycleOwner) = apply(activity, on, resumed = true, secureAllowed)
             })
         }
     }
 
-    private fun apply(activity: ComponentActivity, on: Boolean, resumed: Boolean) {
+    private fun apply(activity: ComponentActivity, on: Boolean, resumed: Boolean, secureAllowed: () -> Boolean) {
         if (Build.VERSION.SDK_INT >= 33) {
             activity.setRecentsScreenshotEnabled(!on)
-        } else if (on && !resumed) {
+        } else if (on && !resumed && secureAllowed()) {
             activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         } else {
             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)

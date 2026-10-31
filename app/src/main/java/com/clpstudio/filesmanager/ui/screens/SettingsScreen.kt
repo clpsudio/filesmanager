@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
@@ -70,6 +72,8 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onFileView = { scope.launch { Graph.settingsRepo.setFileView(it) } },
         onDiagnostics = onDiagnostics,
         onCrashReports = onCrashReports,
+        onBackgroundPlay = { scope.launch { Graph.settingsRepo.setBackgroundPlay(it) } },
+        onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
     )
 }
 
@@ -86,6 +90,8 @@ fun SettingsContent(
     onFileView: (com.clpstudio.filesmanager.data.FileView) -> Unit = {},
     onDiagnostics: () -> Unit = {},
     onCrashReports: () -> Unit = {},
+    onBackgroundPlay: (Boolean) -> Unit = {},
+    onAutoPip: (Boolean) -> Unit = {},
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -162,6 +168,13 @@ fun SettingsContent(
                         }
                     }
                 }
+            }
+            item { Header("Video player") }
+            item {
+                SwitchCard(Icons.Filled.Headphones, "Background play", "Videos keep playing with the screen off or in other apps, with controls in the notification. Close the player to stop.", settings.backgroundPlay, onBackgroundPlay)
+            }
+            item {
+                SwitchCard(Icons.Filled.PictureInPictureAlt, "Auto picture-in-picture", "Going Home while a video plays shows it in a small window over other apps.", settings.autoPip, onAutoPip)
             }
             item { Header("Security") }
             item {

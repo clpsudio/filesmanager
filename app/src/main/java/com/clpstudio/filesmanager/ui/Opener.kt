@@ -58,8 +58,11 @@ class Opener(private val context: Context, private val nav: NavController) {
         val file = File(item.path)
         when (item.kind) {
             FileKind.VIDEO -> {
-                val videos = siblings.filter { it.kind == FileKind.VIDEO }.ifEmpty { listOf(item) }
-                VideoPlayerActivity.startFiles(context, videos, videos.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
+                // From Media (or any list mixing photos and videos) the player swipes through both.
+                val media = siblings.filter { it.kind == FileKind.VIDEO || it.kind == FileKind.IMAGE }
+                val list = (if (media.any { it.kind == FileKind.IMAGE }) media else siblings.filter { it.kind == FileKind.VIDEO })
+                    .takeIf { l -> l.any { it.path == item.path } } ?: listOf(item)
+                VideoPlayerActivity.startFiles(context, list, list.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
             }
             FileKind.AUDIO -> {
                 val audios = siblings.filter { it.kind == FileKind.AUDIO }.ifEmpty { listOf(item) }

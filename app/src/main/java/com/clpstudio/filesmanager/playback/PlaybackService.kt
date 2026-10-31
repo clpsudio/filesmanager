@@ -50,10 +50,23 @@ class PlaybackService : MediaSessionService() {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // Tapping the notification: back to the video player for a video, the music screen for audio.
+        val openVideo = PendingIntent.getActivity(
+            this, 1, com.clpstudio.filesmanager.viewer.VideoPlayerActivity.resumeIntent(this),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         session = MediaSession.Builder(this, player)
             .setSessionActivity(open)
             .setCallback(Callback())
             .build()
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val video = mediaItem?.mediaMetadata?.let { m ->
+                    m.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO || m.extras?.getBoolean(EXTRA_IS_VIDEO) == true
+                } == true
+                runCatching { session?.setSessionActivity(if (video) openVideo else open) }
+            }
+        })
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

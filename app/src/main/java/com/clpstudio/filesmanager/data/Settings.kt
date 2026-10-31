@@ -46,6 +46,10 @@ data class AppSettings(
     val hideInRecents: Boolean = true,
     /** App-wide file view (Settings → File view). Screens can change it temporarily. */
     val fileView: FileView = FileView.GRID,
+    /** Video keeps playing (sound + media notification) after leaving the player or turning the screen off. */
+    val backgroundPlay: Boolean = true,
+    /** Home / app switch while a video plays opens picture-in-picture. */
+    val autoPip: Boolean = true,
     /** Last type-filter chip per category name (e.g. "PHOTOS" -> "PNG"). */
     val typeFilters: Map<String, String> = emptyMap(),
 )
@@ -64,6 +68,8 @@ class SettingsRepository(private val context: Context) {
         val hideInRecents = booleanPreferencesKey("hide_in_recents")
         val fileView = stringPreferencesKey("file_view")
         val typeFilters = stringPreferencesKey("type_filters")
+        val backgroundPlay = booleanPreferencesKey("background_play")
+        val autoPip = booleanPreferencesKey("auto_pip")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -78,6 +84,8 @@ class SettingsRepository(private val context: Context) {
             hideInRecents = p[Keys.hideInRecents] ?: true,
             fileView = FileView.parse(p[Keys.fileView]),
             typeFilters = decodeFilters(p[Keys.typeFilters]),
+            backgroundPlay = p[Keys.backgroundPlay] ?: true,
+            autoPip = p[Keys.autoPip] ?: true,
         )
     }
 
@@ -96,6 +104,8 @@ class SettingsRepository(private val context: Context) {
         it[Keys.typeFilters] = encodeFilters(m)
     }
     suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
+    suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
+    suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
     suspend fun setDefaultView(view: DefaultView) = context.dataStore.edit { it[Keys.defaultView] = view.name }
 }
 
