@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager.ui
 
+import com.clpstudio.filesmanager.install.ApkInstaller
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -17,9 +18,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** The list the photo viewer swipes through (set just before opening it). */
+/** The list the file viewer swipes through (set just before opening it), in the list's own order. */
 object ViewerSession {
-    var images: List<String> = emptyList()
+    var files: List<String> = emptyList()
 }
 
 /** Opens any file inside the app: everything has an in-app viewer or a clear fallback. */
@@ -30,13 +31,24 @@ class Opener(private val context: Context, private val nav: NavController) {
             nav.navigate(Routes.browse(item.path))
             return
         }
+        when (item.kind) {
+            FileKind.VIDEO, FileKind.AUDIO, FileKind.APK -> openFull(item, siblings)
+            FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) openFull(item, siblings) else openPager(item, siblings)
+            else -> openPager(item, siblings)
+        }
+    }
+
+    /** Photos, PDFs, text, documents...: the swipeable viewer over the same list. */
+    private fun openPager(item: FileItem, siblings: List<FileItem>) {
+        val files = siblings.filter { !it.isDir }.map { it.path }
+        ViewerSession.files = if (item.path in files) files else listOf(item.path)
+        nav.navigate(Routes.view(item.path))
+    }
+
+    /** The full-screen player / installer / archive browser for one file. */
+    fun openFull(item: FileItem, siblings: List<FileItem>) {
         val file = File(item.path)
         when (item.kind) {
-            FileKind.IMAGE -> {
-                val images = siblings.filter { it.kind == FileKind.IMAGE }.map { it.path }
-                ViewerSession.images = if (item.path in images) images else listOf(item.path)
-                nav.navigate(Routes.image(item.path))
-            }
             FileKind.VIDEO -> {
                 val videos = siblings.filter { it.kind == FileKind.VIDEO }.ifEmpty { listOf(item) }
                 VideoPlayerActivity.startFiles(context, videos, videos.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
@@ -49,12 +61,11 @@ class Opener(private val context: Context, private val nav: NavController) {
                 }
                 nav.navigate(Routes.MUSIC)
             }
-            FileKind.PDF -> nav.navigate(Routes.pdf(Uri.fromFile(file), item.name))
-            FileKind.TEXT -> nav.navigate(Routes.text(Uri.fromFile(file), item.name))
-            FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
             FileKind.APK -> installApk(context, file)
+            FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
             FileKind.FONT -> nav.navigate(Routes.font(Uri.fromFile(file), item.name))
-            FileKind.DOCUMENT, FileKind.OTHER, FileKind.FOLDER -> nav.navigate(Routes.info(item.path))
+            FileKind.IMAGE, FileKind.PDF, FileKind.TEXT -> openPager(item, siblings)
+            else -> nav.navigate(Routes.info(item.path))
         }
     }
 
@@ -67,16 +78,7 @@ class Opener(private val context: Context, private val nav: NavController) {
             installApk(context, FileOps.uriFor(context, file))
         }
 
-        fun installApk(context: Context, uri: Uri) {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            try {
-                context.startActivity(intent)
-            } catch (_: ActivityNotFoundException) {
-                Toast.makeText(context, "The installer isn't available", Toast.LENGTH_SHORT).show()
-            }
-        }
+        /** Opens the system install prompt directly (no copy to Downloads). */
+        fun installApk(context: Context, uri: Uri) = ApkInstaller.install(context, uri)
     }
 }

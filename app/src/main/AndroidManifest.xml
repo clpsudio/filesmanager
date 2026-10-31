@@ -50,6 +50,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.Files.Starting"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -66,6 +67,7 @@
             android:taskAffinity=""
             android:excludeFromRecents="false"
             android:documentLaunchMode="intoExisting"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />
@@ -129,6 +131,16 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Files.Player" />
+
+        <!-- Runs the APK install flow (system prompt on top, nothing copied). -->
+        <activity
+            android:name=".install.InstallApkActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:noHistory="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <service
             android:name=".playback.PlaybackService"

@@ -124,6 +124,11 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-gif:3.3.0")
     implementation("io.coil-kt.coil3:coil-svg:3.3.0")
 
+    // ZIP with passwords (AES-256 / ZipCrypto). Pure Java, no network code.
+    implementation("net.lingala.zip4j:zip4j:2.11.5")
+    // PDF passwords (open / add / remove, AES-256). Offline; no network permission.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
     // Liquid glass blur.
     implementation("dev.chrisbanes.haze:haze-android:1.6.10")
 
