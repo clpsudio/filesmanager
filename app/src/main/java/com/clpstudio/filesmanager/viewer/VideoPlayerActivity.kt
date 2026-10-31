@@ -110,12 +110,12 @@ class VideoPlayerActivity : ComponentActivity() {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
                 // One more play finished. Repeat again only while another play is due ("Play N times").
                 repeatsDone++
-                c.repeatMode = if (com.clpstudio.filesmanager.data.LoopPolicy.keepRepeating(settings.loopMode, settings.loopTimes, repeatsDone)) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                c.repeatMode = if (com.clpstudio.filesmanager.data.LoopPolicy.keepRepeating(settings.loopMode, settings.loopTimes, repeatsDone)) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
             } else {
                 repeatsDone = 0
-                c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
             }
-            // With repeat off the playlist moves on by itself: the next video (photos are not in it), or stops at the last.
+            // With repeat off the playlist moves on by itself: the next video (photos are not in it), after the last the first again (REPEAT_MODE_ALL, item 24).
             ui.loopHint = if (ui.loop) com.clpstudio.filesmanager.data.LoopPolicy.hint(settings.loopMode, settings.loopTimes, repeatsDone) else null
             if (ui.photo != null) return
             val e = playlist.entryOfMedia(c.currentMediaItemIndex)
@@ -234,7 +234,7 @@ class VideoPlayerActivity : ComponentActivity() {
                         c.setMediaItems(items, media, intent.getLongExtra(EXTRA_POSITION, 0L).coerceAtLeast(0L))
                         c.prepare()
                     }
-                    c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                    c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
                     // The speed chosen in any video view (the pager's "1x" pill) carries over.
                     c.setPlaybackSpeed(VideoSpeed.value)
                     if (isVideoEntry(entry)) c.play() else showPhoto(entry)
@@ -651,7 +651,7 @@ class VideoPlayerActivity : ComponentActivity() {
                 else com.clpstudio.filesmanager.data.LoopMode.OFF
             com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setLoop(mode) }
             repeatsDone = 0
-            controller?.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            controller?.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
             ui.loop = on
             ui.loopHint = null
             ui.note(if (on) "Loop on" else "Loop off")
@@ -693,7 +693,7 @@ class VideoPlayerActivity : ComponentActivity() {
                 // Dragged back to the start: the play count starts again.
                 if (ms < 1_000) {
                     repeatsDone = 0
-                    controller?.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                    controller?.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
                     ui.loopHint = if (ui.loop) com.clpstudio.filesmanager.data.LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null
                 }
             } else {

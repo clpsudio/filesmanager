@@ -181,7 +181,7 @@ class PagerVideo(context: Context) {
             runCatching {
                 val c = com.clpstudio.filesmanager.playback.PlayerConnection.controller(context)
                 c.setMediaItems(items, index, at)
-                c.repeatMode = if (repeatOne) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                c.repeatMode = if (repeatOne) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
                 c.setPlaybackSpeed(VideoSpeed.value)
                 c.prepare()
                 c.play()
@@ -211,6 +211,14 @@ class PagerVideo(context: Context) {
                 onResume(item.path, pos, playing)
             }
         }
+    }
+
+    /** The list wrapped around to this same video: play it again from the start (new count). */
+    fun restart() {
+        repeats = 0
+        loopHint = if (loop) LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null
+        player.seekTo(0)
+        player.play()
     }
 
     /** Wider than tall (or not known yet): full screen turns to landscape. */

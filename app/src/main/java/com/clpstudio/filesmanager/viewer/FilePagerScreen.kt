@@ -203,7 +203,13 @@ fun FilePagerScreen(
     }
     // When a video is done (Off, or after "Play N times"): the next video in this list, skipping photos and other files.
     val nextVideo = remember(list.toList(), page) { com.clpstudio.filesmanager.ui.VideoOpen.nextVideo(list.map { pagerPageType(it.kind) == PagerPage.VIDEO }, page) }
-    video.onNext = nextVideo?.let { n -> { scope.launch { pager.animateScrollToPage(n) } } }
+    video.onNext = nextVideo?.let { n ->
+        when {
+            n == page -> ({ video.restart() }) // the only video: from the start again
+            n < page -> ({ scope.launch { pager.scrollToPage(n) } }) // end of the list: back to the first video
+            else -> ({ scope.launch { pager.animateScrollToPage(n) } })
+        }
+    }
     LaunchedEffect(current.path, isVideo) {
         while (isVideo) { video.tick(); kotlinx.coroutines.delay(250) }
     }

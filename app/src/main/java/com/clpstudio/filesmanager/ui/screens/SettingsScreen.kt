@@ -203,7 +203,7 @@ fun SettingsContent(
             item {
                 SwitchCard(Icons.Filled.PictureInPictureAlt, "Auto picture-in-picture", "Going Home while a video plays shows it in a small window over other apps.", settings.autoPip, onAutoPip)
             }
-            item { LoopVideosCard(settings.loopMode, settings.loopTimes, onLoop) }
+            item { LoopVideosCard(settings.loopMode, settings.loopTimes, onChange = onLoop) }
             item {
                 SwitchCard(
                     Icons.AutoMirrored.Filled.VolumeDown, "Lower volume for notifications",
@@ -212,6 +212,17 @@ fun SettingsContent(
                 )
             }
             item { DoubleTapSkipCard(settings.doubleTapSkipSeconds, onDoubleTapSkip) }
+            // Audio player: its own loop (item 26), never shared with the video one.
+            item { Header("Audio player") }
+            item {
+                LoopVideosCard(
+                    settings.audioLoopMode, settings.audioLoopTimes,
+                    onChange = { mode, times -> Graph.appScope.launch { Graph.settingsRepo.setAudioLoop(mode, times) } },
+                    title = "Audio loop",
+                    description = "Audio player. Off plays each song once, then the next. N times plays it N times, then the next. Forever repeats the song. After the last song it starts again from the first.",
+                    eachLabel = "Play each song",
+                )
+            }
             item { Header("Security") }
             item {
                 SwitchCard(Icons.Filled.Lock, "Hide content while switching apps", "Your files don't show in the app switcher (Recents).", settings.hideInRecents, onHideInRecents)
@@ -366,15 +377,22 @@ fun DoubleTapSkipCard(seconds: Int, onChange: (Int) -> Unit) {
 
 /** Settings → Video player → Loop videos: Off / Forever (default) / N more times (1–10). */
 @Composable
-fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, onChange: (com.clpstudio.filesmanager.data.LoopMode, Int) -> Unit) {
+fun LoopVideosCard(
+    mode: com.clpstudio.filesmanager.data.LoopMode,
+    times: Int,
+    title: String = "Loop videos",
+    description: String = "Forever plays the same video again and again. N times plays it N times, then the next video. Off plays the next video.",
+    eachLabel: String = "Play each video",
+    onChange: (com.clpstudio.filesmanager.data.LoopMode, Int) -> Unit,
+) {
     val modes = com.clpstudio.filesmanager.data.LoopMode.entries
     Card {
         Row(verticalAlignment = Alignment.CenterVertically) {
             RowIcon(Icons.Filled.Repeat)
             Column(Modifier.weight(1f)) {
-                Text("Loop videos", style = MaterialTheme.typography.titleSmall)
+                Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Forever plays the same video again and again. N times plays it N times, then the next video. Off plays the next video.",
+                    description,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -391,7 +409,7 @@ fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, o
         if (mode == com.clpstudio.filesmanager.data.LoopMode.TIMES) {
             Spacer(Modifier.size(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Play each video", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(eachLabel, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 androidx.compose.material3.FilledTonalIconButton(
                     onClick = { onChange(mode, com.clpstudio.filesmanager.data.LoopPolicy.clampTimes(times - 1)) },
                     enabled = times > com.clpstudio.filesmanager.data.LoopPolicy.MIN_TIMES,

@@ -1,5 +1,9 @@
 package com.clpstudio.filesmanager.playback
 
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
@@ -69,8 +73,37 @@ class PlaybackService : MediaSessionService() {
                     m.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO || m.extras?.getBoolean(EXTRA_IS_VIDEO) == true
                 } == true
                 runCatching { session?.setSessionActivity(if (video) openVideo else open) }
+                // Audio loop (Settings → Loop, shared with videos): count the plays of this track.
+                if (!video) {
+                    AudioLoop.plays = if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) AudioLoop.plays + 1 else 0
+                    applyAudioLoop()
+                }
             }
         })
+        loopJob = com.clpstudio.filesmanager.Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            com.clpstudio.filesmanager.Graph.settings.collect { applyAudioLoop() }
+        }
+    }
+
+    private var loopJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Audio tracks follow Settings → Audio player → Audio loop (items 23-26, separate from the video loop): Off = each track once, then the next (after
+     * the last, the first again); Play N times = each track N plays in total, then the next; Forever = the same track again and again.
+     * The service counts plays itself, so it works in the background too. Videos keep their own handling.
+     */
+    private fun applyAudioLoop() {
+        val p = session?.player ?: return
+        val item = p.currentMediaItem ?: return
+        val isVideo = item.mediaMetadata.extras?.getBoolean(EXTRA_IS_VIDEO) == true || item.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
+        if (isVideo) return
+        val s = runCatching { com.clpstudio.filesmanager.Graph.settings.value }.getOrNull() ?: return
+        // The audio player's own loop setting (item 26): the video one never applies here.
+        AudioLoop.mode = s.audioLoopMode
+        if (s.audioLoopMode != com.clpstudio.filesmanager.data.LoopMode.OFF) AudioLoop.lastOn = s.audioLoopMode
+        AudioLoop.times = s.audioLoopTimes
+        val want = AudioLoop.repeatModeFor(s.audioLoopMode, s.audioLoopTimes, AudioLoop.plays)
+        if (p.repeatMode != want) p.repeatMode = want
     }
 
     /** Audio deleted / moved through the app leaves the queue (videos are handled by the video player). */
@@ -100,6 +133,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        loopJob?.cancel()
+        loopJob = null
         focus?.release()
         focus = null
         com.clpstudio.filesmanager.data.FileEvents.removeListener(fileListener)
@@ -159,4 +194,30 @@ class PlaybackService : MediaSessionService() {
                 .build()
         }
     }
+}
+
+/** The audio loop as the music player shows it (same process as the service). */
+object AudioLoop {
+    var plays by androidx.compose.runtime.mutableIntStateOf(0)
+    var mode by androidx.compose.runtime.mutableStateOf(com.clpstudio.filesmanager.data.LoopMode.OFF)
+    var times by androidx.compose.runtime.mutableIntStateOf(com.clpstudio.filesmanager.data.LoopPolicy.DEFAULT_TIMES)
+    /** The looping mode the Loop button turns back on. */
+    var lastOn = com.clpstudio.filesmanager.data.LoopMode.FOREVER
+
+    /** The music player's Loop button: off ↔ the last looping mode (saved as the shared Loop setting). */
+    fun toggledMode(current: com.clpstudio.filesmanager.data.LoopMode): com.clpstudio.filesmanager.data.LoopMode =
+        if (current != com.clpstudio.filesmanager.data.LoopMode.OFF) com.clpstudio.filesmanager.data.LoopMode.OFF
+        else if (lastOn == com.clpstudio.filesmanager.data.LoopMode.OFF) com.clpstudio.filesmanager.data.LoopMode.FOREVER else lastOn
+
+    /**
+     * The player's repeat mode for the current track after [playsDone] repeats (pure: unit tested): the same track
+     * again while a play is due, otherwise on through the list, and after the last track from the first again
+     * (item 24: the loop is per file; the list itself always wraps).
+     */
+    fun repeatModeFor(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, playsDone: Int): Int =
+        if (com.clpstudio.filesmanager.data.LoopPolicy.repeatCurrent(mode, times, playsDone)) androidx.media3.common.Player.REPEAT_MODE_ONE
+        else androidx.media3.common.Player.REPEAT_MODE_ALL
+
+    /** "2/3" while "Play N times" counts (null otherwise). */
+    val hint: String? get() = com.clpstudio.filesmanager.data.LoopPolicy.hint(mode, times, plays)
 }

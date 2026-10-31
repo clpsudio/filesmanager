@@ -1,5 +1,7 @@
 package com.clpstudio.filesmanager.viewer
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import android.Manifest
@@ -94,12 +96,10 @@ fun MusicPlayerScreen(ui: PlayerUi, onBack: () -> Unit) {
         onPrevious = { p?.seekToPrevious() },
         onSeek = { p?.seekTo(it) },
         onShuffle = { p?.shuffleModeEnabled = !(p?.shuffleModeEnabled ?: false) },
+        // Loop = Settings → Audio player → Audio loop (Off / Forever / Play N times); the service applies and counts it.
         onRepeat = {
-            p?.repeatMode = when (p?.repeatMode) {
-                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                else -> Player.REPEAT_MODE_OFF
-            }
+            val next = com.clpstudio.filesmanager.playback.AudioLoop.toggledMode(com.clpstudio.filesmanager.Graph.settings.value.audioLoopMode)
+            com.clpstudio.filesmanager.Graph.appScope.launch { com.clpstudio.filesmanager.Graph.settingsRepo.setAudioLoop(next) }
         },
         onPick = { p?.seekTo(it, 0) },
     )
@@ -209,12 +209,15 @@ fun MusicPlayerContent(
                         Icon(if (ui.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (ui.isPlaying) "Pause" else "Play", Modifier.size(40.dp))
                     }
                     IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) { Icon(Icons.Filled.SkipNext, "Next", Modifier.size(36.dp)) }
+                    val loopMode = com.clpstudio.filesmanager.playback.AudioLoop.mode
+                    val loopOn = loopMode != com.clpstudio.filesmanager.data.LoopMode.OFF
                     IconButton(onClick = onRepeat) {
                         Icon(
-                            if (ui.repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat, "Repeat",
-                            tint = if (ui.repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            if (loopOn) Icons.Filled.RepeatOne else Icons.Filled.Repeat, if (loopOn) "Loop on" else "Loop off",
+                            tint = if (loopOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    com.clpstudio.filesmanager.playback.AudioLoop.hint?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
                 }
             }
             Spacer(Modifier.height(16.dp))

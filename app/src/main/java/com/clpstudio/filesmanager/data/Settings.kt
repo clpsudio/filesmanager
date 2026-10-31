@@ -63,6 +63,9 @@ data class AppSettings(
     val loopMode: LoopMode = LoopMode.FOREVER,
     /** Extra plays for [LoopMode.TIMES] (1–10). */
     val loopTimes: Int = LoopPolicy.DEFAULT_TIMES,
+    /** Settings → Audio player → Audio loop, separate from the video one (default Off: one by one, then from the first). */
+    val audioLoopMode: LoopMode = LoopMode.OFF,
+    val audioLoopTimes: Int = LoopPolicy.DEFAULT_TIMES,
     /** Seconds a double-tap on the left / right side skips in the video player. */
     val doubleTapSkipSeconds: Int = DoubleTapSkip.DEFAULT,
     /** Last type-filter chip per category name (e.g. "PHOTOS" -> "PNG"). */
@@ -93,6 +96,8 @@ class SettingsRepository(private val context: Context) {
         val defaultSortBy = stringPreferencesKey("default_sort_by")
         val defaultSortAsc = androidx.datastore.preferences.core.booleanPreferencesKey("default_sort_asc")
         val loopTimes = androidx.datastore.preferences.core.intPreferencesKey("loop_times")
+        val audioLoopMode = stringPreferencesKey("audio_loop_mode")
+        val audioLoopTimes = androidx.datastore.preferences.core.intPreferencesKey("audio_loop_times")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -117,6 +122,8 @@ class SettingsRepository(private val context: Context) {
             defaultSortBy = p[Keys.defaultSortBy]?.let { runCatching { SortBy.valueOf(it) }.getOrNull() } ?: SortBy.DATE,
             defaultSortAscending = p[Keys.defaultSortAsc] ?: false,
             loopTimes = LoopPolicy.clampTimes(p[Keys.loopTimes] ?: LoopPolicy.DEFAULT_TIMES),
+            audioLoopMode = p[Keys.audioLoopMode]?.let { LoopMode.parse(it) } ?: LoopMode.OFF,
+            audioLoopTimes = LoopPolicy.clampTimes(p[Keys.audioLoopTimes] ?: LoopPolicy.DEFAULT_TIMES),
         )
     }
 
@@ -155,6 +162,11 @@ class SettingsRepository(private val context: Context) {
     suspend fun setLoop(mode: LoopMode, times: Int? = null) = context.dataStore.edit {
         it[Keys.loopMode] = mode.name
         if (times != null) it[Keys.loopTimes] = LoopPolicy.clampTimes(times)
+    }
+    /** The audio player's own loop (never touches the video one). */
+    suspend fun setAudioLoop(mode: LoopMode, times: Int? = null) = context.dataStore.edit {
+        it[Keys.audioLoopMode] = mode.name
+        if (times != null) it[Keys.audioLoopTimes] = LoopPolicy.clampTimes(times)
     }
     suspend fun setDoubleTapSkip(seconds: Int) = context.dataStore.edit { it[Keys.doubleTapSkip] = DoubleTapSkip.clamp(seconds) }
     suspend fun setDefaultView(view: DefaultView) = context.dataStore.edit { it[Keys.defaultView] = view.name }

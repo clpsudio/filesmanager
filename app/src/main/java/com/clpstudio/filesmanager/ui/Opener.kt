@@ -92,8 +92,8 @@ class Opener(private val context: Context, private val nav: NavController) {
         when (item.kind) {
             FileKind.VIDEO -> openVideo(item, siblings)
             FileKind.AUDIO -> {
-                val audios = siblings.filter { it.kind == FileKind.AUDIO }.ifEmpty { listOf(item) }
-                val index = audios.indexOfFirst { it.path == item.path }.coerceAtLeast(0)
+                // Every song of this list, in order, from the tapped one: the player moves on by itself (item 25).
+                val (audios, index) = com.clpstudio.filesmanager.playback.AudioQueue.build(item, siblings)
                 Graph.appScope.launch(Dispatchers.Main) {
                     runCatching { PlayerConnection.playAudio(context, audios, index) }
                 }
@@ -132,6 +132,11 @@ object VideoOpen {
         return if (open in paths) paths else listOf(open)
     }
 
-    /** After a video is done (Off, or "Play N times" finished): the next video page after [from], skipping photos and other files. */
-    fun nextVideo(isVideo: List<Boolean>, from: Int): Int? = (from + 1 until isVideo.size).firstOrNull { isVideo[it] }
+    /**
+     * After a video is done (Off, or "Play N times" finished): the next video page after [from], skipping photos and
+     * other files; after the last video the first one again (item 24), which is [from] itself when it's the only one.
+     * Null only when the list has no video.
+     */
+    fun nextVideo(isVideo: List<Boolean>, from: Int): Int? =
+        ((from + 1 until isVideo.size) + (0..from.coerceAtMost(isVideo.size - 1))).firstOrNull { isVideo.getOrElse(it) { false } }
 }
