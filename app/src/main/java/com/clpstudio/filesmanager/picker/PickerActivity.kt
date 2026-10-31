@@ -51,8 +51,8 @@ class PickerActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Shown inside another app's flow: never blanked by "Hide content while switching apps".
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        // Item 39: "Block screenshots & screen recording" covers the picker too.
-        if (runCatching { Graph.settings.value.blockScreenshots }.getOrDefault(false)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Item 39: "Block screenshots & screen recording" covers the picker too — live, no reopen needed (item 16).
+        com.clpstudio.filesmanager.ui.PrivacyGuard.installBlockOnly(this)
         val request = PickerRequest.from(
             type = intent.type ?: runCatching { intent.resolveType(this) }.getOrNull(),
             extraMimeTypes = intent.getStringArrayExtra(Intent.EXTRA_MIME_TYPES),

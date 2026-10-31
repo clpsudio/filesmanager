@@ -128,6 +128,13 @@ object Vault {
         }
     }
 
+    /** Fingerprint unlock (item 5): [mk] already matched this vault's check value. A success resets wrong tries. */
+    fun unlockWithMasterKey(mk: ByteArray) {
+        store.unlockWithKey(mk)
+        attempts = AttemptLimiter.onSuccess()
+        com.clpstudio.filesmanager.Graph.appScope.launch { reload() }
+    }
+
     /** Renames a vault item; returns an error message or null. Same name rules as files (no leading dot). */
     suspend fun rename(item: VaultItem, typed: String): String? = withContext(Dispatchers.IO) {
         val name = typed.trim()
@@ -144,6 +151,7 @@ object Vault {
      */
     suspend fun resetForgotten() = withContext(Dispatchers.IO) {
         if (!::store.isInitialized) return@withContext
+        VaultBiometric.disable()
         store.deleteVault()
         thumbs.evictAll()
         attempts = AttemptState()
@@ -166,6 +174,7 @@ object Vault {
     suspend fun checkSecret(secret: String): Boolean = withContext(Dispatchers.Default) { store.checkSecret(secret) }
 
     suspend fun deleteVault() = withContext(Dispatchers.IO) {
+        VaultBiometric.disable()
         store.deleteVault()
         thumbs.evictAll()
         attempts = AttemptState()

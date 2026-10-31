@@ -41,6 +41,23 @@ object ApkInstaller {
         )
     }
 
+    /**
+     * Item 6: a split bundle — the chosen inner APKs of [bundle] go into ONE install session; [obb] (XAPK expansion
+     * files: entry → path under shared storage) are copied first.
+     */
+    fun installBundle(context: Context, bundle: File, parts: List<String>, obb: List<Pair<String, String>> = emptyList()) {
+        com.clpstudio.filesmanager.data.SafeStart.start(
+            context,
+            Intent(context, InstallApkActivity::class.java)
+                .setData(Uri.fromFile(bundle))
+                .putExtra(InstallApkActivity.EXTRA_PARTS, parts.toTypedArray())
+                .putExtra(InstallApkActivity.EXTRA_OBB_FROM, obb.map { it.first }.toTypedArray())
+                .putExtra(InstallApkActivity.EXTRA_OBB_TO, obb.map { it.second }.toTypedArray())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            "Couldn't open the installer",
+        )
+    }
+
     /** "Install unknown apps" is allowed for Files (always true before Android 8). */
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
 
@@ -94,9 +111,75 @@ class InstallApkActivity : ComponentActivity() {
     private fun startInstall() {
         val uri = intent.data ?: return done("Nothing to install")
         started = true
+        val parts = intent.getStringArrayExtra(EXTRA_PARTS)
+        if (parts != null) {
+            lifecycleScope.launch {
+                val obbNote = withContext(Dispatchers.IO) { copyObb(uri) }
+                val result = withContext(Dispatchers.IO) { runCatching { commitBundle(uri, parts.toList()) } }
+                result.onFailure { done("Not installed: " + (it.message ?: "the bundle couldn't be read")) }
+                obbNote?.let { Toast.makeText(applicationContext, it, Toast.LENGTH_LONG).show() }
+            }
+            return
+        }
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { commitSession(uri) } }
             result.onFailure { fallbackInstall(uri) }
+        }
+    }
+
+    /** XAPK expansion files → Android/obb/<package>/ (allowed for apps that can install packages). Returns a note on failure. */
+    private fun copyObb(uri: Uri): String? {
+        val from = intent.getStringArrayExtra(EXTRA_OBB_FROM).orEmpty()
+        val to = intent.getStringArrayExtra(EXTRA_OBB_TO).orEmpty()
+        if (from.isEmpty() || from.size != to.size) return null
+        val root = android.os.Environment.getExternalStorageDirectory()
+        return runCatching {
+            java.util.zip.ZipFile(File(uri.path!!)).use { z ->
+                from.indices.forEach { i ->
+                    val e = z.getEntry(from[i]) ?: return@forEach
+                    val out = File(root, to[i].trimStart('/'))
+                    if (!out.canonicalPath.startsWith(File(root, "Android/obb").canonicalPath)) return@forEach
+                    out.parentFile?.mkdirs()
+                    z.getInputStream(e).use { inp -> out.outputStream().use { inp.copyTo(it, 256 * 1024) } }
+                }
+            }
+            null
+        }.getOrElse { "The app's extra data (OBB) couldn't be copied: ${it.message}" }
+    }
+
+    /** The chosen APKs of a bundle in one session (base + splits); the result comes back to [onNewIntent]. */
+    @SuppressLint("RequestInstallPackagesPolicy")
+    private fun commitBundle(uri: Uri, parts: List<String>) {
+        val installer = packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+        java.util.zip.ZipFile(File(uri.path ?: error("Can't read the bundle"))).use { z ->
+            val entries = parts.map { z.getEntry(it) ?: error("Missing in the bundle: $it") }
+            val total = entries.sumOf { it.size.coerceAtLeast(0) }
+            if (total > 0) params.setSize(total)
+            val id = installer.createSession(params)
+            try {
+                installer.openSession(id).use { session ->
+                    entries.forEachIndexed { i, e ->
+                        // Unique names inside the session ("base.apk", "split_config.arm64_v8a.apk", …).
+                        val name = "${i}_" + e.name.substringAfterLast('/')
+                        z.getInputStream(e).use { inp ->
+                            session.openWrite(name, 0, e.size.takeIf { it > 0 } ?: -1).use { out ->
+                                inp.copyTo(out, 256 * 1024)
+                                session.fsync(out)
+                            }
+                        }
+                    }
+                    val status = Intent(this, InstallApkActivity::class.java)
+                        .setAction(ACTION_STATUS)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                    session.commit(PendingIntent.getActivity(this, id, status, flags).intentSender)
+                }
+            } catch (e: Exception) {
+                runCatching { installer.abandonSession(id) }
+                throw e
+            }
         }
     }
 
@@ -183,6 +266,9 @@ class InstallApkActivity : ComponentActivity() {
     companion object {
         const val APK_MIME = "application/vnd.android.package-archive"
         private const val ACTION_STATUS = "com.clpstudio.filesmanager.INSTALL_STATUS"
+        const val EXTRA_PARTS = "bundle_parts"
+        const val EXTRA_OBB_FROM = "obb_from"
+        const val EXTRA_OBB_TO = "obb_to"
 
         fun installError(status: Int, message: String?): String = when (status) {
             PackageInstaller.STATUS_FAILURE_BLOCKED -> "Install blocked by the phone"

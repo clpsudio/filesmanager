@@ -5,14 +5,32 @@ import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
-/** PIN (4–10 digits) or password (8–72 characters), the same rules for the app lock and the vault. */
-enum class CredentialType { PIN, PASSWORD }
+/**
+ * PIN (4–10 digits), password (8–72 characters) or pattern (3×3 dots, at least 4 — item 4, F11), the same rules for
+ * the app lock and the vault. A pattern is kept as the dots' numbers in order ("0" top-left … "8" bottom-right) and
+ * goes through the same PBKDF2 / vault key derivation as a PIN.
+ */
+enum class CredentialType { PIN, PASSWORD, PATTERN }
+
+/** "PIN" / "password" / "pattern" for sentences. */
+fun CredentialType.word(): String = when (this) {
+    CredentialType.PIN -> "PIN"
+    CredentialType.PASSWORD -> "password"
+    CredentialType.PATTERN -> "pattern"
+}
+
+/** "PIN" / "Password" / "Pattern" for labels. */
+fun CredentialType.label(): String = word().replaceFirstChar { it.uppercase() }
 
 object CredentialRules {
     const val PIN_MIN = 4
     const val PIN_MAX = 10
     const val PASSWORD_MIN = 8
     const val PASSWORD_MAX = 72
+    const val PATTERN_MIN = 4
+
+    /** A drawn pattern: distinct dots 0–8. */
+    fun isPatternShape(value: String): Boolean = value.all { it in '0'..'8' } && value.toSet().size == value.length
 
     /** Error text for a new PIN/password, or null when it's fine. */
     fun error(type: CredentialType, value: String): String? = when (type) {
@@ -30,16 +48,27 @@ object CredentialRules {
             value.isBlank() -> "Spaces only isn't a password"
             else -> null
         }
+        CredentialType.PATTERN -> when {
+            value.isEmpty() -> "Draw a pattern"
+            !isPatternShape(value) -> "Draw a pattern"
+            value.length < PATTERN_MIN -> "Connect at least $PATTERN_MIN dots"
+            else -> null
+        }
     }
 
     /** New value typed twice: the first problem, or null. */
     fun confirmError(type: CredentialType, value: String, repeat: String): String? =
-        error(type, value) ?: if (value != repeat) (if (type == CredentialType.PIN) "The PINs don't match" else "The passwords don't match") else null
+        error(type, value) ?: if (value != repeat) when (type) {
+            CredentialType.PIN -> "The PINs don't match"
+            CredentialType.PASSWORD -> "The passwords don't match"
+            CredentialType.PATTERN -> "The patterns don't match"
+        } else null
 
     /** What the field accepts while typing (a PIN field drops non-digits and stops at 10). */
     fun filterInput(type: CredentialType, value: String): String = when (type) {
         CredentialType.PIN -> value.filter { it in '0'..'9' }.take(PIN_MAX)
         CredentialType.PASSWORD -> value.take(PASSWORD_MAX)
+        CredentialType.PATTERN -> value.filter { it in '0'..'8' }.take(9)
     }
 }
 
@@ -193,12 +222,16 @@ class LockTimer {
     var locked: Boolean = false
         private set
     private var backgroundAt: Long? = null
+    /** When the lock was last opened (a fingerprint prompt that paused the app must not count as leaving it). */
+    private var unlockedAt: Long? = null
 
     /** Cold start: locked whenever the lock is on. */
     fun onAppStart(enabled: Boolean) { locked = enabled; backgroundAt = null }
 
-    fun onBackground(enabled: Boolean, askAfter: AskAfter, now: Long) {
+    fun onBackground(enabled: Boolean, askAfter: AskAfter, now: Long, promptOpen: Boolean = false) {
         if (!enabled) return
+        // On some phones the system fingerprint prompt stops the app; that isn't leaving it.
+        if (promptOpen) return
         backgroundAt = now
         if (askAfter.ms == 0L) locked = true
     }
@@ -207,10 +240,15 @@ class LockTimer {
         val since = backgroundAt
         backgroundAt = null
         if (!enabled) { locked = false; return }
+        // Back from a fingerprint prompt that just opened the lock: don't lock again at once (F11 cause 3).
+        val opened = unlockedAt
+        if (opened != null && since != null && opened >= since && now - opened < UNLOCK_GRACE_MS) return
         if (since != null && now - since >= askAfter.ms) locked = true
     }
 
-    fun onUnlocked() { locked = false }
+    fun onUnlocked(now: Long? = null) { locked = false; unlockedAt = now }
+
+    companion object { const val UNLOCK_GRACE_MS = 3000L }
 
     fun onDisabled() { locked = false; backgroundAt = null }
 

@@ -262,6 +262,8 @@ class VideoPlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         val c = controller
+        // A hold-for-2x cut off by leaving the screen must not stay at 2x (item 17).
+        if (ui.fast) { ui.fast = false; c?.setPlaybackSpeed(normalSpeed) }
         when (VideoClose.onStop(
             changingConfig = isChangingConfigurations, finishing = isFinishing,
             pipNow = isInPipSafe(), pipSinceResume = pipSinceResume,

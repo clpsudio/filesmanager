@@ -42,6 +42,8 @@ data class ApkDetails(
     /** The inner APKs when [file] is a split bundle. */
     val bundleParts: List<String> = emptyList(),
     val error: String? = null,
+    /** Item 6: which parts of a split bundle this phone installs (null for a plain APK). */
+    val splitPlan: SplitPlan? = null,
 ) {
     val isBundle: Boolean get() = bundleParts.isNotEmpty()
     val installState: ApkFiles.InstallState get() = ApkFiles.installState(manifest?.versionCode, installed?.versionCode)
@@ -110,7 +112,12 @@ object ApkInspector {
             else -> null
         }
         val finalManifest = manifest ?: pi?.let { fromPackageInfo(it) }
-        return ApkDetails(file, apk, label, icon, finalManifest, scan, signing, installed, customLabels, parts, error)
+        val plan = if (parts.isNotEmpty() || ApkFiles.isBundleName(file.name)) runCatching {
+            val res = context.resources
+            val langs = (0 until res.configuration.locales.size()).map { res.configuration.locales[it].language }
+            SplitSelect.plan(file, Build.SUPPORTED_ABIS.toList(), res.displayMetrics.densityDpi, langs)
+        }.getOrNull() else null
+        return ApkDetails(file, apk, label, icon, finalManifest, scan, signing, installed, customLabels, parts, error, plan)
     }
 
     @Suppress("DEPRECATION")

@@ -1,5 +1,8 @@
 package com.clpstudio.filesmanager.ui.vault
 
+import androidx.compose.material.icons.filled.Fingerprint
+import com.clpstudio.filesmanager.security.word
+import com.clpstudio.filesmanager.security.label
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.mutableIntStateOf
 import android.content.Context
@@ -223,10 +226,28 @@ private fun VaultUnlock(onBack: () -> Unit, onSettings: () -> Unit) {
             verticalArrangement = Arrangement.Center,
         ) {
             val type = remember { Vault.store.credentialType ?: CredentialType.PIN }
+            // Item 5: fingerprint opens the vault (asked once when the screen opens; also a button).
+            val activity = resetContext.findActivityCompat()
+            val bio = remember { com.clpstudio.filesmanager.vault.VaultBiometric.enabled() && com.clpstudio.filesmanager.vault.VaultBiometric.available(resetContext) }
+            var bioMsg by remember { mutableStateOf<String?>(null) }
+            var bioSignal by remember { mutableStateOf<android.os.CancellationSignal?>(null) }
+            fun askFingerprint() {
+                if (activity == null) return
+                bioMsg = null
+                bioSignal = com.clpstudio.filesmanager.vault.VaultBiometric.unlock(activity, "Use " + type.word()) { msg -> bioMsg = msg }
+            }
+            LaunchedEffect(Unit) {
+                if (bio && Vault.remainingMs() <= 0L && activity != null) {
+                    // Same fix as the app lock: ask once the window has focus (earlier, phones cancel it).
+                    com.clpstudio.filesmanager.security.Biometrics.awaitFocus(activity)
+                    askFingerprint()
+                }
+            }
+            androidx.compose.runtime.DisposableEffect(Unit) { onDispose { runCatching { bioSignal?.cancel() } } }
             UnlockForm(
                 type = type,
                 title = "Vault is locked",
-                subtitle = lost ?: "${Vault.count.collectAsState().value} files · enter your vault ${if (type == CredentialType.PIN) "PIN" else "password"}",
+                subtitle = lost ?: "${Vault.count.collectAsState().value} files · enter your vault ${type.word()}",
                 check = { s ->
                     when (val r = Vault.unlock(s)) {
                         Vault.UnlockResult.Ok -> null
@@ -236,10 +257,19 @@ private fun VaultUnlock(onBack: () -> Unit, onSettings: () -> Unit) {
                 },
                 onUnlocked = {},
                 remainingMs = { Vault.remainingMs() },
+                autoFocus = !bio,
                 // Always available, also during a lockout.
-                extra = { _ ->
+                extra = { lockedOut ->
+                    if (bio && !lockedOut) {
+                        androidx.compose.material3.OutlinedButton(onClick = { askFingerprint() }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Filled.Fingerprint, null)
+                            androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                            Text("Use fingerprint")
+                        }
+                    }
+                    bioMsg?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     androidx.compose.material3.TextButton(onClick = { resetStep = 1 }) {
-                        Text("Forgot ${if (type == CredentialType.PIN) "PIN" else "password"}? Reset vault", color = MaterialTheme.colorScheme.error)
+                        Text("Forgot ${type.word()}? Reset vault", color = MaterialTheme.colorScheme.error)
                     }
                 },
             )
@@ -501,4 +531,13 @@ fun VaultResetDialogs(step: Int, onStep: (Int) -> Unit, onReset: () -> Unit, wai
             )
         }
     }
+}
+
+private fun android.content.Context.findActivityCompat(): android.app.Activity? {
+    var c: android.content.Context? = this
+    while (c is android.content.ContextWrapper) {
+        if (c is android.app.Activity) return c
+        c = c.baseContext
+    }
+    return null
 }

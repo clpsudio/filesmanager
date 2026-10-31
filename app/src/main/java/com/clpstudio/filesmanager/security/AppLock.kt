@@ -64,7 +64,7 @@ object AppLock {
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
                 if (SystemClock.elapsedRealtime() < externalUntil) return // our own file picker is open
-                timer.onBackground(enabled, askAfter, SystemClock.elapsedRealtime())
+                timer.onBackground(enabled, askAfter, SystemClock.elapsedRealtime(), promptOpen = Biometrics.promptOpen)
                 Vault.onAppBackground()
                 publish()
             }
@@ -171,41 +171,30 @@ object AppLock {
 
     fun unlocked() {
         attempts = AttemptLimiter.onSuccess()
-        timer.onUnlocked()
+        timer.onUnlocked(SystemClock.elapsedRealtime())
         publish()
     }
 
-    // --- fingerprint (platform BiometricPrompt, Android 10+) ---
+    // --- fingerprint / face (platform BiometricPrompt, Android 10+; see Biometrics for the 1.0.21 causes) ---
 
-    fun biometricAvailable(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < 29) return false
-        val bm = context.getSystemService(android.hardware.biometrics.BiometricManager::class.java) ?: return false
-        return if (Build.VERSION.SDK_INT >= 30) {
-            bm.canAuthenticate(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK) == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            bm.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
-        }
-    }
+    fun biometricStatus(context: Context): Biometrics.Status = Biometrics.status(context, Biometrics.Purpose.APP_LOCK)
 
-    fun promptBiometric(activity: Activity, onSuccess: () -> Unit) {
-        if (Build.VERSION.SDK_INT < 29) return
-        // No fingerprint during a wrong-try lockout (item 53).
-        if (remainingMs() > 0) return
-        val b = android.hardware.biometrics.BiometricPrompt.Builder(activity)
-            .setTitle("Unlock Files")
-            .setNegativeButton("Use ${if (type == CredentialType.PIN) "PIN" else "password"}", activity.mainExecutor) { _, _ -> }
-        if (Build.VERSION.SDK_INT >= 30) b.setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK)
-        val cancel = android.os.CancellationSignal()
-        runCatching {
-            b.build().authenticate(cancel, activity.mainExecutor, object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?) {
-                    if (remainingMs() > 0) return
-                    unlocked()
-                    onSuccess()
-                }
-            })
-        }
+    fun biometricAvailable(context: Context): Boolean = Biometrics.usable(biometricStatus(context))
+
+    /** Shows the prompt; [onMessage] gets what to show under the lock (null clears). Returns a cancel handle. */
+    fun promptBiometric(activity: Activity, onMessage: (String?) -> Unit = {}, onSuccess: () -> Unit = {}): android.os.CancellationSignal? {
+        // No fingerprint during a wrong-try lockout (item 53) — said, not silent.
+        val wait = remainingMs()
+        if (wait > 0) { onMessage(AttemptLimiter.lockedMessage(wait)); return null }
+        return Biometrics.prompt(
+            activity, "Unlock Files", "Use ${type.word()}", Biometrics.Purpose.APP_LOCK,
+            onSuccess = {
+                if (remainingMs() > 0) return@prompt
+                unlocked()
+                onSuccess()
+            },
+            onMessage = onMessage,
+        )
     }
 }
 

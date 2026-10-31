@@ -154,6 +154,7 @@ class PagerVideo(context: Context) {
         path = item.path
         repeats = 0
         firstFrame = false
+        if (fast) { fast = false } // a hold never carries over to the next video
         position = 0L
         duration = 0L
         loop = s.loopMode != LoopMode.OFF
@@ -305,7 +306,9 @@ class PagerVideo(context: Context) {
 
     /** Press and hold the video: 2x while held, like the full player (item 32). */
     fun startFast() {
-        if (fast || path == null) return
+        // Not "if (fast) return": a hold that was cut off (page changed, video ended, screen recomposed) never
+        // reached endFast(), [fast] stayed true and every later long press did nothing (item 17 cause).
+        if (path == null) return
         fast = true
         player.setPlaybackSpeed(2f)
         if (!player.isPlaying) player.play()
@@ -397,7 +400,8 @@ fun InlineVideoPage(
                     onTap = { onTap() },
                     // Press and hold = 2x while held (item 32), back to the chosen speed on release.
                     onLongPress = { if (active) video.startFast() },
-                    onPress = { tryAwaitRelease(); video.endFast() },
+                    // finally: the hold also ends when this page's gesture is cancelled (not only on finger up).
+                    onPress = { try { tryAwaitRelease() } finally { video.endFast() } },
                     onDoubleTap = { o ->
                         if (active) {
                             val side = if (o.x > size.width / 2f) 1 else -1
@@ -408,6 +412,8 @@ fun InlineVideoPage(
             },
         )
         if (active) SkipGlow(video)
+        // Leaving the page while holding: back to the chosen speed.
+        androidx.compose.runtime.DisposableEffect(active) { onDispose { if (active) video.endFast() } }
         if (active && video.fast) SpeedPill(Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
         val scrub = video.scrubMs
         if (active && scrub != null) {

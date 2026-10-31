@@ -1,5 +1,7 @@
 package com.clpstudio.filesmanager.ui.vault
 
+import com.clpstudio.filesmanager.security.word
+import com.clpstudio.filesmanager.security.label
 import android.graphics.Bitmap
 import android.text.format.DateFormat
 import android.text.format.Formatter
@@ -140,10 +142,8 @@ private fun VaultImagePage(item: VaultItem) {
         if (b != null) {
             Image(
                 b.asImageBitmap(), item.name,
-                Modifier.fillMaxSize().zoomable(zoom).graphicsLayer {
-                    scaleX = zoom.scale; scaleY = zoom.scale
-                    translationX = zoom.offset.x; translationY = zoom.offset.y
-                },
+                // zoomable() already scales and moves the layer; a second graphicsLayer here zoomed it twice (F11 fix).
+                Modifier.fillMaxSize().zoomable(zoom),
                 contentScale = ContentScale.Fit,
             )
         } else {
@@ -249,7 +249,7 @@ fun VaultSettingsScreen(onBack: () -> Unit, onSetUp: () -> Unit) {
     fun toast(t: String) = Toast.makeText(context, t, Toast.LENGTH_SHORT).show()
     val type = Vault.store.credentialType ?: CredentialType.PIN
     val check: suspend (String) -> String? = { s ->
-        if (Vault.checkSecret(s)) null else "Wrong ${if (type == CredentialType.PIN) "PIN" else "password"}"
+        if (Vault.checkSecret(s)) null else "Wrong ${type.word()}"
     }
 
     GlassScaffold(topBar = { GlassTopBar("Vault settings", onBack = onBack) }) { padding ->
@@ -272,7 +272,7 @@ fun VaultSettingsScreen(onBack: () -> Unit, onSetUp: () -> Unit) {
                 SecCard {
                     Text("Protection", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "$count file${if (count == 1) "" else "s"} · AES-256-GCM · key held by ${Vault.hardwareKind()} + your ${if (type == CredentialType.PIN) "PIN" else "password"}",
+                        "$count file${if (count == 1) "" else "s"} · AES-256-GCM · key held by ${Vault.hardwareKind()} + your ${type.word()}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text("No recovery: a forgotten PIN/password, uninstalling Files or clearing its data loses the vault for good.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -282,7 +282,7 @@ fun VaultSettingsScreen(onBack: () -> Unit, onSetUp: () -> Unit) {
             item {
                 SecCard {
                     if (oldSecret == null) {
-                        Text("Change the vault's ${if (type == CredentialType.PIN) "PIN" else "password"}. Files inside don't need re-encrypting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Change the vault's ${type.word()}. Files inside don't need re-encrypting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         OutlinedButton(onClick = { verifyFor = "change" }) { Text("Change PIN or password") }
                     } else {
                         CredentialSetupForm(
@@ -297,6 +297,33 @@ fun VaultSettingsScreen(onBack: () -> Unit, onSetUp: () -> Unit) {
                                     oldSecret = null
                                     toast(if (ok) "Saved" else "Couldn't change it")
                                 }
+                            },
+                        )
+                    }
+                }
+            }
+            item { SecHeader("Fingerprint") }
+            item {
+                // Item 5: fingerprint opens the vault (an extra way in; the PIN / password / pattern still works).
+                val activity = context as? android.app.Activity ?: (context as? android.content.ContextWrapper)?.baseContext as? android.app.Activity
+                val bioStatus = remember { com.clpstudio.filesmanager.vault.VaultBiometric.status(context) }
+                val canBio = com.clpstudio.filesmanager.security.Biometrics.usable(bioStatus)
+                var bioOn by remember { mutableStateOf(com.clpstudio.filesmanager.vault.VaultBiometric.enabled()) }
+                SecCard {
+                    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Unlock with fingerprint", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                if (canBio) "Open the vault with your fingerprint. Your ${type.word()} still works. Adding a new fingerprint to the phone turns this off."
+                                else com.clpstudio.filesmanager.security.Biometrics.statusText(bioStatus, com.clpstudio.filesmanager.security.Biometrics.Purpose.VAULT_KEY),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = bioOn, enabled = canBio && state == VaultState.UNLOCKED && activity != null,
+                            onCheckedChange = { on ->
+                                if (!on) { com.clpstudio.filesmanager.vault.VaultBiometric.disable(); bioOn = false; toast("Fingerprint unlock off") }
+                                else activity?.let { a -> com.clpstudio.filesmanager.vault.VaultBiometric.enable(a) { err -> bioOn = err == null; toast(err ?: "Fingerprint unlock on") } }
                             },
                         )
                     }
@@ -369,7 +396,7 @@ fun VaultUnlockDialog(count: Int, onUnlocked: () -> Unit, onDismiss: () -> Unit)
     val type = remember { Vault.store.credentialType ?: CredentialType.PIN }
     VerifyDialog(
         title = "Unlock the vault",
-        text = "To move $count item${if (count == 1) "" else "s"} in, enter the vault's ${if (type == CredentialType.PIN) "PIN" else "password"}.",
+        text = "To move $count item${if (count == 1) "" else "s"} in, enter the vault's ${type.word()}.",
         type = type,
         confirm = "Unlock",
         check = { s ->

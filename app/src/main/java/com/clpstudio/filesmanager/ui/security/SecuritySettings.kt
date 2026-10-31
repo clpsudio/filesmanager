@@ -1,5 +1,7 @@
 package com.clpstudio.filesmanager.ui.security
 
+import com.clpstudio.filesmanager.security.word
+import com.clpstudio.filesmanager.security.label
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -102,7 +104,7 @@ fun VerifyDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (text != null) Text(text, style = MaterialTheme.typography.bodyMedium)
-                SecretField(value, { value = it; error = null }, type, if (type == CredentialType.PIN) "Current PIN" else "Current password", error = error, onIme = { go() }, enabled = !busy)
+                SecretField(value, { value = it; error = null }, type, "Current " + type.word(), error = error, onIme = { go() }, enabled = !busy)
             }
         },
         confirmButton = {
@@ -131,7 +133,8 @@ fun AppLockSettingsScreen(onBack: () -> Unit) {
     var bio by remember { mutableStateOf(AppLock.biometric) }
     var verifyFor by remember { mutableStateOf<String?>(null) } // "change" | "off"
     var changing by remember { mutableStateOf(false) }
-    val bioAvailable = remember { AppLock.biometricAvailable(context) }
+    val bioStatus = remember { AppLock.biometricStatus(context) }
+    val bioAvailable = com.clpstudio.filesmanager.security.Biometrics.usable(bioStatus)
     fun toast(t: String) = Toast.makeText(context, t, Toast.LENGTH_SHORT).show()
 
     GlassScaffold(topBar = { GlassTopBar("App lock", onBack = onBack) }) { padding ->
@@ -171,7 +174,7 @@ fun AppLockSettingsScreen(onBack: () -> Unit) {
                     SecCard {
                         Text("App lock is on", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Unlock with your ${if (AppLock.type == CredentialType.PIN) "PIN" else "password"}" + if (bio && bioAvailable) " or fingerprint." else ".",
+                            "Unlock with your ${AppLock.type.word()}" + if (bio && bioAvailable) " or fingerprint." else ".",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -208,10 +211,9 @@ fun AppLockSettingsScreen(onBack: () -> Unit) {
                             Text("Unlock with fingerprint", style = MaterialTheme.typography.titleSmall)
                             Text(
                                 when {
-                                    android.os.Build.VERSION.SDK_INT < 29 -> "Needs Android 10 or newer. Use your PIN or password."
-                                    !bioAvailable -> "No fingerprint is set up on this phone (Settings → Security)."
+                                    !bioAvailable -> com.clpstudio.filesmanager.security.Biometrics.statusText(bioStatus, com.clpstudio.filesmanager.security.Biometrics.Purpose.APP_LOCK)
                                     !enabled -> "Turn on app lock first."
-                                    else -> "Your PIN or password always works too."
+                                    else -> "Fingerprint or face, whichever this phone has. " + com.clpstudio.filesmanager.security.Biometrics.statusText(bioStatus, com.clpstudio.filesmanager.security.Biometrics.Purpose.APP_LOCK)
                                 },
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -246,7 +248,7 @@ fun SecuritySettingsRows(onAppLock: () -> Unit, onVaultSettings: () -> Unit) {
     val vaultState by com.clpstudio.filesmanager.vault.Vault.state.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         NavRow(androidx.compose.material.icons.Icons.Filled.Lock, "App lock",
-            if (lockOn) "On · ${if (AppLock.type == CredentialType.PIN) "PIN" else "password"} · ${AppLock.askAfter.label.lowercase()}" else "Off · PIN (4–10 digits) or password (8–72 characters)",
+            if (lockOn) "On · ${AppLock.type.word()} · ${AppLock.askAfter.label.lowercase()}" else "Off · PIN (4–10 digits) or password (8–72 characters)",
             onAppLock)
         NavRow(androidx.compose.material.icons.Icons.Filled.Shield, "Vault settings",
             when (vaultState) {

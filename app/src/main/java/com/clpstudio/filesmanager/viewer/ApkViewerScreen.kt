@@ -1,5 +1,7 @@
 package com.clpstudio.filesmanager.viewer
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -137,6 +139,7 @@ fun ApkViewerScreen(
     ApkViewerContent(
         d, DeviceProfile.current(), onBack,
         onInstall = { Opener.installApk(context, FileOps.uriFor(context, d.apk)) },
+        onInstallBundle = { plan -> com.clpstudio.filesmanager.install.ApkInstaller.installBundle(context, d.file, plan.chosenEntries, plan.obb) },
         onOpenApp = {
             val pkg = d.manifest?.packageName ?: return@ApkViewerContent
             context.packageManager.getLaunchIntentForPackage(pkg)?.let { com.clpstudio.filesmanager.data.SafeStart.start(context, it, "Couldn't open the app") }
@@ -158,6 +161,8 @@ fun ApkViewerContent(
     device: DeviceProfile,
     onBack: () -> Unit,
     onInstall: () -> Unit = {},
+    onInstallBundle: (com.clpstudio.filesmanager.data.apk.SplitPlan) -> Unit = {},
+    showSplitSheet: Boolean = false,
     onOpenApp: () -> Unit = {},
     onOtherApp: () -> Unit = {},
     onBrowseFiles: () -> Unit = {},
@@ -165,18 +170,23 @@ fun ApkViewerContent(
     expandAll: Boolean = false,
 ) {
     val m = d.manifest
+    var splitSheet by remember { mutableStateOf(showSplitSheet) }
+    val plan = d.splitPlan
+    if (splitSheet && plan != null) {
+        SplitInstallSheet(d, plan, onInstall = { splitSheet = false; onInstallBundle(plan) }, onDismiss = { splitSheet = false })
+    }
     GlassScaffold(topBar = { GlassTopBar(d.label, onBack, subtitle = if (d.isBundle) "Split APK bundle" else "Android app (APK)") }) { padding ->
         LazyColumn(
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(key = "header") { Header(d, onInstall, onOpenApp, onOtherApp) }
+            item(key = "header") { Header(d, onInstall, onOpenApp, onOtherApp, onInstallBundle = { splitSheet = true }) }
             d.error?.let { e -> item(key = "error") { Notice(Icons.Filled.Warning, e, MaterialTheme.colorScheme.error) } }
             if (d.isBundle) item(key = "bundle") {
                 Notice(
                     Icons.Filled.Layers,
                     "Split APK bundle: ${d.bundleParts.size} APK${if (d.bundleParts.size == 1) "" else "s"} inside (base + parts for languages, screen sizes or CPUs). " +
-                        "Details below are from ${d.apk.name}. Installing a bundle needs a split-APK installer app.",
+                        "Details below are from ${d.apk.name}. " + (plan?.problem ?: "Install picks only the parts this phone needs."),
                     MaterialTheme.colorScheme.primary,
                 )
             }
@@ -318,7 +328,7 @@ internal fun readableDn(dn: String): String {
 }
 
 @Composable
-private fun Header(d: ApkDetails, onInstall: () -> Unit, onOpenApp: () -> Unit, onOtherApp: () -> Unit) {
+private fun Header(d: ApkDetails, onInstall: () -> Unit, onOpenApp: () -> Unit, onOtherApp: () -> Unit, onInstallBundle: () -> Unit = {}) {
     val m = d.manifest
     Column(Modifier.fillMaxWidth().glassPanel(RoundedCornerShape(28.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -345,6 +355,11 @@ private fun Header(d: ApkDetails, onInstall: () -> Unit, onOpenApp: () -> Unit, 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val inst = d.installed
             when {
+                // Item 6: a split bundle installs right here (the parts this phone needs, one system prompt).
+                d.isBundle && d.splitPlan?.canInstall == true -> Button(onClick = onInstallBundle, modifier = Modifier.weight(1f).testTag("installBundle")) {
+                    Icon(if (inst != null && d.installState == ApkFiles.InstallState.OLDER_INSTALLED) Icons.Filled.SystemUpdate else Icons.Filled.InstallMobile, null, Modifier.size(18.dp))
+                    Text(if (inst != null && d.installState == ApkFiles.InstallState.OLDER_INSTALLED) "  Update" else if (inst != null && d.installState == ApkFiles.InstallState.SAME) "  Reinstall" else "  Install")
+                }
                 d.isBundle || m?.split != null -> OutlinedButton(onClick = onOtherApp, modifier = Modifier.weight(1f)) {
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(18.dp)); Text("  Open with another app")
                 }
@@ -495,4 +510,41 @@ private fun CountChip(label: String, count: Int, modifier: Modifier = Modifier) 
         Text("$count", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }
+}
+
+
+/** Item 6: what a bundle install will put on this phone, before the system prompt. */
+@Composable
+fun SplitInstallSheet(d: ApkDetails, plan: com.clpstudio.filesmanager.data.apk.SplitPlan, onInstall: () -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Filled.Layers, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Install ${d.label}?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("splitSheet")) {
+                Text(
+                    "${plan.chosen.size} of ${plan.chosen.size + plan.skipped.size} parts for this phone:",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                plan.chosen.forEach { c ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CheckCircle, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(c.part.fileName, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(c.why, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (plan.skipped.isNotEmpty()) Text(
+                    "Skipped ${plan.skipped.size} part${if (plan.skipped.size == 1) "" else "s"} for other phones (other processors, screens or languages).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (plan.obb.isNotEmpty()) Text("Also copies ${plan.obb.size} data file${if (plan.obb.size == 1) "" else "s"} (OBB) to Android/obb.", style = MaterialTheme.typography.bodySmall)
+                Text("Android asks to confirm next.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { Button(onClick = onInstall) { Text("Install") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

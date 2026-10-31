@@ -1,5 +1,9 @@
 package com.clpstudio.filesmanager.ui.security
 
+import com.clpstudio.filesmanager.security.Biometrics
+import androidx.compose.runtime.key
+import com.clpstudio.filesmanager.security.word
+import com.clpstudio.filesmanager.security.label
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Timer
@@ -89,6 +93,16 @@ fun SecretField(
     onIme: () -> Unit = {},
     enabled: Boolean = true,
 ) {
+    if (type == CredentialType.PATTERN) {
+        // Item 4: a 3×3 pattern pad instead of a text field; the value arrives when the finger lifts.
+        Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(label, style = MaterialTheme.typography.titleSmall, color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            PatternPad(onDone = { onChange(CredentialRules.filterInput(type, it)); onIme() }, error = error != null, enabled = enabled)
+            if (error != null) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+            else if (value.isNotEmpty()) Text("Pattern drawn (${value.length} dots)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
     var show by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
@@ -137,17 +151,47 @@ fun CredentialSetupForm(
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            listOf(CredentialType.PIN to "PIN", CredentialType.PASSWORD to "Password").forEachIndexed { i, (t, label) ->
-                SegmentedButton(selected = type == t, onClick = { if (type != t) { type = t; first = ""; second = ""; error = null } }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+            val choices = listOf(CredentialType.PIN to "PIN", CredentialType.PASSWORD to "Password", CredentialType.PATTERN to "Pattern")
+            choices.forEachIndexed { i, (t, label) ->
+                SegmentedButton(selected = type == t, onClick = { if (type != t) { type = t; first = ""; second = ""; error = null } }, shape = SegmentedButtonDefaults.itemShape(i, choices.size)) { Text(label) }
             }
         }
         Text(
-            if (type == CredentialType.PIN) "${CredentialRules.PIN_MIN}–${CredentialRules.PIN_MAX} digits" else "${CredentialRules.PASSWORD_MIN}–${CredentialRules.PASSWORD_MAX} characters",
+            when (type) {
+                CredentialType.PIN -> "${CredentialRules.PIN_MIN}–${CredentialRules.PIN_MAX} digits"
+                CredentialType.PASSWORD -> "${CredentialRules.PASSWORD_MIN}–${CredentialRules.PASSWORD_MAX} characters"
+                CredentialType.PATTERN -> "Connect at least ${CredentialRules.PATTERN_MIN} dots, then draw it again"
+            },
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        SecretField(first, { first = it; error = null }, type, if (type == CredentialType.PIN) "New PIN" else "New password",
+        if (type == CredentialType.PATTERN) {
+            // One pad: draw, then draw again to confirm (submits by itself when both match).
+            val firstOk = first.isNotEmpty() && CredentialRules.error(type, first) == null
+            key(firstOk) {
+                SecretField(
+                    if (firstOk) second else first,
+                    { v ->
+                        if (!firstOk) {
+                            first = v
+                            error = CredentialRules.error(type, v)
+                            if (error != null) first = ""
+                        } else {
+                            second = v
+                            submit()
+                            if (error != null) { first = ""; second = "" }
+                        }
+                    },
+                    type, if (!firstOk) "Draw a new pattern" else "Draw it again to confirm",
+                    error = error ?: serverError, enabled = !busy,
+                )
+            }
+            if (firstOk) TextButton(onClick = { first = ""; second = ""; error = null }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Start over") }
+            if (busy) CircularProgressIndicator(Modifier.size(18.dp).align(Alignment.CenterHorizontally), strokeWidth = 2.dp)
+            return@Column
+        }
+        SecretField(first, { first = it; error = null }, type, "New " + type.word(),
             Modifier.focusRequester(firstFocus), imeAction = ImeAction.Next, onIme = { runCatching { secondFocus.requestFocus() } }, enabled = !busy)
-        SecretField(second, { second = it; error = null }, type, if (type == CredentialType.PIN) "Repeat PIN" else "Repeat password",
+        SecretField(second, { second = it; error = null }, type, "Repeat " + type.word(),
             Modifier.focusRequester(secondFocus), error = error ?: serverError, onIme = { submit() }, enabled = !busy)
         Button(onClick = { submit() }, enabled = !busy && first.isNotEmpty() && second.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(confirmLabel)
@@ -183,6 +227,8 @@ fun UnlockForm(
     remainingMs: () -> Long,
     /** Below the Unlock button; gets whether a lockout is running (fingerprint is off then). */
     extra: @Composable (lockedOut: Boolean) -> Unit = {},
+    /** Open the keyboard by itself; off when a fingerprint prompt opens first (the keyboard cancelled it on many phones). */
+    autoFocus: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     var value by remember { mutableStateOf("") }
@@ -191,7 +237,7 @@ fun UnlockForm(
     var tries by remember { mutableIntStateOf(0) }
     val waitMsg = rememberWaitMessage(remainingMs, tries)
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(200); runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { if (autoFocus) { delay(200); runCatching { focus.requestFocus() } } }
     fun submit() {
         if (busy || value.isEmpty() || waitMsg != null) return
         busy = true
@@ -219,8 +265,8 @@ fun UnlockForm(
         Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         SecretField(
-            value, { value = it; error = null }, type,
-            if (type == CredentialType.PIN) "PIN" else "Password",
+            value, { value = it; error = null; if (type == CredentialType.PATTERN && it.isNotEmpty()) submit() }, type,
+            type.label(),
             Modifier.focusRequester(focus),
             error = if (waitMsg != null) null else error,
             onIme = { submit() },
@@ -240,8 +286,12 @@ fun UnlockForm(
                 }
             }
         }
-        Button(onClick = { submit() }, enabled = !busy && value.isNotEmpty() && waitMsg == null, modifier = Modifier.fillMaxWidth()) {
-            if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Unlock")
+        if (type != CredentialType.PATTERN) {
+            Button(onClick = { submit() }, enabled = !busy && value.isNotEmpty() && waitMsg == null, modifier = Modifier.fillMaxWidth()) {
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Unlock")
+            }
+        } else if (busy) {
+            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
         }
         extra(waitMsg != null)
     }
@@ -252,7 +302,18 @@ fun UnlockForm(
 fun AppLockScreen(activity: Activity) {
     val context = LocalContext.current
     val bio = remember { AppLock.biometric && AppLock.biometricAvailable(context) }
-    LaunchedEffect(Unit) { if (bio && AppLock.remainingMs() <= 0L) AppLock.promptBiometric(activity) {} }
+    var bioMsg by remember { mutableStateOf<String?>(null) }
+    var signal by remember { mutableStateOf<android.os.CancellationSignal?>(null) }
+    fun ask() { signal = AppLock.promptBiometric(activity, onMessage = { bioMsg = it }) }
+    LaunchedEffect(Unit) {
+        if (bio && AppLock.remainingMs() <= 0L) {
+            // Wait for the window to have focus first: asked earlier, many phones cancel the prompt at once.
+            Biometrics.awaitFocus(activity)
+            ask()
+        }
+    }
+    // Typed the PIN while the prompt was up, or the lock closed: put the prompt away.
+    DisposableEffect(Unit) { onDispose { runCatching { signal?.cancel() } } }
     Surface(
         Modifier.fillMaxSize()
             // swallow every touch so nothing underneath can be used
@@ -265,26 +326,34 @@ fun AppLockScreen(activity: Activity) {
             verticalArrangement = Arrangement.Center,
         ) {
             Spacer(Modifier.height(40.dp))
-            UnlockForm(
-                type = AppLock.type,
-                title = "Files is locked",
-                subtitle = if (AppLock.type == CredentialType.PIN) "Enter your PIN" else "Enter your password",
-                check = { s -> when (val r = AppLock.check(s)) { AppLock.Check.Ok -> null; is AppLock.Check.Wrong -> r.message } },
-                onUnlocked = { AppLock.unlocked() },
-                remainingMs = { AppLock.remainingMs() },
-                extra = { lockedOut ->
-                    // No fingerprint during a lockout.
-                    if (bio && !lockedOut) {
-                        OutlinedButton(onClick = { AppLock.promptBiometric(activity) {} }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Filled.Fingerprint, null)
-                            Spacer(Modifier.size(8.dp))
-                            Text("Use fingerprint")
-                        }
-                    }
-                },
-            )
+            AppLockForm(bio, bioMsg, onFingerprint = { ask() })
         }
     }
+}
+
+/** The lock form itself (also rendered in tests): PIN / password / pattern, plus "Use fingerprint" and its message. */
+@Composable
+fun AppLockForm(bio: Boolean, bioMsg: String?, onFingerprint: () -> Unit, type: CredentialType = AppLock.type, remainingMs: () -> Long = { AppLock.remainingMs() }) {
+    UnlockForm(
+        type = type,
+        title = "Files is locked",
+        subtitle = if (type == CredentialType.PATTERN) "Draw your pattern" else "Enter your " + type.word(),
+        check = { s -> when (val r = AppLock.check(s)) { AppLock.Check.Ok -> null; is AppLock.Check.Wrong -> r.message } },
+        onUnlocked = { AppLock.unlocked() },
+        remainingMs = remainingMs,
+        autoFocus = !bio,
+        extra = { lockedOut ->
+            // No fingerprint during a lockout.
+            if (bio && !lockedOut) {
+                OutlinedButton(onClick = onFingerprint, modifier = Modifier.fillMaxWidth().testTag("useFingerprint")) {
+                    Icon(Icons.Filled.Fingerprint, null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Use fingerprint")
+                }
+            }
+            if (bio && bioMsg != null) Text(bioMsg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+        },
+    )
 }
 
 /** FLAG_SECURE while a vault screen is showing (no screenshots, blank in Recents); counted so screens can nest. */

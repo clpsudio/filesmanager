@@ -72,6 +72,16 @@ class VaultStore(
         filesDir.mkdirs()
     }
 
+    /** Opens with the master key itself (fingerprint unlock, item 5): it was checked against this vault first. */
+    fun unlockWithKey(mk: ByteArray) {
+        masterKey?.fill(0)
+        masterKey = mk
+        filesDir.mkdirs()
+    }
+
+    /** A copy of the open vault's master key (to seal the fingerprint copy); the caller wipes it. */
+    fun masterKeyCopy(): ByteArray = mk().copyOf()
+
     /** Forgets the key and closes everything that was reading from the vault (players, viewers). */
     @Synchronized
     fun lock() {

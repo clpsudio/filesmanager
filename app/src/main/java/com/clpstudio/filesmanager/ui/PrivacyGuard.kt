@@ -53,6 +53,26 @@ object PrivacyGuard {
         })
     }
 
+    /**
+     * Screens shown inside another app's flow (the file picker): only "Block screenshots & screen recording",
+     * applied live — before item 16's fix the picker read the setting once when it opened (often before the saved
+     * settings had loaded), so a toggle only showed after closing and reopening the picker.
+     */
+    fun installBlockOnly(activity: ComponentActivity) {
+        fun set(on: Boolean) {
+            blockAll = on
+            if (on) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        set(runCatching { Graph.settings.value.blockScreenshots }.getOrDefault(false))
+        activity.lifecycleScope.launch {
+            Graph.settingsRepo.settings.map { it.blockScreenshots }.distinctUntilChanged().collect { set(it) }
+        }
+        activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) = set(runCatching { Graph.settings.value.blockScreenshots }.getOrDefault(blockAll))
+        })
+    }
+
     private fun apply(activity: ComponentActivity, hide: Boolean, resumed: Boolean, secureAllowed: () -> Boolean) {
         if (Build.VERSION.SDK_INT >= 33) activity.setRecentsScreenshotEnabled(!hide)
         val on = PrivacyRules.secure(

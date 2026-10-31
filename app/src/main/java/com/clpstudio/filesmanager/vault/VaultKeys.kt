@@ -98,7 +98,9 @@ class VaultKeyFile(private val file: File, private val wrapper: KeyWrapper, priv
     /** Re-protects the same master key with a new PIN/password; files don't need re-encrypting. */
     fun change(oldSecret: String, newType: CredentialType, newSecret: String) {
         val mk = unlock(oldSecret)
+        val bio = biometric() // same master key: the fingerprint copy stays valid
         try { save(newType, newSecret, mk) } finally { mk.fill(0) }
+        if (bio != null && biometric() == null) saveBiometric(bio.first, bio.second)
     }
 
     /** Biometric copy of the master key (wrapped by a separate auth-bound Keystore key), stored beside. */
