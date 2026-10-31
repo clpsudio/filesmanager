@@ -173,7 +173,7 @@ object FileOps {
         }
         intent.clipData = ClipData.newRawUri("", uris[0]).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(Intent.createChooser(intent, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        SafeStart.start(context, Intent.createChooser(intent, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), "Couldn't share")
     }
 
     private fun commonMime(files: List<File>): String {
@@ -264,10 +264,6 @@ object FileOps {
             )
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        try {
-            context.startActivity(chooser)
-        } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, "No app on this phone can open this file", Toast.LENGTH_SHORT).show()
-        }
+        SafeStart.start(context, chooser, "No app on this phone can open this file")
     }
 }

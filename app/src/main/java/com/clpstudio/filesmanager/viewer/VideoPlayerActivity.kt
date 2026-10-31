@@ -751,7 +751,7 @@ class VideoPlayerActivity : ComponentActivity() {
     private fun shareCurrent(uri: Uri) {
         val shareUri = if (uri.scheme == "file") com.clpstudio.filesmanager.data.FileOps.uriFor(this, File(uri.path!!)) else uri
         val type = if (ui.photo != null) "image/*" else "video/*"
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, shareUri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"))
+        com.clpstudio.filesmanager.data.SafeStart.start(this, Intent.createChooser(Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, shareUri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"), "This video can't be shared from here")
     }
 
     private fun openWithOther(uri: Uri) {
@@ -873,14 +873,17 @@ class VideoPlayerActivity : ComponentActivity() {
         }
 
         /** A video from another app (content:// with a read grant). */
-        fun startUri(context: Context, uri: Uri, name: String) {
-            context.startActivity(
-                Intent(context, VideoPlayerActivity::class.java)
-                    .setData(uri)
-                    .putStringArrayListExtra(EXTRA_NAMES, arrayListOf(name))
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-            )
-        }
+        fun startUri(context: Context, uri: Uri, name: String): Boolean =
+            com.clpstudio.filesmanager.data.SafeStart.start(context, uriIntent(context, uri, name), "Couldn't play this video")
+
+        /**
+         * Inside our own app: no grant flags and no ClipData (item 27). Our process already holds the read access
+         * the other app gave us, and some providers (Samsung secure media) refuse to let it be passed on.
+         */
+        fun uriIntent(context: Context, uri: Uri, name: String): Intent =
+            Intent(context, VideoPlayerActivity::class.java)
+                .setData(uri)
+                .putStringArrayListExtra(EXTRA_NAMES, arrayListOf(name))
 
         /** The media notification's tap target while a video plays: back to the player as it is. */
         fun resumeIntent(context: Context): Intent =

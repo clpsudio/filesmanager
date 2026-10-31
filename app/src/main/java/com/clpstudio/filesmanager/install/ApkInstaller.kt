@@ -32,10 +32,12 @@ object ApkInstaller {
     fun install(context: Context, file: File) = install(context, Uri.fromFile(file))
 
     fun install(context: Context, uri: Uri) {
-        context.startActivity(
+        com.clpstudio.filesmanager.data.SafeStart.start(
+            context,
             Intent(context, InstallApkActivity::class.java)
                 .setData(uri)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            "Couldn't open the installer",
         )
     }
 

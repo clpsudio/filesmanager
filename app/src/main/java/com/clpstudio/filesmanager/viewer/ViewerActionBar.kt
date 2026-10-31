@@ -137,15 +137,15 @@ fun UriViewerActionPanel(uri: android.net.Uri, mime: String, onInfo: () -> Unit,
         path = file?.absolutePath,
         onShare = {
             if (file != null) actions.share(listOf(com.clpstudio.filesmanager.data.FileItem.of(file)))
-            else runCatching {
-                context.startActivity(
-                    android.content.Intent.createChooser(
-                        android.content.Intent(android.content.Intent.ACTION_SEND).setType(mime).putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                        "Share",
-                    ),
-                )
-            }
+            else com.clpstudio.filesmanager.data.SafeStart.start(
+                context,
+                android.content.Intent.createChooser(
+                    android.content.Intent(android.content.Intent.ACTION_SEND).setType(mime).putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                    "Share",
+                ),
+                "This file can't be shared from here",
+            )
         },
         onInfo = onInfo,
         onDelete = if (file != null) ({ actions.deleteTargets = listOf(com.clpstudio.filesmanager.data.FileItem.of(file)) }) else null,

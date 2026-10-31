@@ -82,7 +82,7 @@ fun FileInfoScreen(
                         putExtra(Intent.EXTRA_STREAM, shareUri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    context.startActivity(Intent.createChooser(send, "Share"))
+                    com.clpstudio.filesmanager.data.SafeStart.start(context, Intent.createChooser(send, "Share"), "This file can't be shared from here")
                 }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Share, null)
                     Text("  Share")

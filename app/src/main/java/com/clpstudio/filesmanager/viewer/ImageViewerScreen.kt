@@ -171,15 +171,15 @@ fun SingleImageViewer(
                 path = file?.absolutePath,
                 onShare = {
                     if (file != null) actions.share(listOf(FileItem.of(file)))
-                    else runCatching {
-                        context.startActivity(
-                            android.content.Intent.createChooser(
-                                android.content.Intent(android.content.Intent.ACTION_SEND).setType(mime).putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                                "Share",
-                            ),
-                        )
-                    }
+                    else com.clpstudio.filesmanager.data.SafeStart.start(
+                        context,
+                        android.content.Intent.createChooser(
+                            android.content.Intent(android.content.Intent.ACTION_SEND).setType(mime).putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                            "Share",
+                        ),
+                        "This app doesn't allow sharing this photo from here",
+                    )
                 },
                 onInfo = { info = true },
                 onDelete = if (file != null) ({ actions.deleteTargets = listOf(FileItem.of(file)) }) else null,

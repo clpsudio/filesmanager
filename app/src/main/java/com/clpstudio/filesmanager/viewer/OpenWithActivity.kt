@@ -92,6 +92,14 @@ class OpenWithActivity : ComponentActivity() {
         }
     }
 
+    private var launchedPlayer = false
+
+    override fun onRestart() {
+        super.onRestart()
+        // Back from the video player: nothing left to show here.
+        if (launchedPlayer) finish()
+    }
+
     private fun incomingUri(intent: Intent): Uri? = when (intent.action) {
         Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
         else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
@@ -112,8 +120,9 @@ class OpenWithActivity : ComponentActivity() {
             FileKind.PDF -> PdfViewerScreen(f.uri, f.name, back, actions)
             FileKind.TEXT -> TextViewerScreen(f.uri, f.name, back, actions)
             FileKind.VIDEO -> LaunchedEffect(f) {
-                VideoPlayerActivity.startUri(context, f.uri, f.name)
-                finish()
+                // Stay under the player: the read access the other app gave lives with this screen (item 27);
+                // it closes when the player is closed.
+                if (VideoPlayerActivity.startUri(context, f.uri, f.name)) launchedPlayer = true else finish()
             }
             FileKind.AUDIO -> {
                 LaunchedEffect(f) {
@@ -180,7 +189,8 @@ class OpenWithActivity : ComponentActivity() {
 
     /** Opens a file extracted from a ZIP with the same in-app viewers. */
     private fun openInside(file: File) {
-        startActivity(
+        com.clpstudio.filesmanager.data.SafeStart.start(
+            this,
             Intent(this, OpenWithActivity::class.java).setAction(Intent.ACTION_VIEW)
                 .setData(FileOps.uriFor(this, file))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
