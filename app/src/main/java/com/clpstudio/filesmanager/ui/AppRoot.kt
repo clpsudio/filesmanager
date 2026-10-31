@@ -137,6 +137,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                 onOpenRecent = { item, list -> opener.open(item, list) },
                 player = player,
                 onOpenPlayer = { nav.navigate(Routes.MUSIC) },
+                onPlaylists = { nav.navigate(PlaylistRoutes.list(it)) },
             )
         }
         composable("category/{cat}", arguments = listOf(navArgument("cat") { type = NavType.StringType })) { e ->
@@ -174,8 +175,9 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         }
         composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste) }
         composable(Routes.BIN) { BinScreen(back) }
-        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }, onFolderFilters = { nav.navigate(Routes.FOLDER_FILTERS) }, onAppLock = { nav.navigate(Routes.APP_LOCK) }, onVaultSettings = { nav.navigate(Routes.VAULT_SETTINGS) }) }
+        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onLogs = { nav.navigate(Routes.LOGS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }, onFolderFilters = { nav.navigate(Routes.FOLDER_FILTERS) }, onAppLock = { nav.navigate(Routes.APP_LOCK) }, onVaultSettings = { nav.navigate(Routes.VAULT_SETTINGS) }) }
         vaultRoutes(nav, back)
+        playlistRoutes(nav, back, opener, context)
         composable(Routes.FOLDER_FILTERS) { com.clpstudio.filesmanager.ui.screens.FolderFiltersScreen(back) }
         composable(Routes.CRASH_REPORTS) { com.clpstudio.filesmanager.crash.CrashReportsScreen(back) }
         composable(Routes.FAVORITES) { com.clpstudio.filesmanager.ui.screens.FavoritesScreen(opener, back, onPaste = toPaste) }
@@ -197,6 +199,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
                 onUnused = { nav.navigate(Routes.UNUSED_APPS) },
             )
         }
+        composable(Routes.LOGS) { com.clpstudio.filesmanager.ui.screens.LogsScreen(back) }
         composable(Routes.UNUSED_APPS) { com.clpstudio.filesmanager.ui.screens.UnusedAppsScreen(back) }
         composable(
             "storage_kind?kind={kind}&vol={vol}",

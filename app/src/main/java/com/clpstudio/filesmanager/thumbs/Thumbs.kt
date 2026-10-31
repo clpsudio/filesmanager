@@ -55,6 +55,9 @@ data class DesignThumb(val path: String, val modified: Long)
 /** EPUB: the book's cover picture. */
 data class EpubCover(val path: String, val modified: Long)
 
+/** Word / Excel / PowerPoint: the file's stored thumbnail, or (Word) a first-page snapshot. */
+data class OfficeThumb(val path: String, val modified: Long)
+
 /** The model to load for a file's thumbnail, or null for a plain type icon. */
 fun thumbModel(item: FileItem): Any? = when (item.kind) {
     FileKind.IMAGE -> File(item.path)
@@ -63,7 +66,11 @@ fun thumbModel(item: FileItem): Any? = when (item.kind) {
     FileKind.AUDIO -> AudioArt(item.path, item.modified)
     FileKind.PDF -> PdfThumb(item.path, item.modified)
     FileKind.APK -> if (item.extension == "apk") ApkIcon(item.path, item.modified) else null
-    FileKind.DOCUMENT -> if (item.extension == "epub") EpubCover(item.path, item.modified) else null
+    FileKind.DOCUMENT -> when {
+        item.extension == "epub" -> EpubCover(item.path, item.modified)
+        com.clpstudio.filesmanager.viewer.office.OfficeFormats.byExtension(item.name) != null -> OfficeThumb(item.path, item.modified)
+        else -> null
+    }
     else -> if (com.clpstudio.filesmanager.data.DesignPreview.isDesign(item.name)) DesignThumb(item.path, item.modified) else null
 }
 
@@ -188,7 +195,21 @@ class EpubCoverFetcher(private val data: EpubCover) : Fetcher {
     }
 }
 
+class OfficeThumbFetcher(private val data: OfficeThumb) : Fetcher {
+    override suspend fun fetch(): FetchResult? {
+        val file = File(data.path)
+        val format = com.clpstudio.filesmanager.viewer.office.OfficeFormats.byExtension(file.name)
+        val bmp = runCatching { com.clpstudio.filesmanager.viewer.office.OfficeThumbnails.load(file, format, THUMB_PX) }.getOrNull() ?: return null
+        return ImageFetchResult(scaled(bmp).asImage(), true, DataSource.DISK)
+    }
+
+    class Factory : Fetcher.Factory<OfficeThumb> {
+        override fun create(data: OfficeThumb, options: Options, imageLoader: ImageLoader): Fetcher = OfficeThumbFetcher(data)
+    }
+}
+
 object ThumbKeyers {
+    val office = Keyer<OfficeThumb> { d, _ -> "office:${d.path}:${d.modified}" }
     val design = Keyer<DesignThumb> { d, _ -> "design:${d.path}:${d.modified}" }
     val epub = Keyer<EpubCover> { d, _ -> "epub:${d.path}:${d.modified}" }
     val audio = Keyer<AudioArt> { d, _ -> "audio:${d.path}:${d.modified}" }
@@ -200,7 +221,8 @@ object ThumbKeyers {
 /** Video thumbnails from MediaStore's own cache (much faster than decoding a frame), frame grab as fallback. */
 class VideoThumbFetcher(private val data: VideoThumb, private val context: android.content.Context) : Fetcher {
     override suspend fun fetch(): FetchResult? {
-        val bmp = (if (Build.VERSION.SDK_INT >= 29) runCatching { fromMediaStore() }.getOrNull() else null)
+        // Hidden files (dot-folders) are never in MediaStore: go straight to the frame grab.
+        val bmp = (if (Build.VERSION.SDK_INT >= 29 && !data.path.contains("/.")) runCatching { fromMediaStore() }.getOrNull() else null)
             ?: runCatching { frame() }.getOrNull()
             ?: return null
         return ImageFetchResult(scaled(bmp, 384).asImage(), true, DataSource.DISK)

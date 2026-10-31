@@ -79,8 +79,10 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
                 add(ThumbKeyers.app)
                 add(com.clpstudio.filesmanager.thumbs.DesignThumbFetcher.Factory())
                 add(com.clpstudio.filesmanager.thumbs.EpubCoverFetcher.Factory())
+                add(com.clpstudio.filesmanager.thumbs.OfficeThumbFetcher.Factory())
                 add(ThumbKeyers.design)
                 add(ThumbKeyers.epub)
+                add(ThumbKeyers.office)
             }
             .memoryCache {
                 MemoryCache.Builder().maxSizePercent(context, 0.25).build()

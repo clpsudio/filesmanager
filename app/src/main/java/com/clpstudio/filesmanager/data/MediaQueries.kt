@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import com.clpstudio.filesmanager.Graph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.map
@@ -65,31 +66,17 @@ class MediaQueries(private val context: Context) {
         val t0 = System.currentTimeMillis()
         when (cat) {
             Category.PHOTOS, Category.VIDEOS, Category.AUDIO -> {
-                val (prefix, exts) = when (cat) {
-                    Category.PHOTOS -> "image/" to FileTypes.imageExt + FileTypes.rawExt
-                    Category.VIDEOS -> "video/" to FileTypes.videoExt
-                    else -> "audio/" to FileTypes.audioExt
-                }
-                val indexed = query(kindSelection(exts), kindArgs(prefix, exts), filter)
-                val list = indexed.getOrNull()
-                if (list != null && list.isNotEmpty()) {
-                    emit(CategoryLoad(list, true))
-                } else {
-                    // Index failed or empty: look on storage directly.
-                    if (list != null) emit(CategoryLoad(emptyList(), false))
-                    val walked = walkVolumes(filter) { FileTypes.extension(it) in exts }
-                    Diagnostics.log("media", "${cat.title}: index ${if (list == null) "failed" else "empty"}, direct walk found ${walked.size}")
-                    emit(CategoryLoad(walked.sortedByDescending { it.modified }, true))
-                }
+                val base = indexedMedia(cat, filter) { emit(it) }
+                emitWithHidden(base, cat, filter)
             }
             Category.MEDIA -> {
                 // All photos and videos together, newest first (both queries run at the same time).
                 val (photos, videos) = kotlinx.coroutines.coroutineScope {
-                    val p = async { categoryFlow(Category.PHOTOS, filter).first { it.done }.items }
-                    val v = async { categoryFlow(Category.VIDEOS, filter).first { it.done }.items }
+                    val p = async { indexedMedia(Category.PHOTOS, filter) {} }
+                    val v = async { indexedMedia(Category.VIDEOS, filter) {} }
                     p.await() to v.await()
                 }
-                emit(CategoryLoad((photos + videos).sortedByDescending { it.modified }, true))
+                emitWithHidden((photos + videos).sortedByDescending { it.modified }, cat, filter)
             }
             Category.DOCUMENTS -> {
                 val docFilter = filter.withoutNoMedia()
@@ -119,7 +106,9 @@ class MediaQueries(private val context: Context) {
                 emit(CategoryLoad(indexed, false))
                 val recentDocs = Graph.index.complete(filter.showHidden)
                     .filter { it.modified / 1000 > cutoffSec && filter.withoutNoMedia().visiblePath(it.path) }
-                emit(CategoryLoad(StorageWalker.merge(indexed, recentDocs).take(400), true))
+                val merged = StorageWalker.merge(indexed, recentDocs)
+                // "Show hidden files" on: hidden photos/videos/audio of the last 30 days join in.
+                emitWithHidden(merged, cat, filter, limit = 400) { it.modified / 1000 > cutoffSec }
             }
         }
         Diagnostics.log("media", "${cat.title} loaded in ${System.currentTimeMillis() - t0} ms")
@@ -134,6 +123,48 @@ class MediaQueries(private val context: Context) {
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Photos / videos / audio from the MediaStore index, or a direct walk if the index failed or is
+     * empty ([progress] gets the empty partial step the screens show as "searching").
+     */
+    private suspend fun indexedMedia(cat: Category, filter: HiddenFilter, progress: suspend (CategoryLoad) -> Unit): List<FileItem> {
+        val (prefix, exts) = when (cat) {
+            Category.PHOTOS -> "image/" to FileTypes.imageExt + FileTypes.rawExt
+            Category.VIDEOS -> "video/" to FileTypes.videoExt
+            else -> "audio/" to FileTypes.audioExt
+        }
+        val list = query(kindSelection(exts), kindArgs(prefix, exts), filter).getOrNull()
+        if (list != null && list.isNotEmpty()) return list
+        if (list != null) progress(CategoryLoad(emptyList(), false))
+        val walked = walkVolumes(filter) { FileTypes.extension(it) in exts }
+        Diagnostics.log("media", "${cat.title}: index ${if (list == null) "failed" else "empty"}, direct walk found ${walked.size}")
+        return walked.sortedByDescending { it.modified }
+    }
+
+    /**
+     * Show hidden files OFF: [base] as it is (hidden rows were already filtered out).
+     * ON: [base] first, then merged with the cached walk of hidden places (dot-files, dot-folders,
+     * `.nomedia` folders) that MediaStore never indexes, and again whenever that list changes.
+     */
+    private suspend fun FlowCollector<CategoryLoad>.emitWithHidden(
+        base: List<FileItem>,
+        cat: Category,
+        filter: HiddenFilter,
+        limit: Int = Int.MAX_VALUE,
+        extra: (FileItem) -> Boolean = { true },
+    ) {
+        if (!filter.showHidden) {
+            emit(CategoryLoad(base.take(limit), true))
+            return
+        }
+        val index = Graph.hiddenMedia
+        if (index.cached() == null) emit(CategoryLoad(base.take(limit), false))
+        index.observe().collect { snap ->
+            val merged = HiddenMedia.merge(base, FileEvents.filter(snap.items), filter) { HiddenMedia.inCategory(it, cat) && extra(it) }
+            emit(CategoryLoad(merged.take(limit), snap.complete))
+        }
+    }
 
     /** The complete list (Home counts and other one-shot uses). */
     suspend fun category(cat: Category, filter: HiddenFilter): List<FileItem> =

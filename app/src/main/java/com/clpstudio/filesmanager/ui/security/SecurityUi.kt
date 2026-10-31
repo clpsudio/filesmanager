@@ -278,7 +278,8 @@ object SecureWindow {
     fun release(activity: Activity) {
         val n = ((holds[activity] ?: 1) - 1).coerceAtLeast(0)
         holds[activity] = n
-        if (n == 0) activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Item 39: "Block screenshots & screen recording" keeps it on after a vault screen closes.
+        if (n == 0 && !com.clpstudio.filesmanager.ui.PrivacyGuard.blockAll) activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 }
 

@@ -68,9 +68,16 @@ data class VolumeReport(
     val suggestions: List<Suggestion>,
     /** Files that share their size with another one (only these can be duplicates), for the hash pass. */
     val dupCandidates: List<FileItem>,
+    /** Saved numbers from the last visit (no file lists): shown until the fresh report lands. */
+    val cachedSizes: Map<StorageKind, Long>? = null,
+    val cachedLargeSize: Long? = null,
 ) {
-    val breakdown: StorageUsage get() = StorageMath.breakdown(volume.total, volume.free, byKind.mapValues { e -> e.value.sumOf { it.size } }, otherBytes, appsBytes, binBytes, isPrimary)
-    val largeSize: Long get() = large.sumOf { it.size }
+    /** True for a report rebuilt from the saved numbers: sizes only, the file lists are still loading. */
+    val fromCache: Boolean get() = cachedSizes != null
+    /** Bytes per file kind. */
+    val fileSizes: Map<StorageKind, Long> get() = cachedSizes ?: byKind.mapValues { e -> e.value.sumOf { it.size } }
+    val breakdown: StorageUsage get() = StorageMath.breakdown(volume.total, volume.free, fileSizes, otherBytes, appsBytes, binBytes, isPrimary)
+    val largeSize: Long get() = cachedLargeSize ?: large.sumOf { it.size }
 
     /** The same report without files that were deleted / moved since (sizes recomputed). */
     fun pruned(keep: (List<FileItem>) -> List<FileItem>): VolumeReport {

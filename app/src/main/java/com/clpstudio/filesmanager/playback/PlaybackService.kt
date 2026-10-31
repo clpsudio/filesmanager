@@ -80,7 +80,7 @@ class PlaybackService : MediaSessionService() {
             }
         })
         loopJob = com.clpstudio.filesmanager.Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-            com.clpstudio.filesmanager.Graph.settings.collect { applyAudioLoop() }
+            com.clpstudio.filesmanager.Graph.settings.collect { applyAudioLoop(); focus?.settingChanged(it.duckForNotifications) }
         }
     }
 

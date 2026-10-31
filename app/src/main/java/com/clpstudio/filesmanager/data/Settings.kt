@@ -54,6 +54,10 @@ data class AppSettings(
     val autoPip: Boolean = true,
     /** Settings → "Show hidden files in search" (default off; only offered while Show hidden files is on). */
     val hiddenInSearch: Boolean = false,
+    /** Settings → "Block screenshots & screen recording" (item 39, default off): FLAG_SECURE on every screen. */
+    val blockScreenshots: Boolean = false,
+    /** Item 45: off = rename edits only the name, the extension stays (e.g. "photo" + ".jpg"). */
+    val allowExtensionChange: Boolean = false,
     /** Settings → Default sort for every list (Date, newest first, unless changed). */
     val defaultSortBy: SortBy = SortBy.DATE,
     val defaultSortAscending: Boolean = false,
@@ -94,6 +98,8 @@ class SettingsRepository(private val context: Context) {
         val backgroundPlay = booleanPreferencesKey("background_play")
         val autoPip = booleanPreferencesKey("auto_pip")
         val hiddenInSearch = booleanPreferencesKey("hidden_in_search")
+        val blockScreenshots = booleanPreferencesKey("block_screenshots")
+        val allowExtensionChange = booleanPreferencesKey("allow_extension_change")
         val doubleTapSkip = androidx.datastore.preferences.core.intPreferencesKey("double_tap_skip")
         val loopMode = stringPreferencesKey("loop_mode")
         val dateGrouping = stringPreferencesKey("date_grouping")
@@ -122,6 +128,8 @@ class SettingsRepository(private val context: Context) {
             backgroundPlay = p[Keys.backgroundPlay] ?: true,
             autoPip = p[Keys.autoPip] ?: true,
             hiddenInSearch = p[Keys.hiddenInSearch] ?: false,
+            blockScreenshots = p[Keys.blockScreenshots] ?: false,
+            allowExtensionChange = p[Keys.allowExtensionChange] ?: false,
             doubleTapSkipSeconds = DoubleTapSkip.clamp(p[Keys.doubleTapSkip] ?: DoubleTapSkip.DEFAULT),
             loopMode = LoopMode.parse(p[Keys.loopMode]),
             dateGrouping = DateGrouping.parse(p[Keys.dateGrouping]),
@@ -154,6 +162,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
     suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
     suspend fun setHiddenInSearch(on: Boolean) = context.dataStore.edit { it[Keys.hiddenInSearch] = on }
+    suspend fun setBlockScreenshots(on: Boolean) = context.dataStore.edit { it[Keys.blockScreenshots] = on }
+    suspend fun setAllowExtensionChange(on: Boolean) = context.dataStore.edit { it[Keys.allowExtensionChange] = on }
     /** Settings → Default sort: every list, and the folder browser too. */
     suspend fun setDefaultSort(by: SortBy, ascending: Boolean) = context.dataStore.edit {
         it[Keys.defaultSortBy] = by.name

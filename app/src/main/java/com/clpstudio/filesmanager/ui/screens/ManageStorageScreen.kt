@@ -58,6 +58,7 @@ import com.clpstudio.filesmanager.data.ManageStorageData
 import com.clpstudio.filesmanager.data.ManageStorageRepository
 import com.clpstudio.filesmanager.data.StorageKind
 import com.clpstudio.filesmanager.data.StorageMath
+import com.clpstudio.filesmanager.data.StoragePart
 import com.clpstudio.filesmanager.data.StoragePaths
 import com.clpstudio.filesmanager.data.StorageVolume
 import com.clpstudio.filesmanager.data.VolumeReport
@@ -116,21 +117,27 @@ fun ManageStorageScreen(
     val usageAccess by com.clpstudio.filesmanager.data.UsageAccess.granted.collectAsState()
     LaunchedEffect(Unit) { com.clpstudio.filesmanager.data.UsageAccess.watch(context) }
     val state by ManageStorageRepository.state().collectAsState()
-    val dups by ManageStorageRepository.duplicates.state.collectAsState()
+    val dups by ManageStorageRepository.duplicates.collectAsState()
     val vols = remember { StoragePaths.volumes(context) }
-    LaunchedEffect(Unit) { if (state.loaded) ManageStorageRepository.refresh() else ManageStorageRepository.ensureLoaded() }
+    // Saved numbers show at once; every part refreshes on its own (skipped when only seconds old).
+    LaunchedEffect(Unit) { ManageStorageRepository.open() }
+    // The duplicate pass only runs while a storage screen shows; leaving stops it (resumed next open).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        ManageStorageRepository.watch()
+        onDispose { ManageStorageRepository.unwatch() }
+    }
     var firstTick by remember { mutableStateOf(true) }
     val fileVersion by com.clpstudio.filesmanager.data.FileEvents.version.collectAsState()
     LaunchedEffect(AppState.refreshTick) { if (firstTick) firstTick = false else ManageStorageRepository.scheduleRefresh(300) }
     // Files deleted / moved anywhere: recompute once things settle (a burst = one recompute).
     var firstVersion by remember { mutableStateOf(true) }
-    LaunchedEffect(fileVersion) { if (firstVersion) firstVersion = false else ManageStorageRepository.scheduleRefresh(1_500) }
+    LaunchedEffect(fileVersion) { if (firstVersion) firstVersion = false else ManageStorageRepository.scheduleRefresh(1_500, filesOnly = true) }
     // Back from the Usage access page: read sizes again.
     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
         val now = com.clpstudio.filesmanager.data.UsageAccess.check(context)
         // Also when the last report (or one still running) read it before the change.
         val had = state.value?.usageAccess
-        if (had != null && had != now) ManageStorageRepository.refresh()
+        if (had != null && had != now) ManageStorageRepository.refreshUsage()
         onPauseOrDispose { }
     }
     ManageStorageContent(
@@ -167,7 +174,14 @@ fun ManageStorageContent(
     var info by remember { mutableStateOf<StorageKind?>(null) }
     var usageExplainer by remember { mutableStateOf(false) }
     var moreSuggestions by rememberSaveable { mutableStateOf(initiallyMoreSuggestions) }
-    val reports = data?.volumes
+    val reports = data?.volumes?.takeIf { it.isNotEmpty() }
+    val pending = data?.pending.orEmpty()
+    val filesLoaded = data != null && StoragePart.FILES !in pending
+    // A size that depends on a part still loading shows "…" (System = used minus everything else).
+    val pendingKinds = buildSet {
+        if (StoragePart.APPS in pending) { add(StorageKind.APPS); add(StorageKind.SYSTEM) }
+        if (StoragePart.BIN in pending) { add(StorageKind.BIN); add(StorageKind.SYSTEM) }
+    }
     val primaryVol = reports?.firstOrNull()?.volume ?: volumes.firstOrNull()
     val primary = reports?.firstOrNull()
 
@@ -195,8 +209,9 @@ fun ManageStorageContent(
                             volume = vol,
                             report = rep,
                             isPrimary = i == 0,
-                            loaded = data != null,
-                            duplicates = duplicates?.get(vol.path),
+                            loaded = filesLoaded,
+                            pendingKinds = pendingKinds,
+                            dupBytes = duplicates?.get(vol.path)?.sumOf { it.reclaimable } ?: data?.duplicateBytes?.get(vol.path),
                             initiallyExpanded = initiallyExpanded,
                             onKind = { k ->
                                 when (k) {
@@ -244,7 +259,7 @@ fun ManageStorageContent(
                                     icon = { Icon(Icons.Filled.Delete, null, tint = storageKindColor(StorageKind.BIN)) },
                                     title = "Recycle bin",
                                     subtitle = "Files sitting in the Bin",
-                                    trailing = sizeOrDots(primary?.binBytes, data != null),
+                                    trailing = sizeOrDots(data?.binBytes, data != null && StoragePart.BIN !in pending),
                                     onClick = onBin,
                                     panel = false,
                                 )
@@ -254,7 +269,7 @@ fun ManageStorageContent(
                                     title = "Unused apps",
                                     subtitle = "Apps you haven't used in the past 30 days",
                                     trailing = when {
-                                        data == null -> "…"
+                                        data == null || StoragePart.UNUSED in pending -> "…"
                                         data.unusedApps != null -> data.unusedApps.toString()
                                         data.usageAccess -> "…"
                                         else -> "—"
@@ -295,7 +310,8 @@ private fun VolumeCard(
     report: VolumeReport?,
     isPrimary: Boolean,
     loaded: Boolean,
-    duplicates: List<DuplicateSet>?,
+    pendingKinds: Set<StorageKind>,
+    dupBytes: Long?,
     initiallyExpanded: Boolean,
     onKind: (StorageKind) -> Unit,
     onDuplicates: () -> Unit,
@@ -303,7 +319,7 @@ private fun VolumeCard(
 ) {
     var expanded by rememberSaveable(volume.path) { mutableStateOf(initiallyExpanded) }
     val usage = report?.breakdown
-    val sizes = usage?.sizes
+    val sizes = usage?.sizes?.mapValues { (k, v) -> if (k in pendingKinds) null else v }
     val left = StorageKind.leftColumn.filter { isPrimary || it in volumeKinds }
     val right = StorageKind.rightColumn.filter { isPrimary || it in volumeKinds }
     val rows = maxOf(left.size, right.size)
@@ -328,10 +344,10 @@ private fun VolumeCard(
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
-                left.take(shownRows).forEach { k -> KindRow(k, sizeOrDots(sizes?.get(k), loaded && report != null), clickable = true) { onKind(k) } }
+                left.take(shownRows).forEach { k -> KindRow(k, sizeOrDots(sizes?.get(k), loaded && report != null && k !in pendingKinds), clickable = true) { onKind(k) } }
             }
             Column(Modifier.weight(1f)) {
-                right.take(shownRows).forEach { k -> KindRow(k, sizeOrDots(sizes?.get(k), loaded && report != null), clickable = true) { onKind(k) } }
+                right.take(shownRows).forEach { k -> KindRow(k, sizeOrDots(sizes?.get(k), loaded && report != null && k !in pendingKinds), clickable = true) { onKind(k) } }
             }
         }
         if (rows > 2) {
@@ -342,8 +358,7 @@ private fun VolumeCard(
         if (isPrimary) {
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val dupBytes = duplicates?.sumOf { it.reclaimable }
-                CleanTile("Duplicate files", if (duplicates == null) "…" else formatSize(dupBytes ?: 0), Modifier.weight(1f), onDuplicates)
+                CleanTile("Duplicate files", if (dupBytes == null) "…" else formatSize(dupBytes), Modifier.weight(1f), onDuplicates)
                 CleanTile("Large files", if (report == null) "…" else formatSize(report.largeSize), Modifier.weight(1f), onLarge)
             }
         }

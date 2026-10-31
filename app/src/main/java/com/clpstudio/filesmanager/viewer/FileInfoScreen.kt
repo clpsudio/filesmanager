@@ -65,7 +65,7 @@ fun FileInfoScreen(
                 )
                 Text(
                     when (file.kind) {
-                        FileKind.DOCUMENT -> "Office preview comes in the next update. Open it with another app for now."
+                        FileKind.DOCUMENT -> com.clpstudio.filesmanager.viewer.office.OfficeFormats.noPreviewMessage(file.name)
                         FileKind.ARCHIVE -> "Files opens ZIP, 7z and RAR archives. This archive type isn't supported yet."
                         else -> "Files can't preview this type yet."
                     },

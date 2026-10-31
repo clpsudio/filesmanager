@@ -110,9 +110,18 @@ object CleanupPages {
 fun StorageCleanupScreen(mode: String, volumePath: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val state by ManageStorageRepository.state().collectAsState()
-    val dups by ManageStorageRepository.duplicates.state.collectAsState()
-    LaunchedEffect(Unit) { ManageStorageRepository.ensureLoaded() }
-    val report = state.value?.volumes?.firstOrNull { it.volume.path == volumePath }
+    val dups by ManageStorageRepository.duplicates.collectAsState()
+    LaunchedEffect(Unit) {
+        ManageStorageRepository.ensureLoaded()
+        // Duplicates are hashed lazily: opening this list asks for them now.
+        if (mode == CleanupMode.DUPLICATES) ManageStorageRepository.requestDuplicates()
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        ManageStorageRepository.watch()
+        onDispose { ManageStorageRepository.unwatch() }
+    }
+    // A report rebuilt from saved numbers has no file lists yet: wait for the fresh one.
+    val report = state.value?.volumes?.firstOrNull { it.volume.path == volumePath }?.takeUnless { it.fromCache }
     val pages: List<CleanupPage>? = when {
         mode == CleanupMode.DUPLICATES -> dups.value?.get(volumePath)?.let(CleanupPages::duplicates)
         report == null -> null

@@ -198,16 +198,17 @@ object DocxParser {
     private const val MAX_CHARS = 8_000_000
 
     /** Parses [file]. Throws [OfficeParseException] when nothing at all can be read. */
-    fun parse(file: File): DocxDocument {
+    fun parse(file: File, maxBlocks: Int = MAX_BLOCKS): DocxDocument {
         val zip = try {
             ZipFile(file)
         } catch (e: Exception) {
             throw OfficeParseException("This file isn't a valid Word document (.docx).", e)
         }
-        return zip.use { parse(it) }
+        return zip.use { parse(it, maxBlocks) }
     }
 
-    fun parse(zip: ZipFile): DocxDocument {
+    /** [maxBlocks] stops early (thumbnails only need the first page); the result is then marked truncated. */
+    fun parse(zip: ZipFile, maxBlocks: Int = MAX_BLOCKS): DocxDocument {
         val docPath = findMainDocument(zip) ?: throw OfficeParseException("This file isn't a Word document: word/document.xml is missing.")
         val warnings = ArrayList<String>()
         val base = zipDir(docPath)
@@ -216,7 +217,7 @@ object DocxParser {
         val numbering = runCatching { zip.parseXml("${base}numbering.xml") { readNumbering(it) } }
             .onFailure { warnings.add("numbering") }.getOrNull() ?: Numbering()
         val rels = zip.readRels(relsPathFor(docPath), base)
-        val ctx = Ctx(zip, styles, numbering, rels)
+        val ctx = Ctx(zip, styles, numbering, rels, maxBlocks.coerceIn(1, MAX_BLOCKS))
         val entry = zip.findEntry(docPath)!!
         if (entry.size > OfficeLimits.MAX_XML_BYTES) throw OfficeParseException("This Word document is too large to show.")
         var truncated = false
@@ -603,6 +604,7 @@ object DocxParser {
         val styles: Styles,
         val numbering: Numbering,
         val rels: Map<String, OfficeRel>,
+        val maxBlocks: Int = MAX_BLOCKS,
     ) {
         val out = ArrayList<DocBlock>()
         val images = LinkedHashMap<String, ByteArray>()
@@ -620,7 +622,7 @@ object DocxParser {
 
         fun countBlock() {
             blockCount++
-            if (blockCount > MAX_BLOCKS || charCount > MAX_CHARS) {
+            if (blockCount > maxBlocks || charCount > MAX_CHARS) {
                 limitHit = true
                 throw StopParsing()
             }
@@ -911,6 +913,13 @@ object DocxParser {
                 val m = Regex("^heading\\s*(\\d)$").find(nm) ?: Regex("^heading(\\d)$").find(id)
                 if (m != null) { heading = m.groupValues[1].toInt().coerceIn(1, 9); break }
                 if (nm == "title" || id == "title") { heading = 1; break }
+            }
+            // A style that isn't defined in styles.xml (styles part missing or stripped by the saving app):
+            // still treat the usual ids ("Heading1", "heading 2", "Title") as headings.
+            if (heading == 0 && styleChain.isEmpty()) {
+                val id = pb.pProps.styleId?.lowercase()?.trim().orEmpty()
+                val m = Regex("^heading\\s*(\\d)$").find(id)
+                if (m != null) heading = m.groupValues[1].toInt().coerceIn(1, 9) else if (id == "title") heading = 1
             }
             val styleSetsSize = styleChain.any { it.r.sizePt != null }
             val styleSetsBold = styleChain.any { it.r.bold != null }

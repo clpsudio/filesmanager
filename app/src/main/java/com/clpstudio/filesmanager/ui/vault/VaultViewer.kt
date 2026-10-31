@@ -162,7 +162,11 @@ private fun VaultMediaPage(item: VaultItem, active: Boolean) {
         return
     }
     val player = remember(item.id) {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(context)
+            // Same audio rules as the other players (item 40): our FocusController below.
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(), false)
+            .setHandleAudioBecomingNoisy(true)
+            .build().apply {
             val source = ProgressiveMediaSource.Factory(VaultDataSource.Factory { Vault.store.openReader(item) })
                 .createMediaSource(MediaItem.fromUri("vault://item/${item.id}"))
             setMediaSource(source)
@@ -170,7 +174,12 @@ private fun VaultMediaPage(item: VaultItem, active: Boolean) {
             playWhenReady = true
         }
     }
-    DisposableEffect(player) { onDispose { player.release() } }
+    DisposableEffect(player) {
+        val focus = com.clpstudio.filesmanager.playback.FocusController(
+            context, player, duckEnabled = { runCatching { com.clpstudio.filesmanager.Graph.settings.value.duckForNotifications }.getOrDefault(true) }, movie = true,
+        )
+        onDispose { focus.release(); player.release() }
+    }
     AndroidView(
         factory = { ctx -> PlayerView(ctx).apply { this.player = player; setShowNextButton(false); setShowPreviousButton(false) } },
         modifier = Modifier.fillMaxSize().padding(top = 72.dp),

@@ -110,7 +110,13 @@ class Opener(private val context: Context, private val nav: NavController) {
             FileKind.ARCHIVE -> if (com.clpstudio.filesmanager.data.Archives.canBrowse(item.name)) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
             FileKind.FONT -> nav.navigate(Routes.font(Uri.fromFile(file), item.name))
             FileKind.IMAGE, FileKind.PDF, FileKind.TEXT -> openPager(item, siblings)
-            FileKind.DOCUMENT -> if (item.extension == "epub") nav.navigate(Routes.epub(item.path)) else nav.navigate(Routes.info(item.path))
+            // Word / Excel / PowerPoint: the paper-page viewer in the pager (it used to fall through to the
+            // "no preview" info screen, so "Open" on a .docx never showed the document).
+            FileKind.DOCUMENT -> when {
+                item.extension == "epub" -> nav.navigate(Routes.epub(item.path))
+                com.clpstudio.filesmanager.viewer.hasOfficeViewer(item.name) -> openPager(item, siblings)
+                else -> nav.navigate(Routes.info(item.path))
+            }
             else -> nav.navigate(Routes.info(item.path))
         }
     }

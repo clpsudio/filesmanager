@@ -18,11 +18,21 @@ object Diagnostics {
     private const val MAX_FILE_BYTES = 128 * 1024
     private val lines = ArrayDeque<String>()
     private var file: File? = null
+    /** Settings > Logs (item 38): the longer rolling log (about 2 MB), app start, errors and crashes. */
+    @Volatile var rolling: RollingLog? = null
+        private set
+    private val fullFmt = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US) }
     private val fmt = ThreadLocal.withInitial { SimpleDateFormat("dd/MM HH:mm:ss.SSS", Locale.US) }
 
     fun init(context: Context) {
         val f = File(context.filesDir, "diagnostics.log")
         file = f
+        rolling = RollingLog(logsDir(context))
+        rolling?.append(
+            "${fullFmt.get()!!.format(Date())} [app] App start — Files ${com.clpstudio.filesmanager.BuildConfig.VERSION_NAME} " +
+                "(${com.clpstudio.filesmanager.BuildConfig.VERSION_CODE}), Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}), " +
+                "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+        )
         runCatching {
             if (f.exists()) {
                 val old = f.readLines().takeLast(MAX_LINES)
@@ -35,6 +45,10 @@ object Diagnostics {
         val line = "${fmt.get()!!.format(Date())} [$tag] $message" + (error?.let { " — ${it.javaClass.simpleName}: ${it.message}" } ?: "")
         runCatching { if (error != null) Log.w("Files", line, error) else Log.i("Files", line) }
         synchronized(lines) { add(line) }
+        rolling?.append(
+            "${fullFmt.get()!!.format(Date())} [$tag] $message" +
+                (error?.let { "\n" + Log.getStackTraceString(it).lines().take(30).joinToString("\n") { l -> "    $l" } } ?: ""),
+        )
         val f = file ?: return
         runCatching {
             if (f.length() > MAX_FILE_BYTES) f.writeText(snapshot().joinToString("\n", postfix = "\n"))
@@ -65,5 +79,13 @@ object Diagnostics {
     fun clear() {
         synchronized(lines) { lines.clear() }
         runCatching { file?.writeText("") }
+        rolling?.deleteAll()
+    }
+
+    fun logsDir(context: Context): File = File(context.filesDir, "logs")
+
+    /** An uncaught crash, written before the app closes (item 38). */
+    fun crash(threadName: String, error: Throwable) {
+        rolling?.append("${fullFmt.get()!!.format(Date())} [CRASH] on thread $threadName\n" + Log.getStackTraceString(error).trimEnd())
     }
 }

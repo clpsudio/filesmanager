@@ -137,8 +137,12 @@ fun HomeScreen(
     onOpenPlayer: () -> Unit,
     /** Opens a storage root (the SD card box) in the folder browser. */
     onBrowseRoot: (String) -> Unit = { onBrowse() },
+    /** Opens the saved playlists of one kind (Home's "Playlists" section). */
+    onPlaylists: (com.clpstudio.filesmanager.data.PlaylistType) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val playlists by com.clpstudio.filesmanager.data.Playlists.get(context).playlists.collectAsState()
+    val playlistCounts = remember(playlists) { playlists.groupingBy { it.type }.eachCount() }
     val settings by Graph.settings.collectAsState()
     // Loading lives in HomeRepository (app scope, keeps the last good values, retries once):
     // leaving Home or an auto-refresh racing the first load can no longer cancel or blank it.
@@ -155,7 +159,8 @@ fun HomeScreen(
         com.clpstudio.filesmanager.vault.VaultState.UNLOCKED -> "$vaultCount file${if (vaultCount == 1) "" else "s"}"
     }
     val state = remember(snap, favorites.size, vaultLabel) { homeStateOf(snap, favorites.size, vaultLabel) }
-    HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer, showHiddenTile = showHidden, onBrowseRoot = onBrowseRoot)
+    HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer, showHiddenTile = showHidden, onBrowseRoot = onBrowseRoot,
+        playlistCounts = playlistCounts, onPlaylists = onPlaylists)
 }
 
 /** Maps the repository snapshot to what Home draws; "…" while a count is still loading, never a blank or a false 0. */
@@ -186,6 +191,9 @@ fun HomeContent(
     /** "Hidden files" tile: only while Settings → Show hidden files is on. */
     showHiddenTile: Boolean = false,
     onBrowseRoot: (String) -> Unit = {},
+    /** Saved playlists per kind; null = no "Playlists" section. */
+    playlistCounts: Map<com.clpstudio.filesmanager.data.PlaylistType, Int>? = null,
+    onPlaylists: (com.clpstudio.filesmanager.data.PlaylistType) -> Unit = {},
 ) {
     GlassScaffold(
         topBar = {
@@ -247,6 +255,11 @@ fun HomeContent(
                         else -> state.counts[tile]
                     }
                     CategoryTile(tile, sub, onClick = { onTile(tile) })
+                }
+                // Saved playlists, right after the categories: Audio / Video / Photo / Gallery.
+                if (playlistCounts != null) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "playlistHeader") { SectionTitle("Playlists") }
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "playlists") { PlaylistHomeSection(playlistCounts, cols, onPlaylists) }
                 }
             }
         }

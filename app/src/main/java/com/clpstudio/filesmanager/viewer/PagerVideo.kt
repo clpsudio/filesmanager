@@ -150,6 +150,7 @@ class PagerVideo(context: Context) {
     fun load(item: FileItem, s: AppSettings) {
         if (path == item.path) return
         settings = s
+        focus.settingChanged(s.duckForNotifications)
         path = item.path
         repeats = 0
         firstFrame = false

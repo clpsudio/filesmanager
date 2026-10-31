@@ -35,9 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -70,7 +72,7 @@ import com.clpstudio.filesmanager.ui.glass.glassPanel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onCrashReports: () -> Unit = {}, onFolderFilters: () -> Unit = {}, onAppLock: () -> Unit = {}, onVaultSettings: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onLogs: () -> Unit = {}, onCrashReports: () -> Unit = {}, onFolderFilters: () -> Unit = {}, onAppLock: () -> Unit = {}, onVaultSettings: () -> Unit = {}) {
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     SettingsContent(
@@ -82,8 +84,11 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onBin = onBin,
         onDefaultView = { scope.launch { Graph.settingsRepo.setDefaultView(it) } },
         onHideInRecents = { scope.launch { Graph.settingsRepo.setHideInRecents(it) } },
+        onBlockScreenshots = { scope.launch { Graph.settingsRepo.setBlockScreenshots(it) } },
+        onAllowExtensionChange = { scope.launch { Graph.settingsRepo.setAllowExtensionChange(it) } },
         onFileView = { scope.launch { Graph.settingsRepo.setFileView(it) } },
         onDiagnostics = onDiagnostics,
+        onLogs = onLogs,
         onCrashReports = onCrashReports,
         onBackgroundPlay = { scope.launch { Graph.settingsRepo.setBackgroundPlay(it) } },
         onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
@@ -110,8 +115,11 @@ fun SettingsContent(
     onBin: () -> Unit,
     onDefaultView: (DefaultView) -> Unit = {},
     onHideInRecents: (Boolean) -> Unit = {},
+    onBlockScreenshots: (Boolean) -> Unit = {},
+    onAllowExtensionChange: (Boolean) -> Unit = {},
     onFileView: (com.clpstudio.filesmanager.data.FileView) -> Unit = {},
     onDiagnostics: () -> Unit = {},
+    onLogs: () -> Unit = {},
     onCrashReports: () -> Unit = {},
     onBackgroundPlay: (Boolean) -> Unit = {},
     onAutoPip: (Boolean) -> Unit = {},
@@ -195,6 +203,9 @@ fun SettingsContent(
                 SwitchCard(Icons.Filled.Search, "Show hidden files in search", "Search results also list hidden files and folders. Off: search skips them even while browsing shows them.", settings.hiddenInSearch, onHiddenInSearch)
             }
             item {
+                SwitchCard(Icons.Filled.Edit, "Allow changing file extension", "Off: Rename changes only the name and keeps the type (photo + .jpg). On: the whole name can be edited, and changing the extension asks first.", settings.allowExtensionChange, onAllowExtensionChange)
+            }
+            item {
                 SwitchCard(Icons.Filled.SdCard, "Show SD card", "SD card files appear in Photos, Videos, Audios, Documents, Downloads, Recent and search together with phone files. Off hides them everywhere.", settings.showSdCard, onShowSdCard)
             }
             item {
@@ -243,6 +254,9 @@ fun SettingsContent(
             item {
                 SwitchCard(Icons.Filled.Lock, "Hide content while switching apps", "Your files don't show in the app switcher (Recents).", settings.hideInRecents, onHideInRecents)
             }
+            item {
+                SwitchCard(Icons.Filled.Lock, "Block screenshots & screen recording", "Screenshots, screen recordings and the app switcher show a blank screen. Vault screens are always blocked.", settings.blockScreenshots, onBlockScreenshots)
+            }
             item { com.clpstudio.filesmanager.ui.security.SecuritySettingsRows(onAppLock, onVaultSettings) }
             item { Header("About") }
             item {
@@ -254,6 +268,17 @@ fun SettingsContent(
                             Text("Files", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text("Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodySmall)
                             Text("by CLP Studio · works fully offline, no internet permission", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.clickable(onClick = onLogs)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RowIcon(Icons.Filled.Description)
+                        Column(Modifier.weight(1f)) {
+                            Text("Logs", style = MaterialTheme.typography.titleSmall)
+                            Text("App log with errors and crashes. Share it to report a bug on GitHub, or delete it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

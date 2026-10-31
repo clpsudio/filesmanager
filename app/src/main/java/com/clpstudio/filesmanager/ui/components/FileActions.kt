@@ -1,6 +1,7 @@
 package com.clpstudio.filesmanager.ui.components
 
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.width
@@ -92,6 +93,8 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
     var pdfUnlockTarget by mutableStateOf<FileItem?>(null)
     var pdfUnlockError by mutableStateOf<String?>(null)
     var pdfChecking by mutableStateOf(false)
+    /** "Add to playlist": the selected songs / videos / photos waiting for a playlist. */
+    var playlistTargets by mutableStateOf<List<FileItem>?>(null)
 
     class PasswordAsk(val fileName: String, val error: String?, val answer: CompletableDeferred<String?>, val checking: Boolean = false)
 
@@ -279,14 +282,12 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
         )
     }
     actions.renameTarget?.let { item ->
-        TextInputDialog(
-            title = "Rename",
-            initial = item.name,
-            confirm = "Rename",
-            selectBaseName = !item.isDir,
-            onConfirm = { name ->
+        RenameFileDialog(
+            name = item.name,
+            isDir = item.isDir,
+            onRename = { name ->
                 try {
-                    FileOps.rename(context, File(item.path), name)
+                    com.clpstudio.filesmanager.data.RenameOps.rename(context, File(item.path), name)
                     AppState.refresh()
                     null
                 } catch (e: FileOpException) {
@@ -351,6 +352,9 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
             onDismiss = { actions.pdfUnlockTarget = null; actions.pdfUnlockError = null },
         )
     }
+    actions.playlistTargets?.let { sel ->
+        com.clpstudio.filesmanager.ui.screens.AddToPlaylistDialog(sel, onDismiss = { actions.playlistTargets = null })
+    }
     actions.detailsTarget?.let { item ->
         val size by produceState<Long?>(if (item.isDir) null else item.size, item.path) {
             if (item.isDir) value = withContext(Dispatchers.IO) { FileOps.sizeOf(File(item.path)) }
@@ -409,6 +413,9 @@ fun SelectionActionsRow(
             MenuRow(Icons.Filled.ContentCopy, "Copy to...") { menu = false; actions.copy(selected) }
             MenuRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to...") { menu = false; actions.move(selected) }
             MenuRow(Icons.Filled.Shield, "Move to vault") { menu = false; actions.moveToVault(selected) }
+            if (com.clpstudio.filesmanager.data.PlaylistRules.typesFor(selected).isNotEmpty()) {
+                MenuRow(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to playlist") { menu = false; actions.playlistTargets = selected }
+            }
             MenuRow(Icons.Filled.FolderZip, "Compress") { menu = false; actions.compress(selected, withPassword = false) }
             MenuRow(Icons.Filled.Lock, "Compress with password") { menu = false; actions.compress(selected, withPassword = true) }
             if (selected.isNotEmpty() && selected.all { !it.isDir && com.clpstudio.filesmanager.data.Archives.canBrowse(it.name) }) {

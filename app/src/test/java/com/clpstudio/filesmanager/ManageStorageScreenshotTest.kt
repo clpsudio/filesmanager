@@ -125,6 +125,20 @@ class ManageStorageScreenshotTest {
         }
     }
 
+    /** Files numbers in, app sizes / Bin / unused apps / duplicates still loading ("…"). */
+    @Test fun manageStoragePartial() {
+        val (d, _) = data()
+        val partial = d.copy(
+            volumes = d.volumes.map { if (it.isPrimary) it.copy(appsBytes = null, binBytes = null) else it },
+            unusedApps = null,
+            binBytes = null,
+            pending = setOf(com.clpstudio.filesmanager.data.StoragePart.APPS, com.clpstudio.filesmanager.data.StoragePart.BIN, com.clpstudio.filesmanager.data.StoragePart.UNUSED),
+        )
+        shoot("files_store_partial.png", ThemeMode.DARK) {
+            ManageStorageContent(partial, listOf(internal, sd), null, {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, initiallyExpanded = true)
+        }
+    }
+
     @Test fun cleanup() {
         val (d, _) = data()
         val pages = CleanupPages.large(d.volumes[0].large)

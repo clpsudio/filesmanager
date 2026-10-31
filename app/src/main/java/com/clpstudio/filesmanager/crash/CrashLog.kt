@@ -45,6 +45,7 @@ object CrashLog {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {
+                runCatching { com.clpstudio.filesmanager.data.Diagnostics.crash(thread.name, error) }
                 write(d, buildReport(thread.name, error, System.currentTimeMillis(), deviceLines()), System.currentTimeMillis())
             } catch (_: Throwable) {
                 // Never let the crash logger itself get in the way of the crash.

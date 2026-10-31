@@ -56,6 +56,12 @@ object CategoryRepository {
 
     fun refresh(cat: Category, showHidden: Boolean) = loader(cat, showHidden).refresh()
 
+    /** A new walk of hidden places finished: reload the "Show hidden files" media lists already loaded. */
+    fun refreshHiddenMedia() {
+        val media = setOf(Category.PHOTOS, Category.VIDEOS, Category.AUDIO, Category.MEDIA, Category.RECENT)
+        loaders.forEach { (key, loader) -> if (key.second && key.first in media) loader.refresh() }
+    }
+
     /** Reloads every list already loaded (an SD card went in / out, "Show SD card" switched). */
     fun refreshAll() = loaders.values.forEach { it.refresh() }
 }

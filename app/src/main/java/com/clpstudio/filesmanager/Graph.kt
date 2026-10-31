@@ -38,6 +38,8 @@ object Graph {
     val apps by lazy { AppsRepository(app) }
     /** Shared direct walk of storage for documents / APKs / archives. */
     val index by lazy { StorageIndex(app) }
+    /** Cached walk of hidden places for photos / videos / audio ("Show hidden files" on). */
+    val hiddenMedia by lazy { com.clpstudio.filesmanager.data.HiddenMediaIndex(app) }
 
     fun init(context: Context) {
         if (::app.isInitialized) return

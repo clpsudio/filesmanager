@@ -28,7 +28,12 @@ class AudioFocusPolicy(var duckForNotifications: Boolean = true) {
         data object Unduck : Action
     }
 
-    enum class Event { LOSS_TRANSIENT, LOSS, LOSS_CAN_DUCK, GAIN, NOISY }
+    /**
+     * NOTIFICATION_SOUND_START / _END (item 40): another app's notification sound started / stopped playing,
+     * seen through AudioManager's playback callback — many phones (Samsung included) play notification sounds
+     * without taking audio focus while media plays, so LOSS_CAN_DUCK alone never arrived.
+     */
+    enum class Event { LOSS_TRANSIENT, LOSS, LOSS_CAN_DUCK, GAIN, NOISY, NOTIFICATION_SOUND_START, NOTIFICATION_SOUND_END }
 
     var pausedByFocus = false
         private set
@@ -49,8 +54,10 @@ class AudioFocusPolicy(var duckForNotifications: Boolean = true) {
             if (playing) out += Action.Pause
             out
         }
-        Event.LOSS_CAN_DUCK ->
+        Event.LOSS_CAN_DUCK, Event.NOTIFICATION_SOUND_START ->
             if (duckForNotifications && playing && !ducked) { ducked = true; listOf(Action.Duck(DUCK_VOLUME)) } else emptyList()
+        Event.NOTIFICATION_SOUND_END ->
+            if (ducked) { ducked = false; listOf(Action.Unduck) } else emptyList()
         Event.GAIN -> {
             val out = mutableListOf<Action>()
             if (ducked) { ducked = false; out += Action.Unduck }
@@ -63,6 +70,9 @@ class AudioFocusPolicy(var duckForNotifications: Boolean = true) {
         }
     }
 
+    /** Settings → "Lower volume for notifications" turned off while ducked: back to full volume at once. */
+    fun onSettingOff(): List<Action> = if (ducked) { ducked = false; listOf(Action.Unduck) } else emptyList()
+
     /** The user pressed pause or play: never auto-resume what they chose. */
     fun onUser(): List<Action> {
         pausedByFocus = false
@@ -72,6 +82,18 @@ class AudioFocusPolicy(var duckForNotifications: Boolean = true) {
     companion object {
         const val RESUME_DELAY_MS = 2_000L
         const val DUCK_VOLUME = 0.3f
+
+        /** Audio usages that count as a notification sound (not ringtones/alarms: those pause or are left alone). */
+        val NOTIFICATION_USAGES = setOf(
+            PlatformAttributes.USAGE_NOTIFICATION,
+            PlatformAttributes.USAGE_NOTIFICATION_EVENT,
+            @Suppress("DEPRECATION") PlatformAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT,
+            @Suppress("DEPRECATION") PlatformAttributes.USAGE_NOTIFICATION_COMMUNICATION_DELAYED,
+            @Suppress("DEPRECATION") PlatformAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST,
+            PlatformAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE,
+        )
+
+        fun isNotificationSound(usage: Int): Boolean = usage in NOTIFICATION_USAGES
     }
 }
 
@@ -104,6 +126,22 @@ class FocusController(context: Context, private val player: Player, private val 
         }
     }
 
+    // Item 40: other apps' notification sounds that play without asking for audio focus.
+    private var notificationPlaying = false
+    private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
+        override fun onPlaybackConfigChanged(configs: MutableList<android.media.AudioPlaybackConfiguration>?) {
+            val now = configs.orEmpty().any { AudioFocusPolicy.isNotificationSound(it.audioAttributes.usage) }
+            main.post {
+                if (now == notificationPlaying) return@post
+                notificationPlaying = now
+                val enabled = duckEnabled()
+                policy.duckForNotifications = enabled
+                run(policy.on(if (now) AudioFocusPolicy.Event.NOTIFICATION_SOUND_START else AudioFocusPolicy.Event.NOTIFICATION_SOUND_END, player.isPlaying || player.playWhenReady))
+            }
+        }
+    }
+    private var watchingPlayback = false
+
     private val request: AudioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(
             PlatformAttributes.Builder().setUsage(PlatformAttributes.USAGE_MEDIA)
@@ -135,6 +173,9 @@ class FocusController(context: Context, private val player: Player, private val 
     }
 
     private fun requestFocus() {
+        if (!watchingPlayback) {
+            watchingPlayback = runCatching { am.registerAudioPlaybackCallback(playbackCallback, main); true }.getOrDefault(false)
+        }
         if (hasFocus) return
         hasFocus = am.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         if (!hasFocus) { internal = true; player.pause(); internal = false }
@@ -156,12 +197,21 @@ class FocusController(context: Context, private val player: Player, private val 
             is AudioFocusPolicy.Action.ResumeAfter -> { main.removeCallbacks(resume); main.postDelayed(resume, a.delayMs) }
             AudioFocusPolicy.Action.CancelResume -> main.removeCallbacks(resume)
             is AudioFocusPolicy.Action.Duck -> { volumeBeforeDuck = player.volume; player.volume = volumeBeforeDuck * a.volume }
-            AudioFocusPolicy.Action.Unduck -> player.volume = volumeBeforeDuck
+            // Muted meanwhile (the video's sound button): stay muted.
+            AudioFocusPolicy.Action.Unduck -> if (player.volume != 0f) player.volume = volumeBeforeDuck
         }
+    }
+
+    /** Settings → "Lower volume for notifications" changed: off restores full volume right away. */
+    fun settingChanged(enabled: Boolean) {
+        policy.duckForNotifications = enabled
+        if (!enabled) run(policy.onSettingOff())
     }
 
     fun release() {
         player.removeListener(playerListener)
+        if (watchingPlayback) runCatching { am.unregisterAudioPlaybackCallback(playbackCallback) }
+        watchingPlayback = false
         abandon()
     }
 }

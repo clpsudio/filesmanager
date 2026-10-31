@@ -383,8 +383,8 @@ private fun InlineMedia(item: FileItem, playing: Boolean, onEnded: () -> Unit) {
     val ended by rememberUpdatedState(onEnded)
     val player = remember(item.path) {
         ExoPlayer.Builder(context, com.clpstudio.filesmanager.playback.MediaRenderers.factory(context))
-            // Pauses for a call and comes back after it.
-            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+            // Our own focus handling (item 40): pause for a call, duck for notifications only when the setting is on.
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(), false)
             .setHandleAudioBecomingNoisy(true)
             .build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(item.path))))
@@ -402,8 +402,12 @@ private fun InlineMedia(item: FileItem, playing: Boolean, onEnded: () -> Unit) {
             }
         }
         player.addListener(listener)
+        val focus = com.clpstudio.filesmanager.playback.FocusController(
+            context, player, duckEnabled = { runCatching { com.clpstudio.filesmanager.Graph.settings.value.duckForNotifications }.getOrDefault(true) }, movie = true,
+        )
         onDispose {
             player.removeListener(listener)
+            focus.release()
             player.release()
         }
     }

@@ -23,7 +23,7 @@ object FileTypes {
     )
     val officeExt = setOf(
         "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub", "pages",
-        "numbers", "key", "wps", "xlsm", "dotx",
+        "numbers", "key", "wps", "xlsm", "dotx", "docm", "dotm", "dot",
     )
     /** Camera RAW: shown through their embedded JPEG preview. */
     val rawExt = setOf("dng", "cr2", "nef", "nrw", "arw", "rw2", "orf", "pef", "srw", "raf")

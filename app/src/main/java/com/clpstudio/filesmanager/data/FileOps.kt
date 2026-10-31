@@ -51,6 +51,7 @@ object FileOps {
         if (target.exists()) throw FileOpException("A file or folder with that name already exists")
         if (!file.renameTo(target)) throw FileOpException("Couldn't rename it")
         Favorites.onMoved(file.absolutePath, target.absolutePath)
+        runCatching { Playlists.get(context).pathChanged(file.absolutePath, target.absolutePath) }
         FileEvents.moved(file.absolutePath, target.absolutePath)
         scan(context, listOf(file.absolutePath, target.absolutePath))
         return target
@@ -116,6 +117,7 @@ object FileOps {
             if (move) {
                 scanPaths += src.absolutePath
                 Favorites.onMoved(src.absolutePath, dest.absolutePath)
+                runCatching { Playlists.get(context).pathChanged(src.absolutePath, dest.absolutePath) }
                 FileEvents.moved(src.absolutePath, dest.absolutePath)
             } else {
                 FileEvents.added(listOf(dest.absolutePath))

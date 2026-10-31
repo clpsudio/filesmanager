@@ -17,7 +17,7 @@ import com.clpstudio.filesmanager.ui.components.rememberLiveFiles
 fun StorageKindScreen(kind: StorageKind, volumePath: String, opener: Opener, onBack: () -> Unit, onPaste: () -> Unit) {
     val state by ManageStorageRepository.state().collectAsState()
     LaunchedEffect(Unit) { ManageStorageRepository.ensureLoaded() }
-    val report = state.value?.volumes?.firstOrNull { it.volume.path == volumePath }
+    val report = state.value?.volumes?.firstOrNull { it.volume.path == volumePath }?.takeUnless { it.fromCache }
     val items = rememberLiveFiles(report?.byKind?.get(kind))
     val title = items?.let { StorageMath.listTitle(kind, it.size, formatSize(it.sumOf { f -> f.size })) } ?: kind.label
     FileListScreen(

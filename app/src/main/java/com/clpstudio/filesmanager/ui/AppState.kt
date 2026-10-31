@@ -32,6 +32,7 @@ object AppState {
 
     fun refresh() {
         runCatching { Graph.index.invalidate() }
+        runCatching { Graph.hiddenMedia.invalidate() }
         refreshTick++
     }
 

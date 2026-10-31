@@ -7,6 +7,7 @@ object Routes {
     const val HOME = "home"
     const val APPS = "apps"
     const val UNUSED_APPS = "unused_apps"
+    const val LOGS = "logs"
     const val BIN = "bin"
     const val SETTINGS = "settings"
     const val MUSIC = "music"

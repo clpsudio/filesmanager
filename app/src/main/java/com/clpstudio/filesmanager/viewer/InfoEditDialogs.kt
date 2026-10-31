@@ -85,12 +85,10 @@ fun InfoEditDialogs(state: InfoEditState, path: String?, onChanged: (File) -> Un
     val scope = rememberCoroutineScope()
     val file = path?.let(::File) ?: return
     when (state.open) {
-        InfoEdit.NAME -> TextInputDialog(
-            title = "Rename",
-            initial = file.name,
-            confirm = "Rename",
-            selectBaseName = !file.isDirectory,
-            onConfirm = { typed -> renameFile(context, file, typed, onChanged) },
+        InfoEdit.NAME -> com.clpstudio.filesmanager.ui.components.RenameFileDialog(
+            name = file.name,
+            isDir = file.isDirectory,
+            onRename = { typed -> renameFile(context, file, typed, onChanged) },
             onDismiss = { state.open = null },
         )
         InfoEdit.DATE -> {
@@ -160,33 +158,13 @@ fun InfoEditDialogs(state: InfoEditState, path: String?, onChanged: (File) -> Un
     }
 }
 
-/** Rename through the app's one rename path (lists, favourites and the media index follow). */
-private fun renameFile(context: Context, file: File, typed: String, onChanged: (File) -> Unit): String? {
-    val name = typed.trim()
-    val parent = file.parentFile ?: return "Can't rename this"
-    InfoEdits.nameError(name, file.name) { File(parent, it).exists() }?.let { return it }
-    if (name == file.name) return null
-    return try {
-        val renamed = if (InfoEdits.isCaseOnly(name, file.name)) {
-            // Shared storage ignores case when checking names: go through a temporary name.
-            val tmp = FileOps.rename(context, file, ".rename-" + System.nanoTime() + "-" + file.name)
-            try {
-                FileOps.rename(context, tmp, name)
-            } catch (e: FileOpException) {
-                runCatching { FileOps.rename(context, tmp, file.name) }
-                throw e
-            }
-        } else {
-            FileOps.rename(context, file, name)
-        }
-        AppState.refresh()
-        onChanged(renamed)
-        null
-    } catch (e: FileOpException) {
-        e.message ?: "Couldn't rename it"
-    } catch (e: SecurityException) {
-        "Android doesn't allow renaming this"
-    }
+/** Rename through the app's one rename path (lists, favourites, playlists and the media index follow). */
+private fun renameFile(context: Context, file: File, typed: String, onChanged: (File) -> Unit): String? = try {
+    val renamed = com.clpstudio.filesmanager.data.RenameOps.rename(context, file, typed)
+    if (renamed != file) { AppState.refresh(); onChanged(renamed) }
+    null
+} catch (e: FileOpException) {
+    e.message ?: "Couldn't rename it"
 }
 
 /** Sets the file's date (and, for JPEG photos when asked, the EXIF taken date). Returns the toast. */

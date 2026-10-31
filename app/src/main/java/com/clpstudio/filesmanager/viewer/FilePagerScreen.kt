@@ -385,7 +385,8 @@ fun FilePagerScreen(
                                 }
                             },
                         ) + listOfNotNull(
-                            ViewerMenuEntry(Icons.Filled.DriveFileRenameOutline, "Rename") { renaming = current },
+                            // Only a real file on storage can be renamed (not one shared in by another app).
+                            if (File(current.path).exists()) ViewerMenuEntry(Icons.Filled.DriveFileRenameOutline, "Rename") { renaming = current } else null,
                             ViewerMenuEntry(Icons.Filled.Share, "Share") { actions.share(listOf(current)) },
                             ViewerMenuEntry(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") { actions.openWith(current) },
                             ViewerMenuEntry(Icons.Filled.Folder, "Show in folder") { showInFolder(current.parentPath) },
@@ -467,13 +468,12 @@ fun FilePagerScreen(
         ) { info = false }
     }
     renaming?.let { item ->
-        TextInputDialog(
-            title = "Rename",
-            initial = item.name,
-            confirm = "Rename",
-            onConfirm = { name ->
+        com.clpstudio.filesmanager.ui.components.RenameFileDialog(
+            name = item.name,
+            isDir = item.isDir,
+            onRename = { name ->
                 try {
-                    val renamed = FileOps.rename(context, File(item.path), name)
+                    val renamed = com.clpstudio.filesmanager.data.RenameOps.rename(context, File(item.path), name)
                     Favorites.onMoved(item.path, renamed.absolutePath)
                     val i = list.indexOfFirst { it.path == item.path }
                     if (i >= 0) list[i] = FileItem.of(renamed)
@@ -532,7 +532,17 @@ fun PreviewCard(item: FileItem, modifier: Modifier = Modifier, onOpen: () -> Uni
                 FileKind.ARCHIVE, FileKind.FONT -> Icons.Filled.Folder to "Open"
                 else -> Icons.AutoMirrored.Filled.OpenInNew to "Open"
             }
-            Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Text("  $label") }
+            if (item.kind == FileKind.DOCUMENT && item.extension != "epub") {
+                // .doc / .xls / .ppt / OpenDocument …: no in-app viewer, so the main action is another app.
+                Text(
+                    com.clpstudio.filesmanager.viewer.office.OfficeFormats.noPreviewMessage(item.name),
+                    style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+                )
+                Button(onClick = {
+                    val f = File(item.path)
+                    FileOps.openWithOtherApp(context, FileOps.uriFor(context, f), FileTypes.mimeOf(f.name))
+                }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.AutoMirrored.Filled.OpenInNew, null); Text("  Open with another app") }
+            } else Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Text("  $label") }
             if (item.kind == FileKind.OTHER) {
                 OutlinedButton(onClick = {
                     val f = File(item.path)

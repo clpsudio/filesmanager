@@ -46,6 +46,8 @@ import com.clpstudio.filesmanager.ui.theme.FilesTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.clpstudio.filesmanager.viewer.office.OfficeFormat
+import com.clpstudio.filesmanager.viewer.office.OfficeFormats
 import java.io.File
 
 /**
@@ -190,15 +192,20 @@ class OpenWithActivity : ComponentActivity() {
                 val book = local
                 if (book == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 else EpubReaderScreen(book, back)
-            } else if (hasOfficeViewer(f.name)) {
-                val local by produceState<File?>(null, f) {
-                    value = f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
+            } else if (hasOfficeViewer(f.name, f.mime)) {
+                // A shared .docx often comes as content:// with a name without an extension: pick the viewer by
+                // extension, else MIME type, else the parts inside the zip — never by the name alone.
+                val local by produceState<Pair<File, OfficeFormat?>?>(null, f) {
+                    value = withContext(Dispatchers.IO) {
+                        val file = f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
+                        file?.let { it to OfficeFormats.detect(f.name, f.mime, it) }
+                    }
                 }
                 var info by remember { mutableStateOf(false) }
                 Box(Modifier.fillMaxSize()) {
-                    val file = local
-                    if (file == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    else OfficeBody(file, Modifier.swipeUpToOpen { info = true }, 100.dp) { FileInfoScreen(f, back) }
+                    val opened = local
+                    if (opened == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    else OfficeBody(opened.first, Modifier.swipeUpToOpen { info = true }, 100.dp, format = opened.second) { FileInfoScreen(f, back) }
                     ViewerTopBar(f.name, null, back, titleColor = androidx.compose.material3.MaterialTheme.colorScheme.primary) {
                         IconButton(onClick = { info = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Info, "File info") }
                         actions()
