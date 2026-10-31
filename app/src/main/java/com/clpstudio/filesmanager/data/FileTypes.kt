@@ -102,7 +102,26 @@ object FileTypes {
         "ppt" to "application/vnd.ms-powerpoint",
         "pptx" to "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "srt" to "application/x-subrip", "vtt" to "text/vtt", "md" to "text/markdown",
+        // More exact types, so "Open with" lists only apps that really support the file.
+        "jpe" to "image/jpeg", "avif" to "image/avif", "ico" to "image/x-icon", "dng" to "image/x-adobe-dng",
+        "3gpp" to "video/3gpp", "3g2" to "video/3gpp2", "mpg" to "video/mpeg", "mpeg" to "video/mpeg",
+        "wmv" to "video/x-ms-wmv", "ogv" to "video/ogg", "m2ts" to "video/mp2t", "mts" to "video/mp2t",
+        "oga" to "audio/ogg", "awb" to "audio/amr-wb", "wma" to "audio/x-ms-wma", "mid" to "audio/midi",
+        "midi" to "audio/midi", "aiff" to "audio/x-aiff", "aif" to "audio/x-aiff", "m4b" to "audio/mp4",
+        "mka" to "audio/x-matroska", "weba" to "audio/webm", "3ga" to "audio/3gpp",
+        "htm" to "text/html", "tsv" to "text/tab-separated-values", "log" to "text/plain", "rtf" to "application/rtf",
+        "rar" to "application/vnd.rar", "7z" to "application/x-7z-compressed", "tar" to "application/x-tar",
+        "gz" to "application/gzip", "tgz" to "application/gzip", "jar" to "application/java-archive",
+        "epub" to "application/epub+zip", "odt" to "application/vnd.oasis.opendocument.text",
+        "ods" to "application/vnd.oasis.opendocument.spreadsheet", "odp" to "application/vnd.oasis.opendocument.presentation",
+        "ttf" to "font/ttf", "otf" to "font/otf", "vcf" to "text/x-vcard", "ics" to "text/calendar",
     )
+
+    /** The exact MIME type for [name] from our own table, or null when we don't know it (never a wildcard). */
+    fun exactMimeOf(name: String): String? = fallbackMime[extension(name)]
+
+    /** True for the any-type wildcard, family wildcards such as image-star, and null or blank. */
+    fun isWildcard(mime: String?): Boolean = mime.isNullOrBlank() || mime.endsWith("/*")
 
     /** A MIME type for sharing / "open with" (pure, no Android calls). */
     fun mimeOf(name: String): String {

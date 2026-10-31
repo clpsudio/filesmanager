@@ -105,7 +105,7 @@ class OpenWithActivity : ComponentActivity() {
         val back: () -> Unit = { finish() }
         val actions: @Composable () -> Unit = {
             IconButton(onClick = { scope.launch { saveCopy(f) } }) { Icon(Icons.Filled.SaveAlt, "Save a copy to Downloads") }
-            IconButton(onClick = { FileOps.openWithOtherApp(context, f.uri, f.mime) }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") }
+            IconButton(onClick = { FileOps.openWithOtherApp(context, f.uri, f.mime, f.name) }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") }
         }
         when (f.kind) {
             FileKind.IMAGE -> SingleImageViewer(f.uri, f.name, back, actions, path = f.path)

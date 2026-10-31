@@ -166,7 +166,73 @@ object FileOps {
     }
 
     /** "Open with" another app, never this one (avoids a loop). */
-    fun openWithOtherApp(context: Context, uri: Uri, mime: String) {
+    /**
+     * The exact MIME type for [uri]: the system's table for the file's extension, then ours, then the content
+     * provider's own type. Null when nothing exact is known (callers then ask "Open as").
+     */
+    fun exactMime(context: Context, uri: Uri, hint: String? = null, displayName: String? = null): String? {
+        if (!FileTypes.isWildcard(hint)) return hint
+        val name = displayName?.takeIf { FileTypes.extension(it).isNotEmpty() } ?: uri.lastPathSegment?.substringAfterLast('/').orEmpty()
+        val ext = FileTypes.extension(name)
+        if (ext.isNotEmpty()) {
+            runCatching { android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) }.getOrNull()
+                ?.takeIf { !FileTypes.isWildcard(it) }?.let { return it }
+            FileTypes.exactMimeOf(name)?.let { return it }
+        }
+        if (uri.scheme == "content") {
+            runCatching { context.contentResolver.getType(uri) }.getOrNull()?.takeIf { !FileTypes.isWildcard(it) }?.let { return it }
+        }
+        return null
+    }
+
+    /** Apps (other than us) that can VIEW [uri] as [mime]. */
+    private fun viewers(context: Context, uri: Uri, mime: String): Int = runCatching {
+        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+        context.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            .count { it.activityInfo?.packageName != context.packageName }
+    }.getOrDefault(-1)
+
+    /**
+     * "Open with another app": only apps that support the file. An exact type is resolved first; a truly unknown
+     * type gets an "Open as" choice (Text / Image / Video / Audio / Other), and only "Other" uses any app.
+     */
+    fun openWithOtherApp(context: Context, uri: Uri, mime: String, name: String? = null) {
+        val exact = exactMime(context, uri, mime, name)
+        val type = exact ?: mime.takeIf { it.endsWith("/*") && it != "*/*" }
+        when {
+            type == null -> askOpenAs(context, uri)
+            viewers(context, uri, type) == 0 -> noAppFor(context, uri)
+            else -> launchViewer(context, uri, type)
+        }
+    }
+
+    /** Families offered by "Open as"; "Other" is the only one that lists every app. */
+    val openAsChoices: List<Pair<String, String>> = listOf(
+        "Text" to "text/plain", "Image" to "image/*", "Video" to "video/*", "Audio" to "audio/*", "Other" to "*/*",
+    )
+
+    private fun askOpenAs(context: Context, uri: Uri) {
+        if (context !is android.app.Activity) return launchViewer(context, uri, "*/*")
+        android.app.AlertDialog.Builder(context)
+            .setTitle("Open as")
+            .setItems(openAsChoices.map { it.first }.toTypedArray()) { _, i -> launchViewer(context, uri, openAsChoices[i].second) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun noAppFor(context: Context, uri: Uri) {
+        if (context !is android.app.Activity) {
+            Toast.makeText(context, "No app on this phone can open this file", Toast.LENGTH_LONG).show()
+            return
+        }
+        android.app.AlertDialog.Builder(context)
+            .setMessage("No app on this phone can open this file")
+            .setPositiveButton("Open as…") { _, _ -> askOpenAs(context, uri) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun launchViewer(context: Context, uri: Uri, mime: String) {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -183,7 +249,7 @@ object FileOps {
         try {
             context.startActivity(chooser)
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, "No app on this phone can open it", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "No app on this phone can open this file", Toast.LENGTH_SHORT).show()
         }
     }
 }

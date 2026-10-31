@@ -72,7 +72,7 @@ fun FileInfoScreen(
                     textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(6.dp))
-                Button(onClick = { FileOps.openWithOtherApp(context, shareUri, file.mime) }, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { FileOps.openWithOtherApp(context, shareUri, file.mime, file.name) }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, null)
                     Text("  Open with another app")
                 }
