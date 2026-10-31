@@ -21,10 +21,18 @@ import java.io.File
 /** The list the file viewer swipes through (set just before opening it), in the list's own order. */
 object ViewerSession {
     var files: List<String> = emptyList()
+    /** Items for "Play N" (slideshow / playlist), in the selected order. */
+    var playItems: List<FileItem> = emptyList()
 }
 
 /** Opens any file inside the app: everything has an in-app viewer or a clear fallback. */
 class Opener(private val context: Context, private val nav: NavController) {
+
+    /** Selected photos, videos and audio as a slideshow / playlist. */
+    fun playSelected(items: List<FileItem>) {
+        ViewerSession.playItems = items
+        nav.navigate(Routes.SLIDESHOW)
+    }
 
     fun open(item: FileItem, siblings: List<FileItem> = emptyList()) {
         if (item.isDir) {

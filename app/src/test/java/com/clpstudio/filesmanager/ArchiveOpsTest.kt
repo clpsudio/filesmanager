@@ -30,6 +30,23 @@ class ArchiveOpsTest {
         return dir to single
     }
 
+    /** Locked zip → password → extract into a NEW folder named after the zip ("Photos (1)" when taken). */
+    @Test fun lockedZipExtractsToNewFolder() = runBlocking {
+        val (dir, _) = sources()
+        val zip = File(tmp.root, "Photos.zip")
+        ArchiveOps.compress(listOf(dir), zip, "pa55word".toCharArray())
+        val first = ArchiveOps.newFolderFor(zip)
+        assertEquals("Photos", first.name)
+        assertEquals(tmp.root, first.parentFile)
+        assertEquals(2, ArchiveOps.extract(zip, "pa55word".toCharArray(), first))
+        assertEquals("hello zip ✓", File(first, "Trip photos/notes.txt").readText())
+        // The folder exists now, so the next extraction gets a fresh one.
+        val second = ArchiveOps.newFolderFor(zip)
+        assertEquals("Photos (1)", second.name)
+        assertEquals(2, ArchiveOps.extract(zip, "pa55word".toCharArray(), second))
+        assertTrue(File(second, "Trip photos/sub/big.bin").length() == 3_000_000L)
+    }
+
     @Test fun lockedZipRoundTrip() = runBlocking {
         val (dir, single) = sources()
         val zip = File(tmp.root, "locked.zip")

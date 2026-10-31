@@ -47,6 +47,19 @@ object Diagnostics {
         while (lines.size > MAX_LINES) lines.removeFirst()
     }
 
+    /** Latest "first items" time per category (ms, item count), shown on the diagnostics screen. */
+    val timings = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
+
+    fun timing(name: String, ms: Long, count: Int) {
+        timings[name] = ms to count
+        log("speed", "$name: first $count items in $ms ms")
+    }
+
+    /** Time from opening a category to its list on screen (from the cache or fresh). */
+    fun shown(name: String, ms: Long, fromCache: Boolean) {
+        timings["$name (on screen" + (if (fromCache) ", cached)" else ")")] = ms to -1
+    }
+
     fun snapshot(): List<String> = synchronized(lines) { lines.toList() }
 
     fun clear() {

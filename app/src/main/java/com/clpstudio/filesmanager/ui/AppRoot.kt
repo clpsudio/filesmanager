@@ -58,7 +58,7 @@ private val springOffset = spring<IntOffset>(dampingRatio = Spring.DampingRatioN
 private val springFloat = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
 @Composable
-fun AppRoot(nowPlayingTick: Int = 0) {
+fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled: () -> Unit = {}) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(StoragePermission.granted(context)) }
     LifecycleResumeEffect(Unit) {
@@ -74,6 +74,12 @@ fun AppRoot(nowPlayingTick: Int = 0) {
     val nav = rememberNavController()
     val opener = remember(nav) { Opener(context, nav) }
     val player = rememberPlayerUi()
+    LaunchedEffect(browsePath) {
+        if (browsePath != null) {
+            nav.navigate(Routes.browse(browsePath))
+            onBrowseHandled()
+        }
+    }
     LaunchedEffect(nowPlayingTick) {
         if (nowPlayingTick > 0) {
             if (player.isVideo) context.startActivity(Intent(context, VideoPlayerActivity::class.java))
@@ -97,6 +103,8 @@ fun AppRoot(nowPlayingTick: Int = 0) {
                     when (tile) {
                         HomeTile.RECENT -> nav.navigate(Routes.category(Category.RECENT))
                         HomeTile.PHOTOS -> nav.navigate(Routes.category(Category.PHOTOS))
+                        HomeTile.MEDIA -> nav.navigate(Routes.category(Category.MEDIA))
+                        HomeTile.FAVORITES -> nav.navigate(Routes.FAVORITES)
                         HomeTile.VIDEOS -> nav.navigate(Routes.category(Category.VIDEOS))
                         HomeTile.AUDIO -> nav.navigate(Routes.category(Category.AUDIO))
                         HomeTile.DOCUMENTS -> nav.navigate(Routes.category(Category.DOCUMENTS))
@@ -151,9 +159,12 @@ fun AppRoot(nowPlayingTick: Int = 0) {
         ) { e ->
             SearchScreen(e.arguments?.getString("root"), e.arguments?.getString("type"), opener, back)
         }
-        composable(Routes.APPS) { AppsScreen(back) }
+        composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste) }
         composable(Routes.BIN) { BinScreen(back) }
-        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }) }
+        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }) }
+        composable(Routes.CRASH_REPORTS) { com.clpstudio.filesmanager.crash.CrashReportsScreen(back) }
+        composable(Routes.FAVORITES) { com.clpstudio.filesmanager.ui.screens.FavoritesScreen(opener, back, onPaste = toPaste) }
+        composable(Routes.SLIDESHOW) { com.clpstudio.filesmanager.viewer.SlideshowScreen(ViewerSession.playItems, onBack = back) }
         composable(Routes.DIAGNOSTICS) { com.clpstudio.filesmanager.ui.screens.DiagnosticsScreen(back) }
         composable(Routes.MUSIC) { MusicPlayerScreen(player, back) }
         composable("view?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
@@ -193,4 +204,10 @@ fun AppRoot(nowPlayingTick: Int = 0) {
     }
 
     AppState.progress?.let { ProgressDialog(it) { AppState.cancelOperation() } }
+    com.clpstudio.filesmanager.ui.components.DoneActionHost { target ->
+        if (target.isDirectory) nav.navigate(Routes.browse(target.absolutePath))
+        else opener.open(FileItem.of(target))
+    }
+    // One-time "The app closed unexpectedly…" snackbar on the first launch after a crash.
+    com.clpstudio.filesmanager.crash.CrashNoticeHost { nav.navigate(Routes.CRASH_REPORTS) { launchSingleTop = true } }
 }

@@ -78,7 +78,7 @@ fun XlsxContent(
                 XlsxLoad.Failed(e.message ?: "This Excel file couldn't be opened.")
             } catch (e: OutOfMemoryError) {
                 XlsxLoad.Failed("This Excel file is too large to show.")
-            } catch (e: Exception) {
+            } catch (e: Throwable) { // also StackOverflowError on deeply nested XML: show the info screen, never crash
                 XlsxLoad.Failed("This Excel file couldn't be opened. It may be damaged.")
             }
         }

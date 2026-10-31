@@ -155,11 +155,14 @@ fun EnterPasswordDialog(
     onDismiss: () -> Unit,
     title: String = "Password needed",
     confirm: String = "Open",
+    checking: Boolean = false,
+    secondary: String? = null,
+    onSecondary: (String) -> Unit = {},
 ) {
     var pass by remember(error) { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!checking) onDismiss() },
         containerColor = dialogContainerColor(),
         icon = { Icon(Icons.Filled.Lock, null) },
         title = { Text(title) },
@@ -167,12 +170,27 @@ fun EnterPasswordDialog(
             DialogGlassEffect()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("\"$fileName\" is protected. Enter its password.", maxLines = 3, overflow = TextOverflow.Ellipsis)
-                PasswordField(pass, { pass = it }, "Password", visible = visible, onToggleVisible = { visible = !visible }, error = error)
+                PasswordField(pass, { pass = it }, "Password", visible = visible, onToggleVisible = { visible = !visible }, error = if (checking) null else error)
+                if (checking) CheckingPassword()
             }
         },
-        confirmButton = { TextButton(enabled = pass.isNotEmpty(), onClick = { onConfirm(pass) }) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            Row {
+                if (secondary != null) TextButton(enabled = pass.isNotEmpty() && !checking, onClick = { onSecondary(pass) }) { Text(secondary) }
+                TextButton(enabled = pass.isNotEmpty() && !checking, onClick = { onConfirm(pass) }) { Text(confirm) }
+            }
+        },
+        dismissButton = { TextButton(enabled = !checking, onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** "Checking password…" with an indeterminate bar, while the check runs in the background. */
+@Composable
+fun CheckingPassword() {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Checking password…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
 }
 
 /** Save as a copy or replace the original (PDF password actions). */
@@ -235,6 +253,7 @@ fun PdfUnlockDialog(
     error: String?,
     onConfirm: (password: String, replace: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    checking: Boolean = false,
 ) {
     var pass by remember(error) { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
@@ -247,12 +266,13 @@ fun PdfUnlockDialog(
         text = {
             DialogGlassEffect()
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                PasswordField(pass, { pass = it }, "Current password", visible = visible, onToggleVisible = { visible = !visible }, error = error)
+                PasswordField(pass, { pass = it }, "Current password", visible = visible, onToggleVisible = { visible = !visible }, error = if (checking) null else error)
                 SaveModeChooser(File(fileName).nameWithoutExtension.removeSuffix("_locked") + "_unlocked.pdf", replace) { replace = it }
+                if (checking) CheckingPassword()
             }
         },
-        confirmButton = { TextButton(enabled = pass.isNotEmpty(), onClick = { onConfirm(pass, replace) }) { Text("Remove password") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = pass.isNotEmpty() && !checking, onClick = { onConfirm(pass, replace) }) { Text("Remove password") } },
+        dismissButton = { TextButton(enabled = !checking, onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

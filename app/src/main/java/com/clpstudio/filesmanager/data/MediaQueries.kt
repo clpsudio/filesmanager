@@ -8,6 +8,9 @@ import android.provider.MediaStore
 import com.clpstudio.filesmanager.Graph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -17,6 +20,7 @@ import java.io.File
 enum class Category(val title: String) {
     RECENT("Recent"),
     PHOTOS("Photos"),
+    MEDIA("Media"),
     VIDEOS("Videos"),
     AUDIO("Audios"),
     DOCUMENTS("Documents"),
@@ -55,7 +59,7 @@ class MediaQueries(private val context: Context) {
     }
 
     /** Streams the category: first the fast results, then the complete list. */
-    fun categoryFlow(cat: Category, filter: HiddenFilter): Flow<CategoryLoad> = flow {
+    fun categoryFlow(cat: Category, filter: HiddenFilter): Flow<CategoryLoad> = flow<CategoryLoad> {
         val t0 = System.currentTimeMillis()
         when (cat) {
             Category.PHOTOS, Category.VIDEOS, Category.AUDIO -> {
@@ -75,6 +79,15 @@ class MediaQueries(private val context: Context) {
                     Diagnostics.log("media", "${cat.title}: index ${if (list == null) "failed" else "empty"}, direct walk found ${walked.size}")
                     emit(CategoryLoad(walked.sortedByDescending { it.modified }, true))
                 }
+            }
+            Category.MEDIA -> {
+                // All photos and videos together, newest first (both queries run at the same time).
+                val (photos, videos) = kotlinx.coroutines.coroutineScope {
+                    val p = async { categoryFlow(Category.PHOTOS, filter).first { it.done }.items }
+                    val v = async { categoryFlow(Category.VIDEOS, filter).first { it.done }.items }
+                    p.await() to v.await()
+                }
+                emit(CategoryLoad((photos + videos).sortedByDescending { it.modified }, true))
             }
             Category.DOCUMENTS -> {
                 val docFilter = filter.withoutNoMedia()
@@ -103,6 +116,16 @@ class MediaQueries(private val context: Context) {
             }
         }
         Diagnostics.log("media", "${cat.title} loaded in ${System.currentTimeMillis() - t0} ms")
+    }.let { upstream ->
+        // Time to the first non-empty items (shown in Settings > Diagnostics).
+        var t0 = 0L
+        var first = true
+        upstream.onStart { t0 = System.currentTimeMillis() }.onEach { load ->
+            if (first && (load.items.isNotEmpty() || load.done)) {
+                first = false
+                Diagnostics.timing(cat.title, System.currentTimeMillis() - t0, load.items.size)
+            }
+        }
     }.flowOn(Dispatchers.IO)
 
     /** The complete list (Home counts and other one-shot uses). */
@@ -113,7 +136,15 @@ class MediaQueries(private val context: Context) {
     suspend fun apkFiles(filter: HiddenFilter): List<FileItem> = withContext(Dispatchers.IO) {
         val f = filter.withoutNoMedia()
         val indexed = query(extSelection(FileTypes.apkExt), extArgs(FileTypes.apkExt), f).getOrNull().orEmpty()
-        val walked = Graph.index.complete(filter.showHidden).filter { FileTypes.isApk(it.name) && f.visiblePath(it.path) }
+        // Never throws (the Apps screen loads this without a guard): a failed walk keeps the index results.
+        val walked = try {
+            Graph.index.complete(filter.showHidden).filter { FileTypes.isApk(it.name) && f.visiblePath(it.path) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Diagnostics.log("media", "APK walk failed", e)
+            emptyList()
+        }
         StorageWalker.merge(walked, indexed)
     }
 
@@ -139,18 +170,21 @@ class MediaQueries(private val context: Context) {
                     )
                     if (c == null) throw IllegalStateException("MediaStore returned no cursor for $uri")
                     c.use { cur ->
-                        val iData = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
-                        val iName = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-                        val iSize = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-                        val iDate = cur.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
-                        while (cur.moveToNext() && out.size < limit) {
-                            val path = cur.getString(iData) ?: continue
-                            if (out.containsKey(path) || !filter.visiblePath(path)) continue
-                            val name = cur.getString(iName) ?: path.substringAfterLast('/')
-                            out[path] = FileItem(path = path, name = name, isDir = false, size = cur.getLong(iSize), modified = cur.getLong(iDate) * 1000)
-                        }
+                        // Column-safe: a missing column or NULL value no longer fails the whole volume.
+                        CursorRows.readFiles(
+                            cur, out, limit = limit, accept = { filter.visiblePath(it) },
+                            dataColumn = MediaStore.Files.FileColumns.DATA,
+                            nameColumn = MediaStore.Files.FileColumns.DISPLAY_NAME,
+                            sizeColumn = MediaStore.Files.FileColumns.SIZE,
+                            dateColumn = MediaStore.Files.FileColumns.DATE_MODIFIED,
+                        )
                     }
                     anyOk = true
+                    break
+                } catch (e: SecurityException) {
+                    // All files access / media permission revoked: retrying won't help.
+                    lastError = e
+                    Diagnostics.log("media", "no permission to query $uri", e)
                     break
                 } catch (e: Exception) {
                     lastError = e

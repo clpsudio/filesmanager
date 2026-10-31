@@ -68,14 +68,33 @@ object AppState {
      * Runs a long file operation (zip, unzip, PDF password...) with the shared progress dialog,
      * a Stop button, a toast with [block]'s result, and a rescan of [block]'s new files.
      */
-    fun runOperation(context: Context, title: String, block: suspend (report: (OpProgress) -> Unit) -> Pair<String, List<File>>) {
+    /** A finished operation with a follow-up ("Extracted to Photos" → Open folder / Open). */
+    class DoneAction(val message: String, val label: String, val target: File)
+    var doneAction by mutableStateOf<DoneAction?>(null)
+    /** A file or folder to highlight briefly in lists (e.g. the folder a zip was just extracted to). */
+    var highlight by mutableStateOf<String?>(null)
+
+    fun runOperation(
+        context: Context,
+        title: String,
+        followUp: ((created: List<File>) -> DoneAction?)? = null,
+        block: suspend (report: (OpProgress) -> Unit) -> Pair<String, List<File>>,
+    ) {
         job = Graph.appScope.launch {
             try {
                 progress = OpProgress(title)
                 val (message, created) = block { p -> progress = p }
                 val paths = created.flatMap { f -> if (f.isDirectory) f.walkTopDown().filter { it.isFile }.take(5000).map { it.absolutePath }.toList() else listOf(f.absolutePath) }
                 if (paths.isNotEmpty()) FileOps.scan(context, paths)
-                withContext(Dispatchers.Main) { toast(context, message) }
+                val follow = followUp?.invoke(created)
+                withContext(Dispatchers.Main) {
+                    if (follow != null) {
+                        highlight = follow.target.absolutePath
+                        doneAction = follow
+                    } else {
+                        toast(context, message)
+                    }
+                }
             } catch (e: CancellationException) {
                 withContext(Dispatchers.Main + kotlinx.coroutines.NonCancellable) { toast(context, "Stopped") }
             } catch (e: com.clpstudio.filesmanager.data.WrongPasswordException) {
@@ -97,6 +116,7 @@ object AppState {
             try {
                 progress = OpProgress("Moving to Bin", totalItems = files.size)
                 val n = Graph.bin.moveToBin(files) { done -> progress = OpProgress("Moving to Bin", doneItems = done, totalItems = files.size) }
+                com.clpstudio.filesmanager.data.Favorites.onDeleted(files.filter { !it.exists() }.map { it.absolutePath })
                 withContext(Dispatchers.Main) {
                     toast(context, "$n item" + (if (n == 1) "" else "s") + " moved to Bin (kept 30 days)")
                     onDone()

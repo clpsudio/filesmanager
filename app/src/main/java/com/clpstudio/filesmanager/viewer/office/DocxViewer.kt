@@ -85,7 +85,7 @@ fun DocxContent(
                 DocxLoad.Failed(e.message ?: "This Word document couldn't be opened.")
             } catch (e: OutOfMemoryError) {
                 DocxLoad.Failed("This Word document is too large to show.")
-            } catch (e: Exception) {
+            } catch (e: Throwable) { // also StackOverflowError on deeply nested XML: show the info screen, never crash
                 DocxLoad.Failed("This Word document couldn't be opened. It may be damaged.")
             }
         }

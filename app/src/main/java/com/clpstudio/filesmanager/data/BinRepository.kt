@@ -132,3 +132,25 @@ class BinRepository(private val context: Context, private val dir: File = Storag
 
     suspend fun totalSize(): Long = list().sumOf { it.size }
 }
+
+/** Items in the Bin that share the same number of days before deletion. */
+data class DaysGroup<T>(val daysLeft: Int, val items: List<T>) {
+    val label: String get() = daysLeftLabel(daysLeft)
+}
+
+/** "30 days until deletion", "1 day until deletion", "Deleting today". */
+fun daysLeftLabel(days: Int): String = when {
+    days <= 0 -> "Deleting today"
+    days == 1 -> "1 day until deletion"
+    else -> "$days days until deletion"
+}
+
+/** Groups by days left, most days first; items keep their order inside a group. */
+fun <T> groupByDaysLeft(items: List<T>, daysLeft: (T) -> Int): List<DaysGroup<T>> =
+    items.groupBy { daysLeft(it).coerceAtLeast(0) }
+        .entries.sortedByDescending { it.key }
+        .map { DaysGroup(it.key, it.value) }
+
+/** How many entries a binned folder holds (its direct children), or -1 for a file. */
+fun BinEntry.itemCount(): Int = if (isDir) dataFile.list()?.size ?: 0 else -1
+

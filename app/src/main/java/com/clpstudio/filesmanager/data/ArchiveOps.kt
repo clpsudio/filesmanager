@@ -36,6 +36,10 @@ class WrongPasswordException : IOException("Wrong password")
 object ArchiveOps {
     const val MIN_PASSWORD = 4
 
+    /** The new folder a ZIP extracts into: next to it, named after it ("Photos.zip" → "Photos", then "Photos (1)"). */
+    fun newFolderFor(zip: File, parent: File = zip.parentFile ?: File(".")): File =
+        File(parent, uniqueName(zip.nameWithoutExtension, true) { File(parent, it).exists() })
+
     fun isZip(name: String): Boolean = FileTypes.extension(name) in setOf("zip", "jar")
 
     fun open(zip: File, password: CharArray? = null): ZipFile =

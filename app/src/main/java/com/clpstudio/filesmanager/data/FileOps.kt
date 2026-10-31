@@ -50,6 +50,7 @@ object FileOps {
         val target = File(file.parentFile, newName.trim())
         if (target.exists()) throw FileOpException("A file or folder with that name already exists")
         if (!file.renameTo(target)) throw FileOpException("Couldn't rename it")
+        Favorites.onMoved(file.absolutePath, target.absolutePath)
         scan(context, listOf(file.absolutePath, target.absolutePath))
         return target
     }
@@ -90,7 +91,10 @@ object FileOps {
                 }
                 if (move && !src.deleteRecursively()) throw FileOpException("Copied, but couldn't remove the original of ${src.name}")
             }
-            if (move) scanPaths += src.absolutePath
+            if (move) {
+                scanPaths += src.absolutePath
+                Favorites.onMoved(src.absolutePath, dest.absolutePath)
+            }
             scanPaths += dest.absolutePath
             results += dest
         }

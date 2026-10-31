@@ -1,11 +1,13 @@
 package com.clpstudio.filesmanager.ui.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -34,6 +37,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -52,7 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,26 +70,31 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.clpstudio.filesmanager.Graph
 import com.clpstudio.filesmanager.data.Category
 import com.clpstudio.filesmanager.data.FileItem
-import com.clpstudio.filesmanager.data.StoragePaths
+import com.clpstudio.filesmanager.data.HomeRepository
+import com.clpstudio.filesmanager.data.HomeSnapshot
+import com.clpstudio.filesmanager.data.Loadable
+import com.clpstudio.filesmanager.data.map
 import com.clpstudio.filesmanager.playback.PlayerUi
 import com.clpstudio.filesmanager.ui.AppState
 import com.clpstudio.filesmanager.ui.components.FileTile
 import com.clpstudio.filesmanager.ui.components.SearchLauncher
 import com.clpstudio.filesmanager.ui.components.formatSize
 import com.clpstudio.filesmanager.ui.glass.GlassScaffold
+import com.clpstudio.filesmanager.ui.glass.LocalGlass
 import com.clpstudio.filesmanager.ui.glass.glassBar
 import com.clpstudio.filesmanager.ui.glass.glassPanel
 import com.clpstudio.filesmanager.ui.glass.pressScale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 enum class HomeTile(val title: String, val icon: ImageVector, val color: Color) {
     RECENT("Recent", Icons.Filled.Schedule, Color(0xFF1E6FF0)),
+    FAVORITES("Favorites", Icons.Filled.Star, Color(0xFFF59E0B)),
     PHOTOS("Photos", Icons.Filled.Image, Color(0xFF16A34A)),
+    MEDIA("Media", Icons.Filled.PhotoLibrary, Color(0xFFEA580C)),
     VIDEOS("Videos", Icons.Filled.VideoLibrary, Color(0xFFDC2626)),
     AUDIO("Audios", Icons.Filled.AudioFile, Color(0xFF9333EA)),
     DOCUMENTS("Documents", Icons.Filled.Description, Color(0xFF2563EB)),
@@ -94,6 +104,11 @@ enum class HomeTile(val title: String, val icon: ImageVector, val color: Color) 
     BIN("Bin", Icons.Filled.Delete, Color(0xFFE11D48)),
     VAULT("Vault", Icons.Filled.Lock, Color(0xFFD97706)),
 }
+
+private val homeCategories = listOf(
+    HomeTile.PHOTOS to Category.PHOTOS, HomeTile.MEDIA to Category.MEDIA, HomeTile.VIDEOS to Category.VIDEOS, HomeTile.AUDIO to Category.AUDIO,
+    HomeTile.DOCUMENTS to Category.DOCUMENTS, HomeTile.DOWNLOADS to Category.DOWNLOADS,
+)
 
 @Immutable
 data class HomeState(
@@ -115,32 +130,29 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val settings by Graph.settings.collectAsState()
-    val state by produceState(HomeState(), AppState.refreshTick, settings.showHidden) {
-        value = withContext(Dispatchers.IO) {
-            val vol = StoragePaths.volumes(context).first()
-            val filter = Graph.hiddenFilter(settings.showHidden)
-            val recent = runCatching { Graph.media.category(Category.RECENT, filter) }.getOrDefault(emptyList())
-            HomeState(used = vol.total - vol.free, total = vol.total, recent = recent.take(20))
-        }
-        value = withContext(Dispatchers.IO) {
-            val filter = Graph.hiddenFilter(settings.showHidden)
-            val counts = mutableMapOf<HomeTile, String>()
-            fun put(t: HomeTile, n: Int) { counts[t] = "$n item" + if (n == 1) "" else "s" }
-            for ((tile, cat) in listOf(
-                HomeTile.PHOTOS to Category.PHOTOS, HomeTile.VIDEOS to Category.VIDEOS, HomeTile.AUDIO to Category.AUDIO,
-                HomeTile.DOCUMENTS to Category.DOCUMENTS, HomeTile.DOWNLOADS to Category.DOWNLOADS,
-            )) {
-                runCatching { Graph.media.category(cat, filter) }.getOrNull()?.let { put(tile, it.size) }
-            }
-            put(HomeTile.RECENT, value.recent.size)
-            runCatching { Graph.bin.list() }.getOrNull()?.let { put(HomeTile.BIN, it.size) }
-            counts[HomeTile.VAULT] = "Coming soon"
-            counts[HomeTile.APPS] = "APKs & installed"
-            counts[HomeTile.INTERNAL] = "System storage"
-            value.copy(counts = counts)
-        }
-    }
+    // Loading lives in HomeRepository (app scope, keeps the last good values, retries once):
+    // leaving Home or an auto-refresh racing the first load can no longer cancel or blank it.
+    val showHidden = settings.showHidden
+    val tick = AppState.refreshTick
+    LaunchedEffect(showHidden, tick) { HomeRepository.onShow(showHidden, tick) }
+    val snap by HomeRepository.state(showHidden).collectAsState()
+    val favorites by com.clpstudio.filesmanager.data.Favorites.paths.collectAsState()
+    val state = remember(snap, favorites.size) { homeStateOf(snap, favorites.size) }
     HomeContent(state, onTile, onSearch, onSettings, onBrowse, onOpenRecent, player, onOpenPlayer)
+}
+
+/** Maps the repository snapshot to what Home draws; "…" while a count is still loading, never a blank or a false 0. */
+internal fun homeStateOf(snap: HomeSnapshot, favorites: Int): HomeState {
+    val counts = mutableMapOf<HomeTile, String>()
+    for ((tile, cat) in homeCategories) counts[tile] = HomeRepository.countLabel(snap.counts[cat])
+    counts[HomeTile.RECENT] = HomeRepository.countLabel(snap.recent.map { it.size })
+    counts[HomeTile.FAVORITES] = HomeRepository.countLabel(Loadable(value = favorites, loaded = true))
+    counts[HomeTile.BIN] = HomeRepository.countLabel(snap.bin)
+    counts[HomeTile.VAULT] = "Coming soon"
+    counts[HomeTile.APPS] = "APKs & installed"
+    counts[HomeTile.INTERNAL] = "System storage"
+    val (used, total) = snap.storage.value ?: (0L to 0L)
+    return HomeState(used = used, total = total, counts = counts, recent = snap.recent.value.orEmpty().take(20))
 }
 
 @Composable
@@ -156,7 +168,8 @@ fun HomeContent(
 ) {
     GlassScaffold(
         topBar = {
-            Column(Modifier.fillMaxWidth().glassBar().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Box(Modifier.fillMaxWidth().glassBar(), contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = HomeMaxContentWidth + 32.dp).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Files", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Settings") }
@@ -164,37 +177,92 @@ fun HomeContent(
                 Spacer(Modifier.height(6.dp))
                 SearchLauncher("Search by name or date", onSearch)
             }
+            }
         },
         bottomBar = {
             if (player.hasMedia && !player.isVideo) MiniPlayer(player, onOpenPlayer)
         },
     ) { padding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 12.dp, bottom = padding.calculateBottomPadding() + 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }, key = "storage") { StorageCard(state.used, state.total, onBrowse) }
-            if (state.recent.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "recentHeader") {
-                    SectionTitle("Recent files", onMore = { onTile(HomeTile.RECENT) })
-                }
-                item(span = { GridItemSpan(maxLineSpan) }, key = "recentRow") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.recent, key = { it.path }) { f ->
-                            FileTile(f, false, onClick = { onOpenRecent(f, state.recent) }, onLongClick = {}, modifier = Modifier.width(96.dp))
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val cols = homeGridColumns(maxWidth)
+            // Keep the content from stretching edge-to-edge on wide tablets.
+            val side = maxOf(16.dp, (maxWidth - HomeMaxContentWidth) / 2)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(cols),
+                contentPadding = PaddingValues(start = side, end = side, top = padding.calculateTopPadding() + 12.dp, bottom = padding.calculateBottomPadding() + 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "storage") { StorageCard(state.used, state.total, onBrowse) }
+                if (state.recent.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "recentHeader") {
+                        SectionTitle("Recent files", onMore = { onTile(HomeTile.RECENT) })
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "recentRow") {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(state.recent, key = { it.path }) { f ->
+                                FileTile(f, false, onClick = { onOpenRecent(f, state.recent) }, onLongClick = {}, modifier = Modifier.width(96.dp))
+                            }
                         }
                     }
                 }
-            }
-            item(span = { GridItemSpan(maxLineSpan) }, key = "catHeader") { SectionTitle("Categories") }
-            items(HomeTile.entries, key = { it.name }) { tile ->
-                CategoryTile(tile, state.counts[tile], onClick = { onTile(tile) })
+                item(span = { GridItemSpan(maxLineSpan) }, key = "catHeader") { SectionTitle("Categories") }
+                items(HomeTile.entries, key = { it.name }) { tile ->
+                    val sub = when {
+                        tile == HomeTile.INTERNAL && state.total > 0 -> formatSize(state.used) + " used"
+                        tile == HomeTile.APPS && state.counts[tile] == "APKs & installed" -> "APKs & apps"
+                        else -> state.counts[tile]
+                    }
+                    CategoryTile(tile, sub, onClick = { onTile(tile) })
+                }
             }
         }
     }
+}
+
+private val HomeMaxContentWidth = 1120.dp
+
+/**
+ * 3 category cards per row on phones, 4 on tablets in portrait, 6 on wide tablets/landscape
+ * (12 tiles fill every row: 3x4, 4x3, 6x2).
+ */
+internal fun homeGridColumns(width: Dp): Int = when {
+    width < 600.dp -> 3
+    width < 960.dp -> 4
+    else -> 6
+}
+
+/** "1240 items" -> "1,240 items"; other subtitles unchanged. */
+internal fun formatCountLabel(subtitle: String?): String? {
+    if (subtitle == null) return null
+    val m = Regex("""^(\d+) (items?)$""").matchEntire(subtitle) ?: return subtitle
+    val n = m.groupValues[1].toLongOrNull() ?: return subtitle
+    return java.text.NumberFormat.getIntegerInstance(java.util.Locale.US).format(n) + " " + m.groupValues[2]
+}
+
+/**
+ * Bright, saturated icon colours per tile. Dark uses the bright shade (>= 4.5:1 on its tinted
+ * square); light uses a deeper shade of the same hue so the glyph stays >= 3:1 on its tint.
+ */
+internal fun tileAccent(tile: HomeTile, dark: Boolean): Color = when (tile) {
+    HomeTile.RECENT -> if (dark) Color(0xFF5AA2FF) else Color(0xFF1D64D8)
+    HomeTile.FAVORITES -> if (dark) Color(0xFFFFCC33) else Color(0xFFC98600)
+    HomeTile.PHOTOS -> if (dark) Color(0xFF3DDC84) else Color(0xFF128A3E)
+    HomeTile.MEDIA -> if (dark) Color(0xFFFF9442) else Color(0xFFD2560A)
+    HomeTile.VIDEOS -> if (dark) Color(0xFFFF6464) else Color(0xFFD12A2A)
+    HomeTile.AUDIO -> if (dark) Color(0xFFBB86FF) else Color(0xFF8136E6)
+    HomeTile.DOCUMENTS -> if (dark) Color(0xFF7896FF) else Color(0xFF2F50E0)
+    HomeTile.DOWNLOADS -> if (dark) Color(0xFF33D6F0) else Color(0xFF0A82A0)
+    HomeTile.APPS -> if (dark) Color(0xFFA6E635) else Color(0xFF4C8A0A)
+    HomeTile.INTERNAL -> if (dark) Color(0xFFA9B6C9) else Color(0xFF526073)
+    HomeTile.BIN -> if (dark) Color(0xFFFF667A) else Color(0xFFD21F3C)
+    HomeTile.VAULT -> if (dark) Color(0xFFFFB13B) else Color(0xFFC46A00)
+}
+
+private fun tileLabel(tile: HomeTile): String = when (tile) {
+    HomeTile.INTERNAL -> "Internal"
+    else -> tile.title
 }
 
 @Composable
@@ -237,6 +305,7 @@ private fun StorageCard(used: Long, total: Long, onClick: () -> Unit) {
             progress = { if (total > 0) used.toFloat() / total else 0f },
             modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
             strokeCap = StrokeCap.Round,
+            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
             gapSize = 0.dp,
             drawStopIndicator = {},
         )
@@ -246,20 +315,32 @@ private fun StorageCard(used: Long, total: Long, onClick: () -> Unit) {
 @Composable
 private fun CategoryTile(tile: HomeTile, subtitle: String?, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
+    val dark = LocalGlass.current.dark
+    val accent = tileAccent(tile, dark)
     Column(
-        Modifier.fillMaxWidth().pressScale(interaction).glassPanel(RoundedCornerShape(24.dp))
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(16.dp),
+        Modifier.fillMaxWidth().height(96.dp).pressScale(interaction).glassPanel(RoundedCornerShape(20.dp))
+            .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(tile.color.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-            Icon(tile.icon, null, tint = tile.color)
+        // Icon in a coloured rounded square: the accent as a strong tint behind the bright glyph.
+        Box(
+            Modifier.size(36.dp).clip(RoundedCornerShape(11.dp))
+                .background(accent.copy(alpha = if (dark) 0.20f else 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(tile.icon, null, tint = accent, modifier = Modifier.size(21.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        Text(tile.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(
-            subtitle ?: " ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        Column {
+            Text(
+                tileLabel(tile), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                formatCountLabel(subtitle) ?: " ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

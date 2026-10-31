@@ -24,12 +24,15 @@ class AppsRepository(private val context: Context) {
     private val pm: PackageManager = context.packageManager
 
     suspend fun installed(system: Boolean): List<InstalledApp> = withContext(Dispatchers.IO) {
-        val pkgs: List<PackageInfo> = if (Build.VERSION.SDK_INT >= 33) {
-            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getInstalledPackages(0)
-        }
+        // Can throw (package manager busy/died, binder too large with hundreds of apps): show none, don't crash.
+        val pkgs: List<PackageInfo> = runCatching {
+            if (Build.VERSION.SDK_INT >= 33) {
+                pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstalledPackages(0)
+            }
+        }.onFailure { Diagnostics.log("apps", "getInstalledPackages failed", it) }.getOrDefault(emptyList())
         pkgs.mapNotNull { p ->
             val ai = p.applicationInfo ?: return@mapNotNull null
             val isSys = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
@@ -43,7 +46,7 @@ class AppsRepository(private val context: Context) {
                 size = runCatching { File(ai.sourceDir).length() }.getOrDefault(0L),
                 installedAt = p.firstInstallTime,
                 isSystem = isSys,
-                canLaunch = pm.getLaunchIntentForPackage(p.packageName) != null,
+                canLaunch = runCatching { pm.getLaunchIntentForPackage(p.packageName) != null }.getOrDefault(false),
             )
         }.sortedBy { it.label.lowercase() }
     }

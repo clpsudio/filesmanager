@@ -22,6 +22,15 @@ enum class DefaultView {
     }
 }
 
+/** How files are shown everywhere: square tiles, rows, or a staggered grid keeping each photo's real shape. */
+enum class FileView(val label: String) {
+    GRID("Grid"), LIST("List"), LARGE("Real ratio");
+
+    companion object {
+        fun parse(value: String?): FileView = entries.firstOrNull { it.name == value } ?: GRID
+    }
+}
+
 data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** Liquid glass look (default on). Off = flat Material 3. */
@@ -33,6 +42,12 @@ data class AppSettings(
     val gridView: Boolean = false,
     /** Categories open on "All files" unless the user picks "Folders" in Settings. */
     val defaultView: DefaultView = DefaultView.ALL_FILES,
+    /** Hide the app's preview in Recents / the app switcher (default on). */
+    val hideInRecents: Boolean = true,
+    /** App-wide file view (Settings → File view). Screens can change it temporarily. */
+    val fileView: FileView = FileView.GRID,
+    /** Last type-filter chip per category name (e.g. "PHOTOS" -> "PNG"). */
+    val typeFilters: Map<String, String> = emptyMap(),
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -46,6 +61,9 @@ class SettingsRepository(private val context: Context) {
         val sortAsc = booleanPreferencesKey("sort_asc")
         val grid = booleanPreferencesKey("grid_view")
         val defaultView = stringPreferencesKey("default_view")
+        val hideInRecents = booleanPreferencesKey("hide_in_recents")
+        val fileView = stringPreferencesKey("file_view")
+        val typeFilters = stringPreferencesKey("type_filters")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -57,6 +75,9 @@ class SettingsRepository(private val context: Context) {
             sortAscending = p[Keys.sortAsc] ?: true,
             gridView = p[Keys.grid] ?: false,
             defaultView = DefaultView.parse(p[Keys.defaultView]),
+            hideInRecents = p[Keys.hideInRecents] ?: true,
+            fileView = FileView.parse(p[Keys.fileView]),
+            typeFilters = decodeFilters(p[Keys.typeFilters]),
         )
     }
 
@@ -68,5 +89,18 @@ class SettingsRepository(private val context: Context) {
         it[Keys.sortAsc] = ascending
     }
     suspend fun setGrid(on: Boolean) = context.dataStore.edit { it[Keys.grid] = on }
+    suspend fun setFileView(view: FileView) = context.dataStore.edit { it[Keys.fileView] = view.name }
+    suspend fun setTypeFilter(category: String, filter: String) = context.dataStore.edit {
+        val m = decodeFilters(it[Keys.typeFilters]).toMutableMap()
+        m[category] = filter
+        it[Keys.typeFilters] = encodeFilters(m)
+    }
+    suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
     suspend fun setDefaultView(view: DefaultView) = context.dataStore.edit { it[Keys.defaultView] = view.name }
 }
+
+internal fun encodeFilters(m: Map<String, String>): String = m.entries.joinToString(";") { "${it.key}=${it.value}" }
+internal fun decodeFilters(s: String?): Map<String, String> = s.orEmpty().split(';').mapNotNull {
+    val i = it.indexOf('=')
+    if (i <= 0) null else it.substring(0, i) to it.substring(i + 1)
+}.toMap()

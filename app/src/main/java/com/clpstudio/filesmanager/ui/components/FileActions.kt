@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +70,7 @@ class SelectionState {
 
 @Stable
 class FileActions(private val context: Context, private val afterCopyOrMove: () -> Unit, private val afterAction: () -> Unit = {}) {
+    fun toast(text: String) = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
     var renameTarget by mutableStateOf<FileItem?>(null)
     var detailsTarget by mutableStateOf<FileItem?>(null)
     var deleteTargets by mutableStateOf<List<FileItem>>(emptyList())
@@ -78,8 +82,9 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
     var pdfLockTarget by mutableStateOf<FileItem?>(null)
     var pdfUnlockTarget by mutableStateOf<FileItem?>(null)
     var pdfUnlockError by mutableStateOf<String?>(null)
+    var pdfChecking by mutableStateOf(false)
 
-    class PasswordAsk(val fileName: String, val error: String?, val answer: CompletableDeferred<String?>)
+    class PasswordAsk(val fileName: String, val error: String?, val answer: CompletableDeferred<String?>, val checking: Boolean = false)
 
     /** Shows the password dialog and waits for the answer (null = cancelled). */
     suspend fun askPassword(fileName: String, error: String? = null): String? {
@@ -122,7 +127,10 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
                     var error: String? = null
                     while (true) {
                         val typed = askPassword(zip.name, error) ?: return@launch
+                        // Keep the dialog up with "Checking password…" while the check runs.
+                        passwordAsk = PasswordAsk(zip.name, null, CompletableDeferred(), checking = true)
                         val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zip, typed.toCharArray()) }.getOrDefault(false) }
+                        passwordAsk = null
                         if (ok) {
                             password = typed.toCharArray()
                             break
@@ -132,7 +140,7 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
                 }
                 val parent = zip.parentFile ?: continue
                 val target = when {
-                    dest == null -> File(parent, uniqueName(zip.nameWithoutExtension, true) { File(parent, it).exists() })
+                    dest == null -> ArchiveOps.newFolderFor(zip, parent)
                     zips.size == 1 -> dest
                     else -> File(dest, uniqueName(zip.nameWithoutExtension, true) { File(dest, it).exists() })
                 }
@@ -140,7 +148,11 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
             }
             if (plan.isEmpty()) return@launch
             afterAction()
-            AppState.runOperation(context, "Extracting") { report ->
+            val single = plan.map { it.third }.distinct().singleOrNull()
+            AppState.runOperation(
+                context, "Extracting",
+                followUp = { if (single != null) AppState.DoneAction("Extracted to ${single.name}", "Open folder", single) else null },
+            ) { report ->
                 var files = 0
                 for ((zip, pw, target) in plan) files += ArchiveOps.extract(zip, pw, target, onProgress = report)
                 val where = plan.map { it.third }.distinct()
@@ -164,10 +176,13 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
     fun unlockPdf(item: FileItem, password: String, replace: Boolean) {
         val src = File(item.path)
         Graph.appScope.launch(Dispatchers.Main) {
+            pdfChecking = true
+            pdfUnlockError = null
             val ok = withContext(Dispatchers.IO) {
                 PdfSecurity.init(context)
                 runCatching { PdfSecurity.checkPassword(src, password) }.getOrDefault(false)
             }
+            pdfChecking = false
             if (!ok) {
                 pdfUnlockError = "Wrong password"
                 return@launch
@@ -175,7 +190,10 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
             pdfUnlockTarget = null
             pdfUnlockError = null
             val out = if (replace) src else PdfSecurity.copyName(src, "_unlocked")
-            AppState.runOperation(context, "Removing password") {
+            AppState.runOperation(
+                context, "Removing password",
+                followUp = { AppState.DoneAction("Saved ${out.name}", "Open", out) },
+            ) {
                 withContext(Dispatchers.IO) { PdfSecurity.decrypt(src, password, out) }
                 "Password removed: " + out.name to listOf(out)
             }
@@ -260,6 +278,7 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
             onConfirm = { ask.answer.complete(it) },
             onDismiss = { ask.answer.complete(null) },
             confirm = "Extract",
+            checking = ask.checking,
         )
     }
     androidx.compose.runtime.DisposableEffect(actions) { onDispose { actions.passwordAsk?.answer?.complete(null) } }
@@ -274,6 +293,7 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
         PdfUnlockDialog(
             fileName = item.name,
             error = actions.pdfUnlockError,
+            checking = actions.pdfChecking,
             onConfirm = { pass, replace -> actions.unlockPdf(item, pass, replace) },
             onDismiss = { actions.pdfUnlockTarget = null; actions.pdfUnlockError = null },
         )
@@ -309,6 +329,14 @@ fun SelectionActionsRow(
     Box {
         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            val favs by com.clpstudio.filesmanager.data.Favorites.paths.collectAsState()
+            val allFav = selected.isNotEmpty() && selected.all { it.path in favs }
+            MenuRow(if (allFav) Icons.Filled.StarBorder else Icons.Filled.Star, if (allFav) "Remove from favorites" else "Add to favorites") {
+                menu = false
+                if (allFav) com.clpstudio.filesmanager.data.Favorites.remove(selected.map { it.path })
+                else com.clpstudio.filesmanager.data.Favorites.add(selected.map { it.path })
+                actions.toast(if (allFav) "Removed from favorites" else "Added to favorites")
+            }
             MenuRow(Icons.Filled.ContentCopy, "Copy to...") { menu = false; actions.copy(selected) }
             MenuRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to...") { menu = false; actions.move(selected) }
             MenuRow(Icons.Filled.FolderZip, "Compress") { menu = false; actions.compress(selected, withPassword = false) }

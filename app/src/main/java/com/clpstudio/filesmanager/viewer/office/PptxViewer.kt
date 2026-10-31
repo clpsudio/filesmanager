@@ -81,7 +81,7 @@ fun PptxContent(
                 PptxLoad.Failed(e.message ?: "This PowerPoint file couldn't be opened.")
             } catch (e: OutOfMemoryError) {
                 PptxLoad.Failed("This PowerPoint file is too large to show.")
-            } catch (e: Exception) {
+            } catch (e: Throwable) { // also StackOverflowError on deeply nested XML: show the info screen, never crash
                 PptxLoad.Failed("This PowerPoint file couldn't be opened. It may be damaged.")
             }
         }

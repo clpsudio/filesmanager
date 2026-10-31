@@ -70,6 +70,7 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
     var password by remember { mutableStateOf<String?>(null) }
     var askPassword by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
     var pickFolderFor by remember { mutableStateOf<List<String>?>(null) }
     var menu by remember { mutableStateOf(false) }
     val selected = remember { mutableStateListOf<String>() }
@@ -87,9 +88,13 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
 
     fun pw(): CharArray? = password?.toCharArray()
 
-    fun extract(paths: List<String>?, target: File) {
+    fun extract(paths: List<String>?, target: File, closeAfter: Boolean = false) {
         selected.clear()
-        AppState.runOperation(context, "Extracting") { report ->
+        if (closeAfter) onBack()
+        AppState.runOperation(
+            context, "Extracting",
+            followUp = { AppState.DoneAction("Extracted to ${target.name}", "Open folder", target) },
+        ) { report ->
             val n = ArchiveOps.extract(zipFile, pw(), target, paths = paths, stripPrefix = dir, onProgress = report)
             "Extracted $n file" + (if (n == 1) "" else "s") + " to ${target.name}" to listOf(target)
         }
@@ -97,7 +102,7 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
 
     fun defaultTarget(): File {
         val parent = zipFile.parentFile!!
-        return File(parent, uniqueName(zipFile.nameWithoutExtension, true) { File(parent, it).exists() })
+        return ArchiveOps.newFolderFor(zipFile, parent)
     }
 
     BackHandler(selected.isNotEmpty()) { selected.clear() }
@@ -165,19 +170,34 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
     }
 
     if (askPassword) {
+        // Locked ZIP: the password, then (default) extract everything into a new folder next to it,
+        // or "View contents" to browse inside.
+        fun check(typed: String, then: () -> Unit) {
+            checking = true
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zipFile, typed.toCharArray()) }.getOrDefault(false) }
+                checking = false
+                if (ok) {
+                    password = typed
+                    passwordError = null
+                    askPassword = false
+                    then()
+                } else {
+                    passwordError = "Wrong password, try again"
+                }
+            }
+        }
         EnterPasswordDialog(
             fileName = zipFile.name,
             error = passwordError,
+            confirm = "Extract",
+            checking = checking,
+            secondary = if (ready != null && password == null) "View contents" else null,
+            onSecondary = { typed -> check(typed) {} },
             onConfirm = { typed ->
-                scope.launch {
-                    val ok = withContext(Dispatchers.IO) { runCatching { ArchiveOps.checkPassword(zipFile, typed.toCharArray()) }.getOrDefault(false) }
-                    if (ok) {
-                        password = typed
-                        passwordError = null
-                        askPassword = false
-                    } else {
-                        passwordError = "Wrong password, try again"
-                    }
+                check(typed) {
+                    // A wrong password found later while browsing re-asks here; then just browse on.
+                    if (ready != null) extract(null, defaultTarget(), closeAfter = true)
                 }
             },
             onDismiss = {

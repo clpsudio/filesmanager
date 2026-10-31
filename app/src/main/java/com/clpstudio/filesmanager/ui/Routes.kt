@@ -11,6 +11,9 @@ object Routes {
     const val MUSIC = "music"
     const val VAULT = "vault"
     const val DIAGNOSTICS = "diagnostics"
+    const val CRASH_REPORTS = "crash_reports"
+    const val SLIDESHOW = "slideshow"
+    const val FAVORITES = "favorites"
 
     fun category(c: Category) = "category/${c.name}"
     fun categoryFolder(c: Category, folder: String) = "catfolder/${c.name}?folder=${Uri.encode(folder)}"

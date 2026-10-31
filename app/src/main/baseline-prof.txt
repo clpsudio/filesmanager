@@ -1,0 +1,9 @@
+# Startup, Home, category lists, viewers: compiled ahead of time on install (Baseline Profile).
+HSPLcom/clpstudio/filesmanager/**->**(**)**
+Lcom/clpstudio/filesmanager/**;
+HSPLandroidx/compose/runtime/**->**(**)**
+HSPLandroidx/compose/ui/**->**(**)**
+HSPLandroidx/compose/foundation/lazy/**->**(**)**
+HSPLandroidx/compose/foundation/layout/**->**(**)**
+HSPLandroidx/compose/material3/**->**(**)**
+HSPLcoil3/**->**(**)**

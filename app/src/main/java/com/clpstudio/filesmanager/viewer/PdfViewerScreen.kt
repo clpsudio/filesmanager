@@ -188,7 +188,7 @@ fun PdfContent(
         } catch (e: InvalidPasswordException) {
             passwordError = "Wrong password, try again"
             PdfLoad.Locked
-        } catch (e: Exception) {
+        } catch (e: Throwable) { // incl. OutOfMemoryError on huge PDFs: show the message, never crash
             PdfLoad.Failed("This PDF couldn't be opened. It may be damaged.")
         }
         if (value is PdfLoad.Locked) askPassword = true
@@ -244,11 +244,12 @@ fun PdfViewerScreen(uri: Uri, name: String, onBack: () -> Unit, extraActions: @C
     var info by remember { mutableStateOf(false) }
     val target = remember(uri, name) { InfoTarget(uri, name, uri.takeIf { it.scheme == "file" }?.path, "application/pdf") }
     Box(Modifier.fillMaxSize()) {
-        PdfContent(uri, name, Modifier.swipeUpToOpen { info = true })
+        PdfContent(uri, name, Modifier.swipeUpToOpen { info = true }.navigationBarsPadding().padding(bottom = 64.dp))
         ViewerTopBar(name, null, onBack, titleColor = MaterialTheme.colorScheme.primary) {
             IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
             extraActions()
         }
+        UriViewerActionPanel(uri, "application/pdf", onInfo = { info = true }, onDeleted = onBack, modifier = Modifier.align(Alignment.BottomCenter))
     }
     if (info) FileInfoSheet(target, emptyList()) { info = false }
 }

@@ -80,6 +80,12 @@ import com.clpstudio.filesmanager.ui.components.CloseSelectionButton
 import com.clpstudio.filesmanager.ui.components.EmptyState
 import com.clpstudio.filesmanager.ui.components.FileActionDialogs
 import com.clpstudio.filesmanager.ui.components.FileRow
+import com.clpstudio.filesmanager.ui.components.FileCollection
+import com.clpstudio.filesmanager.ui.components.ViewSortRow
+import com.clpstudio.filesmanager.ui.components.PlaySelectedButton
+import com.clpstudio.filesmanager.ui.components.PlayAllButton
+import com.clpstudio.filesmanager.ui.components.formatSize
+import com.clpstudio.filesmanager.data.SortBy
 import com.clpstudio.filesmanager.ui.components.FileTile
 import com.clpstudio.filesmanager.ui.components.GlassTopBar
 import com.clpstudio.filesmanager.ui.components.SelectionActionsRow
@@ -137,6 +143,7 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
         listing.orEmpty().filter { DateQueryParser.nameMatches(it.name, filter) }
     }
     val selectedItems = items.filter { selection.isSelected(it.path) }
+    var view by rememberSaveable(settings.fileView) { mutableStateOf(settings.fileView) }
 
     fun goTo(p: String) {
         selection.clear()
@@ -156,32 +163,20 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
                 GlassTopBar(
                     title = "${selection.paths.size} selected",
                     navigation = { CloseSelectionButton { selection.clear() } },
-                    actions = { SelectionActionsRow(selectedItems, actions) { selection.selectAll(items.map { it.path }) } },
+                    actions = {
+                        PlaySelectedButton(selectedItems, opener)
+                        SelectionActionsRow(selectedItems, actions) { selection.selectAll(items.map { it.path }) }
+                    },
                 )
             } else {
                 GlassTopBar(
                     title = if (path == root) volumes.firstOrNull { it.path == root }?.label ?: "Storage" else File(path).name,
                     onBack = onBack,
                     actions = {
+                        PlayAllButton(items, opener)
                         IconButton(onClick = { filtering = !filtering; if (!filtering) filter = "" }) { Icon(Icons.Filled.Search, "Search") }
                         IconButton(onClick = { scope.launch { Graph.settingsRepo.setShowHidden(!settings.showHidden) } }) {
                             Icon(if (settings.showHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, "Show hidden files")
-                        }
-                        Box {
-                            IconButton(onClick = { sortMenu = true }) { Icon(Icons.AutoMirrored.Filled.Sort, "Sort") }
-                            SortMenu(
-                                expanded = sortMenu, onDismiss = { sortMenu = false },
-                                sortBy = settings.sortBy, ascending = settings.sortAscending,
-                                onSort = { s, a -> scope.launch { Graph.settingsRepo.setSort(s, a) } },
-                                grid = settings.gridView,
-                                onGrid = { g -> scope.launch { Graph.settingsRepo.setGrid(g) } },
-                                extra = {
-                                    DropdownMenuItem(
-                                        text = { Text(if (settings.showHidden) "Hide hidden files" else "Show hidden files") },
-                                        onClick = { sortMenu = false; scope.launch { Graph.settingsRepo.setShowHidden(!settings.showHidden) } },
-                                    )
-                                },
-                            )
                         }
                     },
                     below = {
@@ -192,6 +187,19 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
                                     FilterChip(selected = root == v.path, onClick = { goTo(v.path) }, label = { Text(v.label) })
                                 }
                             }
+                        }
+                        listing?.let { l ->
+                            val files = items.count { !it.isDir }
+                            val folders = items.size - files
+                            ViewSortRow(
+                                summary = listOfNotNull(
+                                    folders.takeIf { it > 0 }?.let { "$it folder" + if (it == 1) "" else "s" },
+                                    files.takeIf { it > 0 }?.let { "$it file" + if (it == 1) "" else "s" },
+                                ).joinToString(", ").ifEmpty { "Empty" } + (if (files > 0) " · " + formatSize(items.sumOf { it.size }) else ""),
+                                view = view, onView = { view = it },
+                                sortBy = settings.sortBy, ascending = settings.sortAscending,
+                                onSort = { s2, a -> scope.launch { Graph.settingsRepo.setSort(s2, a) } },
+                            )
                         }
                         AnimatedVisibility(filtering) {
                             SearchField(
@@ -261,38 +269,13 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
                         opener.open(item, items)
                     }
                 }
-                if (settings.gridView) {
-                    val gridState = rememberLazyGridState(scrollMemory[shownPath] ?: 0)
-                    LaunchedEffect(gridState.firstVisibleItemIndex) { scrollMemory[shownPath] = gridState.firstVisibleItemIndex }
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(104.dp),
-                        state = gridState,
-                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 96.dp),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(items, key = { it.path }, contentType = { it.kind }) { item ->
-                            FileTile(item, selection.isSelected(item.path), onClick = { onClick(item) }, onLongClick = { selection.toggle(item.path) })
-                        }
-                    }
-                } else {
-                    val listState = rememberLazyListState(scrollMemory[shownPath] ?: 0)
-                    LaunchedEffect(listState.firstVisibleItemIndex) { scrollMemory[shownPath] = listState.firstVisibleItemIndex }
-                    LazyColumn(
-                        state = listState,
-                        contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 96.dp),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(items, key = { it.path }, contentType = { if (it.isDir) 0 else 1 }) { item ->
-                            FileRow(
-                                item = item,
-                                selected = selection.isSelected(item.path),
-                                selectionMode = selection.active,
-                                onClick = { onClick(item) },
-                                onLongClick = { selection.toggle(item.path) },
-                            )
-                        }
-                    }
-                }
+                FileCollection(
+                    items = items, view = view, selection = selection, onClick = onClick,
+                    contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 96.dp),
+                    sections = settings.sortBy == SortBy.DATE && !settings.sortAscending,
+                    initialIndex = scrollMemory[shownPath] ?: 0,
+                    onFirstVisible = { scrollMemory[shownPath] = it },
+                )
             }
         }
     }

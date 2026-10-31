@@ -26,7 +26,11 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // First: a crash anywhere below is saved to filesDir/crash (Settings → Crash reports).
+        com.clpstudio.filesmanager.crash.CrashLog.install(this)
+        if (BuildConfig.DEBUG) com.clpstudio.filesmanager.crash.DebugStrictMode.enable()
         Graph.init(this)
+        com.clpstudio.filesmanager.data.Favorites.init(this)
         com.clpstudio.filesmanager.data.StorageWatcher.install()
         // Bin: auto-delete after 30 days, checked daily and at start.
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -34,7 +38,7 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<BinCleanupWorker>(1, TimeUnit.DAYS).build(),
         )
-        Graph.appScope.launch { runCatching { Graph.bin.purgeExpired() } }
+        Graph.appScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { Graph.bin.purgeExpired() } }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
@@ -45,6 +49,8 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
                 add(SvgDecoder.Factory())
                 add(com.clpstudio.filesmanager.thumbs.RawPreviewFetcher.Factory())
                 add(AudioArtFetcher.Factory())
+                add(com.clpstudio.filesmanager.thumbs.VideoThumbFetcher.Factory(this@FilesApp))
+                add(com.clpstudio.filesmanager.thumbs.VideoThumbFetcher.keyer)
                 add(PdfThumbFetcher.Factory())
                 add(AppIconFetcher.ApkFactory())
                 add(AppIconFetcher.PackageFactory())

@@ -58,6 +58,7 @@ class OpenWithActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.clpstudio.filesmanager.ui.PrivacyGuard.install(this)
         enableEdgeToEdge()
         val uri = incomingUri(intent)
         if (uri == null) {
@@ -79,6 +80,14 @@ class OpenWithActivity : ComponentActivity() {
                 com.clpstudio.filesmanager.ui.AppState.progress?.let {
                     com.clpstudio.filesmanager.ui.components.ProgressDialog(it) { com.clpstudio.filesmanager.ui.AppState.cancelOperation() }
                 }
+                com.clpstudio.filesmanager.ui.components.DoneActionHost { target ->
+                    // Open the result in the main app.
+                    startActivity(
+                        Intent(this@OpenWithActivity, com.clpstudio.filesmanager.MainActivity::class.java)
+                            .setAction(com.clpstudio.filesmanager.MainActivity.ACTION_BROWSE)
+                            .putExtra(com.clpstudio.filesmanager.MainActivity.EXTRA_PATH, if (target.isDirectory) target.absolutePath else target.parent),
+                    )
+                }
             }
         }
     }
@@ -99,7 +108,7 @@ class OpenWithActivity : ComponentActivity() {
             IconButton(onClick = { FileOps.openWithOtherApp(context, f.uri, f.mime) }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open with another app") }
         }
         when (f.kind) {
-            FileKind.IMAGE -> SingleImageViewer(f.uri, f.name, back, actions)
+            FileKind.IMAGE -> SingleImageViewer(f.uri, f.name, back, actions, path = f.path)
             FileKind.PDF -> PdfViewerScreen(f.uri, f.name, back, actions)
             FileKind.TEXT -> TextViewerScreen(f.uri, f.name, back, actions)
             FileKind.VIDEO -> LaunchedEffect(f) {
@@ -145,6 +154,12 @@ class OpenWithActivity : ComponentActivity() {
                         IconButton(onClick = { info = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Info, "File info") }
                         actions()
                     }
+                    // Same bottom bar as every viewer: Share · ⭐ · Info · Delete (Delete/⭐ only for a file on storage).
+                    UriViewerActionPanel(
+                        uri = f.path?.let { Uri.fromFile(File(it)) } ?: f.uri, mime = f.mime,
+                        onInfo = { info = true }, onDeleted = back,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
                 }
                 if (info) FileInfoSheet(InfoTarget(f.uri, f.name, f.path, f.mime), emptyList()) { info = false }
             } else {

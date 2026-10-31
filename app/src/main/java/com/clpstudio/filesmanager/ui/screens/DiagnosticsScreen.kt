@@ -93,6 +93,12 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
                     }) { Text(if (checking) "Checking..." else "Check all categories") }
                 }
             }
+            item { Text("Speed (time to the first files)", style = MaterialTheme.typography.titleSmall) }
+            val speed = Diagnostics.timings.entries.sortedBy { it.key }
+            if (speed.isEmpty()) item { Text("Open a category to measure", style = MaterialTheme.typography.bodySmall) }
+            items(speed.map { (k, v) -> "$k: ${v.first} ms" + if (v.second >= 0) " (${v.second} files)" else "" }) {
+                Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+            }
             item { Text("Log (newest first)", style = MaterialTheme.typography.titleSmall) }
             if (log.isEmpty()) item { Text("No entries", style = MaterialTheme.typography.bodySmall) }
             items(log) { Text(it, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }

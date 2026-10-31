@@ -49,10 +49,13 @@ data class AudioArt(val path: String, val modified: Long)
 data class PdfThumb(val path: String, val modified: Long)
 data class ApkIcon(val path: String, val modified: Long)
 data class AppIcon(val packageName: String)
+data class VideoThumb(val path: String, val modified: Long)
 
 /** The model to load for a file's thumbnail, or null for a plain type icon. */
 fun thumbModel(item: FileItem): Any? = when (item.kind) {
-    FileKind.IMAGE, FileKind.VIDEO -> File(item.path)
+    FileKind.IMAGE -> File(item.path)
+    // Android 10+: the system's cached video thumbnail (fast); older: Coil's frame decoder.
+    FileKind.VIDEO -> if (Build.VERSION.SDK_INT >= 29) VideoThumb(item.path, item.modified) else File(item.path)
     FileKind.AUDIO -> AudioArt(item.path, item.modified)
     FileKind.PDF -> PdfThumb(item.path, item.modified)
     FileKind.APK -> if (item.extension == "apk") ApkIcon(item.path, item.modified) else null
@@ -127,7 +130,9 @@ class PdfThumbFetcher(private val data: PdfThumb) : Fetcher {
 class AppIconFetcher(private val pm: PackageManager, private val load: (PackageManager) -> Drawable?) : Fetcher {
     override suspend fun fetch(): FetchResult? {
         val d = runCatching { load(pm) }.getOrNull() ?: return null
-        return ImageFetchResult(d.toBitmap(144).asImage(), true, DataSource.DISK)
+        // A broken APK icon (0×0 or huge drawable) falls back to the type icon instead of failing.
+        val bmp = runCatching { d.toBitmap(144) }.getOrNull() ?: return null
+        return ImageFetchResult(bmp.asImage(), true, DataSource.DISK)
     }
 
     class ApkFactory : Fetcher.Factory<ApkIcon> {
@@ -158,4 +163,45 @@ object ThumbKeyers {
     val pdf = Keyer<PdfThumb> { d, _ -> "pdf:${d.path}:${d.modified}" }
     val apk = Keyer<ApkIcon> { d, _ -> "apk:${d.path}:${d.modified}" }
     val app = Keyer<AppIcon> { d, _ -> "app:${d.packageName}" }
+}
+
+/** Video thumbnails from MediaStore's own cache (much faster than decoding a frame), frame grab as fallback. */
+class VideoThumbFetcher(private val data: VideoThumb, private val context: android.content.Context) : Fetcher {
+    override suspend fun fetch(): FetchResult? {
+        val bmp = (if (Build.VERSION.SDK_INT >= 29) runCatching { fromMediaStore() }.getOrNull() else null)
+            ?: runCatching { frame() }.getOrNull()
+            ?: return null
+        return ImageFetchResult(scaled(bmp, 384).asImage(), true, DataSource.DISK)
+    }
+
+    @Suppress("DEPRECATION")
+    @androidx.annotation.RequiresApi(29)
+    private fun fromMediaStore(): Bitmap? {
+        val base = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val id = context.contentResolver.query(
+            base, arrayOf(android.provider.MediaStore.Video.Media._ID),
+            "${android.provider.MediaStore.Video.Media.DATA} = ?", arrayOf(data.path), null,
+        )?.use { c -> if (c.moveToFirst()) c.getLong(0) else null } ?: return null
+        val uri = android.content.ContentUris.withAppendedId(base, id)
+        return context.contentResolver.loadThumbnail(uri, android.util.Size(384, 384), null)
+    }
+
+    private fun frame(): Bitmap? {
+        val mmr = MediaMetadataRetriever()
+        return try {
+            mmr.setDataSource(data.path)
+            if (Build.VERSION.SDK_INT >= 27) mmr.getScaledFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 384, 384)
+            else mmr.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        } finally {
+            runCatching { mmr.release() }
+        }
+    }
+
+    class Factory(private val context: android.content.Context) : Fetcher.Factory<VideoThumb> {
+        override fun create(data: VideoThumb, options: Options, imageLoader: ImageLoader): Fetcher = VideoThumbFetcher(data, context)
+    }
+
+    companion object {
+        val keyer = Keyer<VideoThumb> { data, _ -> "video:${data.path}:${data.modified}" }
+    }
 }

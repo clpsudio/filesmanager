@@ -212,13 +212,18 @@ fun FileTile(
 }
 
 @Composable
-private fun ThumbFill(item: FileItem) {
+fun ThumbFill(item: FileItem, corner: Dp = 14.dp) {
     val model = remember(item.path, item.modified) { thumbModel(item) }
     val color = kindColor(item.kind)
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(corner)
     Box(Modifier.fillMaxSize().clip(shape).background(color.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
         val fallback: @Composable () -> Unit = {
-            Icon(kindIcon(item.kind), null, tint = color, modifier = Modifier.size(40.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 14.dp)) {
+                Icon(kindIcon(item.kind), null, tint = color, modifier = Modifier.size(40.dp))
+                if (item.extension.isNotEmpty() && item.kind != FileKind.IMAGE && item.kind != FileKind.VIDEO) {
+                    Text(item.extension.uppercase().take(5), color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         fallback()
         if (model != null) AsyncImage(

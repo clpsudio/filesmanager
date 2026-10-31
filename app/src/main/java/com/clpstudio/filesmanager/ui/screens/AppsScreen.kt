@@ -1,6 +1,15 @@
 package com.clpstudio.filesmanager.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.runtime.LaunchedEffect
+import com.clpstudio.filesmanager.ui.components.CloseSelectionButton
+import com.clpstudio.filesmanager.ui.components.FileActions
+import com.clpstudio.filesmanager.ui.components.SelectionState
+import com.clpstudio.filesmanager.ui.components.dragToSelect
+import com.clpstudio.filesmanager.ui.components.hitTester
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
@@ -77,23 +86,43 @@ import java.io.File
 /** Apps: APK files on storage, downloaded (user) apps, system apps. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun AppsScreen(onBack: () -> Unit) {
+fun AppsScreen(onBack: () -> Unit, onPaste: () -> Unit = {}) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = listOf("APK files", "Downloaded", "System")
+    val context = LocalContext.current
+    // APK files tab: multi-select like the other file lists (long-press / drag to select, tap toggles).
+    val selection = remember { SelectionState() }
+    val actions = rememberFileActions(afterCopyOrMove = { selection.clear(); onPaste() }, afterAction = { selection.clear() })
+    val settings by Graph.settings.collectAsState()
+    val apks by produceState<List<FileItem>?>(null, settings.showHidden, AppState.refreshTick) {
+        value = Graph.media.apkFiles(Graph.hiddenFilter(settings.showHidden))
+    }
+    LaunchedEffect(apks) {
+        apks?.let { l -> val keep = ApkSelectionLogic.prune(selection.paths.toList(), l); if (keep.size != selection.paths.size) selection.selectAll(keep) }
+    }
+    LaunchedEffect(tab) { if (tab != 0) selection.clear() }
+    BackHandler(selection.active) { selection.clear() }
+    val tabRow: @Composable () -> Unit = {
+        PrimaryTabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
+            tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+        }
+    }
     GlassScaffold(
         topBar = {
-            GlassTopBar(
-                title = "Apps", onBack = onBack,
-                below = {
-                    PrimaryTabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
-                        tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
-                    }
-                },
-            )
+            if (tab == 0 && selection.active) {
+                GlassTopBar(
+                    title = "${selection.paths.size} selected",
+                    navigation = { CloseSelectionButton { selection.clear() } },
+                    actions = { ApkSelectionActions(context, apks.orEmpty(), selection, actions) },
+                    below = tabRow,
+                )
+            } else {
+                GlassTopBar(title = "Apps", onBack = onBack, below = tabRow)
+            }
         },
     ) { padding ->
         when (tab) {
-            0 -> ApkFilesList(padding)
+            0 -> ApkFilesList(padding, apks, selection, actions)
             1 -> InstalledList(system = false, padding = padding)
             else -> InstalledList(system = true, padding = padding)
         }
@@ -101,46 +130,59 @@ fun AppsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ApkFilesList(padding: PaddingValues) {
+private fun ApkFilesList(padding: PaddingValues, apks: List<FileItem>?, selection: SelectionState, actions: FileActions) {
     val context = LocalContext.current
-    val settings by Graph.settings.collectAsState()
-    val actions = rememberFileActions(afterCopyOrMove = {})
-    val apks by produceState<List<FileItem>?>(null, settings.showHidden, AppState.refreshTick) {
-        value = Graph.media.apkFiles(Graph.hiddenFilter(settings.showHidden))
-    }
     val list = apks
     when {
         list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         list.isEmpty() -> EmptyState(Icons.Filled.Android, "No APK files on this phone", modifier = Modifier.padding(padding))
-        else -> LazyColumn(contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = 24.dp)) {
-            items(list, key = { it.path }) { item ->
-                val info by produceState<Pair<String, String>?>(null, item.path) {
-                    value = withContext(Dispatchers.IO) { Graph.apps.apkInfo(item.path) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) {
-                        FileRow(
-                            item = item, selected = false, selectionMode = false,
-                            onClick = { Opener.installApk(context, File(item.path)) },
-                            onLongClick = { actions.detailsTarget = item },
-                            extraLine = info?.let { (label, ver) -> if (ver.isNotEmpty()) "$label · v$ver" else label },
-                        )
+        else -> {
+            val state = rememberLazyListState()
+            val keys = remember(list) { list.map { it.path } }
+            LazyColumn(
+                state = state,
+                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = padding.calculateTopPadding() + 4.dp, bottom = 24.dp),
+                modifier = Modifier.fillMaxSize().dragToSelect(remember(state) { state.hitTester() }, keys, selection),
+            ) {
+                items(list, key = { it.path }) { item ->
+                    val info by produceState<Pair<String, String>?>(null, item.path) {
+                        value = withContext(Dispatchers.IO) { runCatching { Graph.apps.apkInfo(item.path) }.getOrNull() }
                     }
-                    var menu by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
-                        DropdownMenu(menu, { menu = false }) {
-                            MenuRow(Icons.Filled.InstallMobile, "Install") { menu = false; Opener.installApk(context, File(item.path)) }
-                            MenuRow(Icons.Filled.Share, "Share") { menu = false; actions.share(listOf(item)) }
-                            MenuRow(Icons.Filled.Info, "Details") { menu = false; actions.detailsTarget = item }
-                            MenuRow(Icons.Filled.Delete, "Delete") { menu = false; actions.deleteTargets = listOf(item) }
+                    val selected = selection.isSelected(item.path)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            FileRow(
+                                item = item, selected = selected, selectionMode = selection.active,
+                                onClick = {
+                                    when (val r = ApkSelectionLogic.onTap(selection.active, item.path)) {
+                                        is ApkSelectionLogic.TapResult.Toggle -> selection.toggle(r.path)
+                                        is ApkSelectionLogic.TapResult.Install -> Opener.installApk(context, File(r.path))
+                                    }
+                                },
+                                // dragToSelect handles the long-press (selects, then drag extends the range).
+                                onLongClick = {},
+                                extraLine = info?.let { (label, ver) -> if (ver.isNotEmpty()) "$label · v$ver" else label },
+                            )
+                        }
+                        if (!selection.active) {
+                            var menu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                                DropdownMenu(menu, { menu = false }) {
+                                    MenuRow(Icons.Filled.InstallMobile, "Install") { menu = false; Opener.installApk(context, File(item.path)) }
+                                    MenuRow(Icons.Filled.CheckCircle, "Select") { menu = false; selection.toggle(item.path) }
+                                    MenuRow(Icons.Filled.Share, "Share") { menu = false; actions.share(listOf(item)) }
+                                    MenuRow(Icons.Filled.Info, "Details") { menu = false; actions.detailsTarget = item }
+                                    MenuRow(Icons.Filled.Delete, "Delete") { menu = false; actions.deleteTargets = listOf(item) }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
-    FileActionDialogs(actions)
+    FileActionDialogs(actions, onDeleted = { selection.clear() })
 }
 
 @Composable

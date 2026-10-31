@@ -43,22 +43,38 @@ class StorageIndex(private val context: Context) {
         val gen = generation
         jobs[showHidden] = Graph.appScope.launch(Dispatchers.IO) {
             val t0 = System.currentTimeMillis()
-            val roots = StoragePaths.volumes(context).map { File(it.path) }
             val hadList = current != null
-            val result = StorageWalker.walk(
-                roots = roots,
-                showHidden = showHidden,
-                privateRoots = StoragePaths.privateRoots(context),
-                accept = ::accept,
-                onBatch = { partial -> if (!hadList) flow.value = Snapshot(partial, false, gen) },
-                isCancelled = { !isActive },
-            )
-            flow.value = Snapshot(result, true, gen)
-            Diagnostics.log(
-                "index",
-                "storage walk (${roots.joinToString { it.path }}): ${result.size} documents/APKs/archives in ${System.currentTimeMillis() - t0} ms",
-            )
-            if (generation != gen) Graph.appScope.launch { ensure(showHidden) }
+            var result: List<FileItem>? = null
+            try {
+                val roots = StoragePaths.volumes(context).map { File(it.path) }
+                result = StorageWalker.walk(
+                    roots = roots,
+                    showHidden = showHidden,
+                    privateRoots = StoragePaths.privateRoots(context),
+                    accept = ::accept,
+                    onBatch = { partial -> if (!hadList) flow.value = Snapshot(partial, false, gen) },
+                    isCancelled = { !isActive },
+                )
+                Diagnostics.log(
+                    "index",
+                    "storage walk (${roots.joinToString { it.path }}): ${result.size} documents/APKs/archives in ${System.currentTimeMillis() - t0} ms",
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Permission revoked, a volume unmounted mid-walk, OOM on a huge tree...: never leave
+                // waiters (Home counts, Documents, Recent) hanging on a walk that will never finish.
+                Diagnostics.log("index", "storage walk failed, keeping the previous list", e)
+            } finally {
+                // Always end with a complete snapshot: the new list, or the last good one.
+                val keep = result ?: current?.items ?: flow.value?.items.orEmpty()
+                flow.value = Snapshot(keep, true, gen)
+            }
+            if (generation != gen) Graph.appScope.launch {
+                // Let this job finish first, otherwise ensure() sees it still active and skips.
+                jobs[showHidden]?.join()
+                ensure(showHidden)
+            }
         }
     }
 

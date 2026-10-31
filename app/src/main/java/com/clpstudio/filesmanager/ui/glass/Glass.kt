@@ -28,6 +28,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,7 +56,10 @@ val LocalHaze = compositionLocalOf<HazeState?> { null }
 /** Real blur from Android 12; Android 8-11 get a frosted tint with the same shapes. */
 val blurSupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-/** Colourful but soft background so the glass has something to refract. */
+/**
+ * Screen background. Light: near-white with a faint cool blue wash. Dark: clean neutral
+ * near-black with only a barely-there cool highlight at the top (no colour blobs, no warm tint).
+ */
 @Composable
 fun GlassBackground(modifier: Modifier = Modifier) {
     val g = LocalGlass.current
@@ -64,45 +68,62 @@ fun GlassBackground(modifier: Modifier = Modifier) {
         Box(modifier.background(base))
         return
     }
-    val a = if (g.dark) 0.34f else 0.22f
     Box(
         modifier.drawBehind {
             drawRect(base)
             val w = size.width
             val h = size.height
-            drawCircle(
-                Brush.radialGradient(listOf(Color(0xFF1E6FF0).copy(alpha = a), Color.Transparent), center = Offset(w * 0.05f, h * 0.08f), radius = w * 0.95f),
-                radius = w * 0.95f, center = Offset(w * 0.05f, h * 0.08f),
-            )
-            drawCircle(
-                Brush.radialGradient(listOf(Color(0xFF3FA0FF).copy(alpha = a * 0.9f), Color.Transparent), center = Offset(w * 1.0f, h * 0.45f), radius = w * 0.85f),
-                radius = w * 0.85f, center = Offset(w * 1.0f, h * 0.45f),
-            )
-            drawCircle(
-                Brush.radialGradient(listOf(Color(0xFFF6B800).copy(alpha = a * 0.55f), Color.Transparent), center = Offset(w * 0.15f, h * 0.92f), radius = w * 0.8f),
-                radius = w * 0.8f, center = Offset(w * 0.15f, h * 0.92f),
-            )
+            if (g.dark) {
+                drawRect(
+                    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.035f), Color.Transparent), startY = 0f, endY = h * 0.45f),
+                )
+            } else {
+                drawCircle(
+                    Brush.radialGradient(listOf(Color(0xFF1E6FF0).copy(alpha = 0.10f), Color.Transparent), center = Offset(w * 0.05f, h * 0.04f), radius = w * 0.95f),
+                    radius = w * 0.95f, center = Offset(w * 0.05f, h * 0.04f),
+                )
+                drawCircle(
+                    Brush.radialGradient(listOf(Color(0xFF3FA0FF).copy(alpha = 0.08f), Color.Transparent), center = Offset(w * 1.0f, h * 0.5f), radius = w * 0.85f),
+                    radius = w * 0.85f, center = Offset(w * 1.0f, h * 0.5f),
+                )
+            }
         },
     )
 }
 
 /** Glass style for a blurred bar/sheet. */
 @Composable
-fun glassStyle(): HazeStyle {
+fun glassStyle(): HazeStyle = glassStyle(elevated = false)
+
+@Composable
+private fun glassStyle(elevated: Boolean): HazeStyle {
     val g = LocalGlass.current
     val surface = MaterialTheme.colorScheme.surface
+    if (g.dark) {
+        // Neutral, cool and subtle: a dark veil (bars) or the elevated card colour (pills).
+        val veil = if (elevated) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.background
+        return HazeStyle(
+            backgroundColor = surface,
+            tint = HazeTint(veil.copy(alpha = if (elevated) 0.86f else 0.80f)),
+            blurRadius = 24.dp,
+            noiseFactor = 0.02f,
+            fallbackTint = HazeTint(veil.copy(alpha = 0.96f)),
+        )
+    }
     return HazeStyle(
         backgroundColor = surface,
-        tint = HazeTint(surface.copy(alpha = if (g.dark) 0.55f else 0.58f)),
+        tint = HazeTint(surface.copy(alpha = if (elevated) 0.82f else 0.62f)),
         blurRadius = 26.dp,
-        noiseFactor = 0.04f,
-        fallbackTint = HazeTint(surface.copy(alpha = if (g.dark) 0.90f else 0.88f)),
+        noiseFactor = 0.03f,
+        fallbackTint = HazeTint(surface.copy(alpha = 0.92f)),
     )
 }
 
-private fun glassEdge(dark: Boolean): Brush = Brush.verticalGradient(
-    listOf(Color.White.copy(alpha = if (dark) 0.22f else 0.85f), Color.White.copy(alpha = if (dark) 0.04f else 0.25f)),
-)
+private fun glassEdge(dark: Boolean): Brush = if (dark) {
+    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.05f)))
+} else {
+    Brush.verticalGradient(listOf(Color(0xFFE3E8EF), Color(0xFFDCE2EA)))
+}
 
 /**
  * A blurred glass bar (top bar, bottom bar, search bar). Flat surface colour when glass is off.
@@ -114,9 +135,16 @@ fun Modifier.glassBar(shape: Shape? = null): Modifier {
     val surface = MaterialTheme.colorScheme.surface
     if (!g.enabled) return this.then(if (shape != null) Modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer) else Modifier.background(surface))
     val clipped = if (shape != null) this.clip(shape) else this
-    val blurred = if (haze != null) clipped.hazeEffect(state = haze, style = glassStyle()) {
+    val elevated = shape != null
+    val blurred = if (haze != null) clipped.hazeEffect(state = haze, style = glassStyle(elevated)) {
         blurEnabled = blurSupported
-    } else clipped.background(surface.copy(alpha = 0.9f))
+    } else clipped.background(
+        when {
+            g.dark && elevated -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
+            g.dark -> MaterialTheme.colorScheme.background.copy(alpha = 0.94f)
+            else -> surface.copy(alpha = if (elevated) 0.96f else 0.92f)
+        },
+    )
     return if (shape != null) blurred.border(1.dp, glassEdge(g.dark), shape) else blurred
 }
 
@@ -128,12 +156,15 @@ fun Modifier.glassBar(shape: Shape? = null): Modifier {
 fun Modifier.glassPanel(shape: Shape = RoundedCornerShape(24.dp)): Modifier {
     val g = LocalGlass.current
     if (!g.enabled) return this.clip(shape).background(MaterialTheme.colorScheme.surfaceContainerLow)
-    val fill = if (g.dark) {
-        Brush.linearGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.04f)))
-    } else {
-        Brush.linearGradient(listOf(Color.White.copy(alpha = 0.78f), Color.White.copy(alpha = 0.42f)))
+    if (g.dark) {
+        // Solid neutral card (#171A20) with a faint cool sheen (white ~6% at the top) and a 1dp hairline.
+        val sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.015f)))
+        val edge = Brush.verticalGradient(listOf(Color(0xFF353B46), Color(0xFF2A2F38)))
+        return this.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer).background(sheen).border(1.dp, edge, shape)
     }
-    return this.clip(shape).background(fill).border(1.dp, glassEdge(g.dark), shape)
+    // Light: white card, 1dp #E3E8EF hairline and a soft cool shadow.
+    return this.shadow(3.dp, shape, clip = false, ambientColor = Color(0x1A1B2A44), spotColor = Color(0x261B2A44))
+        .clip(shape).background(Color.White).border(1.dp, Color(0xFFE3E8EF), shape)
 }
 
 /** Springy press feedback. */
@@ -168,7 +199,7 @@ fun DialogGlassEffect() {
 fun dialogContainerColor(): Color {
     val g = LocalGlass.current
     val s = MaterialTheme.colorScheme.surfaceContainerHigh
-    return if (g.enabled) s.copy(alpha = if (g.dark) 0.86f else 0.9f) else s
+    return if (g.enabled) s.copy(alpha = if (g.dark) 0.95f else 0.92f) else s
 }
 
 /**

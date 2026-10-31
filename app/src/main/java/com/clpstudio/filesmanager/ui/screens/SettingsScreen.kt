@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
@@ -46,6 +47,7 @@ import com.clpstudio.filesmanager.R
 import com.clpstudio.filesmanager.data.AppSettings
 import com.clpstudio.filesmanager.data.ThemeMode
 import com.clpstudio.filesmanager.data.DefaultView
+import com.clpstudio.filesmanager.data.FileView
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import com.clpstudio.filesmanager.ui.components.GlassTopBar
 import com.clpstudio.filesmanager.ui.glass.GlassScaffold
@@ -53,7 +55,7 @@ import com.clpstudio.filesmanager.ui.glass.glassPanel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onCrashReports: () -> Unit = {}) {
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     SettingsContent(
@@ -64,7 +66,10 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onHidden = { scope.launch { Graph.settingsRepo.setShowHidden(it) } },
         onBin = onBin,
         onDefaultView = { scope.launch { Graph.settingsRepo.setDefaultView(it) } },
+        onHideInRecents = { scope.launch { Graph.settingsRepo.setHideInRecents(it) } },
+        onFileView = { scope.launch { Graph.settingsRepo.setFileView(it) } },
         onDiagnostics = onDiagnostics,
+        onCrashReports = onCrashReports,
     )
 }
 
@@ -77,7 +82,10 @@ fun SettingsContent(
     onHidden: (Boolean) -> Unit,
     onBin: () -> Unit,
     onDefaultView: (DefaultView) -> Unit = {},
+    onHideInRecents: (Boolean) -> Unit = {},
+    onFileView: (com.clpstudio.filesmanager.data.FileView) -> Unit = {},
     onDiagnostics: () -> Unit = {},
+    onCrashReports: () -> Unit = {},
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -124,6 +132,24 @@ fun SettingsContent(
                 }
             }
             item {
+                Card {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RowIcon(Icons.AutoMirrored.Filled.ViewList)
+                        Column(Modifier.weight(1f)) {
+                            Text("File view", style = MaterialTheme.typography.titleSmall)
+                            Text("How files look in every category and folder. Real ratio keeps each photo's shape (photos and videos only).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.size(10.dp))
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        val views = FileView.entries.map { it to it.label }
+                        views.forEachIndexed { i, (v, label) ->
+                            SegmentedButton(selected = settings.fileView == v, onClick = { onFileView(v) }, shape = SegmentedButtonDefaults.itemShape(i, views.size)) { Text(label) }
+                        }
+                    }
+                }
+            }
+            item {
                 SwitchCard(Icons.Filled.Visibility, "Show hidden files", "Shows dot-files, dot-folders and folders with .nomedia. Vault items are never shown here.", settings.showHidden, onHidden)
             }
             item {
@@ -138,6 +164,9 @@ fun SettingsContent(
                 }
             }
             item { Header("Security") }
+            item {
+                SwitchCard(Icons.Filled.Lock, "Hide content while switching apps", "Your files don't show in the app switcher (Recents).", settings.hideInRecents, onHideInRecents)
+            }
             item { InfoCard(Icons.Filled.Lock, "App lock", "PIN (4–10 digits) or password (8–72 characters). Coming in the next update.") }
             item { InfoCard(Icons.Filled.Shield, "Vault", "Hardware-encrypted private vault with its own PIN or password. Coming in the next update.") }
             item { Header("About") }
@@ -161,6 +190,17 @@ fun SettingsContent(
                         Column(Modifier.weight(1f)) {
                             Text("Diagnostics", style = MaterialTheme.typography.titleSmall)
                             Text("What Files can see on this phone, and its error log (kept on the phone).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.clickable(onClick = onCrashReports)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RowIcon(Icons.Filled.ReportProblem)
+                        Column(Modifier.weight(1f)) {
+                            Text("Crash reports", style = MaterialTheme.typography.titleSmall)
+                            Text("Saved if Files ever closes unexpectedly. View, share with us, or clear.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

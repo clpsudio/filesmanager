@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager.viewer
 
+import androidx.compose.foundation.layout.navigationBarsPadding
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -123,12 +124,13 @@ fun TextViewerScreen(uri: Uri, name: String, onBack: () -> Unit, extraActions: @
     var info by remember { mutableStateOf(false) }
     val target = remember(uri, name) { InfoTarget(uri, name, uri.takeIf { it.scheme == "file" }?.path) }
     Box(Modifier.fillMaxSize()) {
-        TextContent(uri, Modifier.swipeUpToOpen { info = true }, wrap = wrap)
+        TextContent(uri, Modifier.swipeUpToOpen { info = true }.navigationBarsPadding().padding(bottom = 64.dp), wrap = wrap)
         ViewerTopBar(name, null, onBack, titleColor = MaterialTheme.colorScheme.primary) {
             IconButton(onClick = { wrap = !wrap }) { Icon(Icons.AutoMirrored.Filled.WrapText, if (wrap) "No wrap" else "Wrap lines") }
             IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
             extraActions()
         }
+        UriViewerActionPanel(uri, "text/plain", onInfo = { info = true }, onDeleted = onBack, modifier = Modifier.align(Alignment.BottomCenter))
     }
     if (info) FileInfoSheet(target, emptyList()) { info = false }
 }

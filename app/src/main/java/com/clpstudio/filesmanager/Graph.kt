@@ -25,7 +25,8 @@ import kotlinx.coroutines.flow.stateIn
 object Graph {
     lateinit var app: Context
         private set
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // The handler logs an escaped background exception instead of killing the app.
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + com.clpstudio.filesmanager.crash.CrashLog.coroutineHandler)
 
     lateinit var settingsRepo: SettingsRepository
         private set
