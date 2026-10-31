@@ -27,6 +27,7 @@ import com.google.common.util.concurrent.ListenableFuture
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private var focus: FocusController? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -38,7 +39,8 @@ class PlaybackService : MediaSessionService() {
             .setMediaSourceFactory(DefaultMediaSourceFactory(this, extractors))
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
-                true,
+                // Our own focus handling (FocusController): pause on a call, resume 2 s after it, duck per Settings.
+                false,
             )
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
@@ -59,6 +61,7 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(open)
             .setCallback(Callback())
             .build()
+        focus = FocusController(this, player, duckEnabled = { runCatching { com.clpstudio.filesmanager.Graph.settings.value.duckForNotifications }.getOrDefault(true) }, movie = false)
         com.clpstudio.filesmanager.data.FileEvents.addListener(fileListener)
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -97,6 +100,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        focus?.release()
+        focus = null
         com.clpstudio.filesmanager.data.FileEvents.removeListener(fileListener)
         main.removeCallbacksAndMessages(null)
         session?.run {

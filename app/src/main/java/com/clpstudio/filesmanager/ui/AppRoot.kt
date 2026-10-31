@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager.ui
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -97,7 +98,10 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
     val route = entry?.destination?.route.orEmpty()
     val showMini = player.hasMedia && !player.isVideo && route.isNotEmpty() && miniPlayerRoute(route)
     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
-    androidx.compose.runtime.CompositionLocalProvider(LocalMiniPlayerInset provides if (showMini) com.clpstudio.filesmanager.ui.screens.MiniPlayerHeight else 0.dp) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalMiniPlayerInset provides if (showMini) com.clpstudio.filesmanager.ui.screens.MiniPlayerHeight else 0.dp,
+        com.clpstudio.filesmanager.ui.components.LocalDateGrouping provides com.clpstudio.filesmanager.Graph.settings.collectAsState().value.dateGrouping,
+    ) {
     NavHost(
         navController = nav,
         startDestination = Routes.HOME,
@@ -169,7 +173,8 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         }
         composable(Routes.APPS) { AppsScreen(back, onPaste = toPaste) }
         composable(Routes.BIN) { BinScreen(back) }
-        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }) }
+        composable(Routes.SETTINGS) { SettingsScreen(back, onBin = { nav.navigate(Routes.BIN) }, onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) }, onCrashReports = { nav.navigate(Routes.CRASH_REPORTS) }, onFolderFilters = { nav.navigate(Routes.FOLDER_FILTERS) }) }
+        composable(Routes.FOLDER_FILTERS) { com.clpstudio.filesmanager.ui.screens.FolderFiltersScreen(back) }
         composable(Routes.CRASH_REPORTS) { com.clpstudio.filesmanager.crash.CrashReportsScreen(back) }
         composable(Routes.FAVORITES) { com.clpstudio.filesmanager.ui.screens.FavoritesScreen(opener, back, onPaste = toPaste) }
         composable(Routes.SLIDESHOW) { com.clpstudio.filesmanager.viewer.SlideshowScreen(ViewerSession.playItems, onBack = back) }

@@ -118,6 +118,10 @@ fun HiddenFilesScreen(opener: Opener, onBack: () -> Unit, onFolder: (String) -> 
                     title = "${selection.paths.size} selected",
                     navigation = { CloseSelectionButton { selection.clear() } },
                     actions = {
+                        val allP = shown.orEmpty().map { it.path }
+                        com.clpstudio.filesmanager.ui.components.SelectAllToggle(com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selection.paths, allP)) {
+                            selection.selectAll(com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selection.paths, allP))
+                        }
                         IconButton(onClick = { unhide(shown.orEmpty().filter { selection.isSelected(it.path) }) }) { Icon(Icons.Filled.Visibility, "Unhide") }
                     },
                     below = chips,

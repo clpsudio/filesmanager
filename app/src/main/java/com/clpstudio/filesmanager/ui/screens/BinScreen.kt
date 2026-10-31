@@ -371,7 +371,7 @@ private fun BinTopBar(
             ) {
                 SelectCircle(allSelected)
                 Spacer(Modifier.width(6.dp))
-                Text("All", style = MaterialTheme.typography.labelLarge)
+                Text(if (allSelected) "Deselect all" else "All", style = MaterialTheme.typography.labelLarge)
             }
         } else {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }

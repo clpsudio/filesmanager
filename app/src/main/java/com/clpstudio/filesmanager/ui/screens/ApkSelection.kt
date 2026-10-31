@@ -73,7 +73,7 @@ fun ApkSelectionActions(
 ) {
     val selected = ApkSelectionLogic.selectedItems(list, selection.paths)
     var menu by remember { mutableStateOf(false) }
-    IconButton(onClick = { selection.selectAll(ApkSelectionLogic.toggleAll(list, selection.paths)) }) { Icon(Icons.Filled.SelectAll, "Select all") }
+    com.clpstudio.filesmanager.ui.components.SelectAllToggle(list.isNotEmpty() && selection.paths.containsAll(list.map { it.path })) { selection.selectAll(ApkSelectionLogic.toggleAll(list, selection.paths)) }
     IconButton(onClick = { actions.share(selected) }, enabled = selected.isNotEmpty()) { Icon(Icons.Filled.Share, "Share") }
     IconButton(onClick = { actions.deleteTargets = selected }, enabled = selected.isNotEmpty()) { Icon(Icons.Filled.Delete, "Delete") }
     Box {

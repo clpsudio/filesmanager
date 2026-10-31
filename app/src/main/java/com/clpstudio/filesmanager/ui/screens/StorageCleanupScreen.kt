@@ -189,7 +189,7 @@ fun StorageCleanupContent(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         RoundCheck(allOn, Modifier.size(24.dp))
-                        Text("All", style = MaterialTheme.typography.labelSmall)
+                        Text(if (allOn) "Deselect all" else "All", style = MaterialTheme.typography.labelSmall)
                     }
                 },
                 actions = { TextButton(onClick = onCancel) { Text("Cancel") } },

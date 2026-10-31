@@ -74,7 +74,7 @@ fun pagerPageType(kind: FileKind): PagerPage = when (kind) {
 @OptIn(UnstableApi::class)
 class PagerVideo(context: Context) {
     val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), false)
         .setHandleAudioBecomingNoisy(true)
         .build()
 
@@ -102,6 +102,11 @@ class PagerVideo(context: Context) {
 
     private var repeats = 0
     private var settings: AppSettings = AppSettings()
+
+    // Calls pause it and it plays again 2 s after; notifications lower it (Settings).
+    private val focus = com.clpstudio.filesmanager.playback.FocusController(
+        context, player, duckEnabled = { runCatching { Graph.settings.value.duckForNotifications }.getOrDefault(true) }, movie = true,
+    )
 
     init {
         player.addListener(object : Player.Listener {
@@ -189,7 +194,10 @@ class PagerVideo(context: Context) {
         duration = player.duration.takeIf { it > 0 } ?: 0L
     }
 
-    fun release() = player.release()
+    fun release() {
+        focus.release()
+        player.release()
+    }
 }
 
 /** One video page: the inline player when it's the current page, its first frame otherwise. */

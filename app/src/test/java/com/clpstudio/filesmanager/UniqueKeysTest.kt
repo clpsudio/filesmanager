@@ -35,11 +35,12 @@ class UniqueKeysTest {
             listOf(f("/d1", now, dir = true), f("/d2", now - 90 * day, dir = true), f("/x.jpg", now), f("/y.jpg", now - 90 * day)),
             SortBy.DATE, ascending = false,
         )
-        val raw = DateSections.group(items, now)
-        assertEquals(2, raw.count { it.first == "Today" }) // the crash: key "§Today" twice
+        val raw = DateSections.group(items, com.clpstudio.filesmanager.data.DateGrouping.DAY)
+        val today = DateSections.label(now, com.clpstudio.filesmanager.data.DateGrouping.DAY)
+        assertEquals(2, raw.count { it.first == today }) // the crash: the same key twice
         val safe = uniqueSections(raw)
         assertEquals(safe.map { it.first }.distinct(), safe.map { it.first })
-        assertEquals(listOf("/d1", "/x.jpg"), safe.first { it.first == "Today" }.second.map { it.path })
+        assertEquals(listOf("/d1", "/x.jpg"), safe.first { it.first == today }.second.map { it.path })
         assertEquals(4, safe.sumOf { it.second.size })
     }
 

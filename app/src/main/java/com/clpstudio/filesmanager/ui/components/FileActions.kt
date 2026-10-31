@@ -1,5 +1,11 @@
 package com.clpstudio.filesmanager.ui.components
 
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Visibility
 import android.widget.Toast
@@ -340,15 +346,26 @@ fun FileActionDialogs(actions: FileActions, onDeleted: () -> Unit = {}) {
     }
 }
 
+/** "Select all" that becomes "Deselect all" once everything is selected (the caller toggles via SelectionLogic.toggleAll). */
+@Composable
+fun SelectAllToggle(allSelected: Boolean, onClick: () -> Unit) {
+    androidx.compose.material3.TextButton(onClick = onClick) {
+        Icon(if (allSelected) Icons.Filled.Deselect else Icons.Filled.SelectAll, null, Modifier.size(20.dp))
+        androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
+        Text(if (allSelected) "Deselect all" else "Select all")
+    }
+}
+
 /** Top-bar actions while files are selected. */
 @Composable
 fun SelectionActionsRow(
     selected: List<FileItem>,
     actions: FileActions,
+    allSelected: Boolean = false,
     onSelectAll: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    IconButton(onClick = onSelectAll) { Icon(Icons.Filled.SelectAll, "Select all") }
+    SelectAllToggle(allSelected, onSelectAll)
     IconButton(onClick = { actions.share(selected) }) { Icon(Icons.Filled.Share, "Share") }
     IconButton(onClick = { actions.deleteTargets = selected }) { Icon(Icons.Filled.Delete, "Delete") }
     Box {

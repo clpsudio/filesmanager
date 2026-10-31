@@ -338,12 +338,13 @@ fun FileListScreen(
     val scope = rememberCoroutineScope()
     val selection = remember { SelectionState() }
     val actions = rememberFileActions(afterCopyOrMove = { selection.clear(); onPaste() }, afterAction = { selection.clear() })
-    var sortBy by rememberSaveable { mutableStateOf(defaultSort) }
-    var asc by rememberSaveable { mutableStateOf(false) }
+    // Settings → Default sort (Date, newest first unless changed); the header menu changes it for this screen only.
+    var sortBy by rememberSaveable(settings.defaultSortBy) { mutableStateOf(settings.defaultSortBy) }
+    var asc by rememberSaveable(settings.defaultSortAscending) { mutableStateOf(settings.defaultSortAscending) }
     // The app-wide view from Settings; the header dropdown changes it for this screen only.
     var view by rememberSaveable(settings.fileView) { mutableStateOf(settings.fileView) }
     val chosen = category?.let { settings.typeFilters[it.name] } ?: TypeFilters.ALL
-    val chips = remember(items, category, chosen) { if (category != null && items != null) TypeFilters.counted(category, items, chosen) else emptyList() }
+    val chips = remember(items, category, chosen, settings.chipConfig) { if (category != null && items != null) TypeFilters.counted(category, items, chosen, settings.chipConfig[category.name]) else emptyList() }
     val filtered = remember(items, category, chosen) { if (category != null && items != null) TypeFilters.apply(category, items, chosen) else items }
     val sorted = remember(filtered, sortBy, asc) { filtered?.let { sortItems(it, sortBy, asc) } }
     val totalSize = remember(filtered) { filtered?.sumOf { it.size } ?: 0L }
@@ -358,7 +359,7 @@ fun FileListScreen(
                     navigation = { CloseSelectionButton { selection.clear() } },
                     actions = {
                         PlaySelectedButton(selected, opener)
-                        SelectionActionsRow(selected, actions) { selection.selectAll(sorted.orEmpty().map { it.path }) }
+                        SelectionActionsRow(selected, actions, allSelected = com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selection.paths, sorted.orEmpty().map { it.path })) { selection.selectAll(com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selection.paths, sorted.orEmpty().map { it.path })) }
                     },
                     below = tabs,
                 )

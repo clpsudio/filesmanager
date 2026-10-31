@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -140,6 +141,58 @@ class BugRound5ScreenshotTest {
         }
         compose.mainClock.advanceTimeBy(800)
         com.github.takahirom.roborazzi.captureScreenRoboImage(File(out, "files_r5_add_password_dialog.png").path)
+    }
+
+    @Config(qualifiers = "w800dp-h1280dp-port-mdpi")
+    @Test fun monthGroups() {
+        val utc = java.util.TimeZone.getDefault()
+        fun at(m: Int, d: Int) = java.util.Calendar.getInstance(utc).apply { clear(); set(2026, m, d, 12, 0, 0) }.timeInMillis
+        val items = listOf(
+            FileItem("/s/IMG_1031.jpg", "IMG_1031.jpg", false, 2_400_000, at(9, 31)),
+            FileItem("/s/IMG_1024.jpg", "IMG_1024.jpg", false, 3_100_000, at(9, 24)),
+            FileItem("/s/VID_1012.mp4", "VID_1012.mp4", false, 48_000_000, at(9, 12)),
+            FileItem("/s/IMG_0928.jpg", "IMG_0928.jpg", false, 2_000_000, at(8, 28)),
+            FileItem("/s/IMG_0903.jpg", "IMG_0903.jpg", false, 2_700_000, at(8, 3)),
+            FileItem("/s/Report.pdf", "Report.pdf", false, 900_000, at(7, 19)),
+            FileItem("/s/IMG_0802.jpg", "IMG_0802.jpg", false, 2_200_000, at(7, 2)),
+        )
+        val sel = com.clpstudio.filesmanager.ui.components.SelectionState().apply { selectAll(listOf("/s/IMG_1031.jpg", "/s/IMG_1024.jpg", "/s/VID_1012.mp4", "/s/IMG_0928.jpg")) }
+        shoot("files_r5_month_groups.png") {
+            GlassBackground(Modifier.fillMaxSize())
+            Column(Modifier.fillMaxSize()) {
+                androidx.compose.foundation.layout.Row(Modifier.padding(start = 8.dp, top = 28.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("4 selected", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    com.clpstudio.filesmanager.ui.components.SelectAllToggle(false) {}
+                    com.clpstudio.filesmanager.ui.components.SelectAllToggle(true) {}
+                }
+                com.clpstudio.filesmanager.ui.components.FileCollection(
+                    items = items, view = com.clpstudio.filesmanager.data.FileView.LIST, selection = sel, onClick = {},
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp), sections = true, modifier = Modifier.height(620.dp),
+                )
+                com.clpstudio.filesmanager.ui.screens.GroupByCard(com.clpstudio.filesmanager.data.DateGrouping.MONTH) {}
+            }
+        }
+    }
+
+    @Config(qualifiers = "w800dp-h1280dp-port-mdpi")
+    @Test fun folderFilters() {
+        val cfg = mapOf("PHOTOS" to com.clpstudio.filesmanager.data.ChipConfig(listOf("APP_WHATSAPP", "CAMERA", "SCREENSHOTS"), setOf("RAW", "HEIC", "APP_SNAPCHAT")))
+        shoot("files_r5_folder_filters.png") {
+            com.clpstudio.filesmanager.ui.screens.FolderFiltersContent(cfg, onBack = {}, onChange = { _, _ -> }, startTab = 1)
+        }
+    }
+
+    @Config(qualifiers = "w800dp-h1280dp-port-mdpi")
+    @Test fun sortingSettings() {
+        shoot("files_r5_sorting_settings.png") {
+            GlassBackground(Modifier.fillMaxSize())
+            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Sorting & grouping", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 6.dp, top = 24.dp))
+                com.clpstudio.filesmanager.ui.screens.DefaultSortCard(com.clpstudio.filesmanager.data.SortBy.DATE, false) { _, _ -> }
+                com.clpstudio.filesmanager.ui.screens.GroupByCard(com.clpstudio.filesmanager.data.DateGrouping.MONTH) {}
+                com.clpstudio.filesmanager.ui.screens.FolderFiltersRow {}
+            }
+        }
     }
 
     @Config(qualifiers = "w800dp-h1280dp-port-mdpi")

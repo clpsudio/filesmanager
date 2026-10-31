@@ -115,7 +115,13 @@ fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> U
                     title = "${selected.size} selected",
                     navigation = { CloseSelectionButton { selected.clear() } },
                     actions = {
-                        IconButton(onClick = { selected.clear(); selected.addAll(nodes.orEmpty().map { it.path }) }) { Icon(Icons.Filled.SelectAll, "Select all") }
+                        run {
+                            val allZ = nodes.orEmpty().map { it.path }
+                            com.clpstudio.filesmanager.ui.components.SelectAllToggle(com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selected, allZ)) {
+                                val next = com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selected.toList(), allZ)
+                                selected.clear(); selected.addAll(next)
+                            }
+                        }
                         IconButton(onClick = { extract(selected.toList(), if (dir.isEmpty()) defaultTarget() else defaultTarget()) }) { Icon(Icons.Filled.Unarchive, "Extract") }
                         IconButton(onClick = { pickFolderFor = selected.toList() }) { Icon(Icons.Filled.DriveFolderUpload, "Extract to...") }
                     },

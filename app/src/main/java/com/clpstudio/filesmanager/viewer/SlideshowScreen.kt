@@ -382,7 +382,11 @@ private fun InlineMedia(item: FileItem, playing: Boolean, onEnded: () -> Unit) {
     val context = LocalContext.current
     val ended by rememberUpdatedState(onEnded)
     val player = remember(item.path) {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(context)
+            // Pauses for a call and comes back after it.
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+            .setHandleAudioBecomingNoisy(true)
+            .build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(item.path))))
             repeatMode = Player.REPEAT_MODE_OFF
             prepare()

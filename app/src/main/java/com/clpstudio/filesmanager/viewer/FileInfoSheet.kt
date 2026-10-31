@@ -75,6 +75,12 @@ import com.clpstudio.filesmanager.ui.components.kindIcon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.Icons
 import kotlin.math.abs
 
 /** What the info sheet is about: a file on storage ([path]) or one opened from another app. */
@@ -191,12 +197,25 @@ object FileDetailsLoader {
 
 /** The info sheet's body (also used for screenshots). */
 @Composable
-fun FileInfoSheetContent(target: InfoTarget, details: FileDetails?, actions: List<SheetAction>) {
+fun FileInfoSheetContent(
+    target: InfoTarget,
+    details: FileDetails?,
+    actions: List<SheetAction>,
+    editable: Set<InfoEdit> = emptySet(),
+    onEdit: (InfoEdit) -> Unit = {},
+) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .then(if (InfoEdit.NAME in editable) Modifier.clickable { onEdit(InfoEdit.NAME) } else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Icon(kindIcon(target.kind), null, tint = kindColor(target.kind), modifier = Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
-            Text(target.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.MiddleEllipsis)
+            Text(target.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f))
+            if (InfoEdit.NAME in editable) {
+                IconButton(onClick = { onEdit(InfoEdit.NAME) }) { Icon(Icons.Outlined.Edit, "Rename", tint = MaterialTheme.colorScheme.primary) }
+            }
         }
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -214,10 +233,30 @@ fun FileInfoSheetContent(target: InfoTarget, details: FileDetails?, actions: Lis
         }
         HorizontalDivider(Modifier.padding(vertical = 10.dp))
         val rows = details?.rows ?: listOf("Name" to target.name)
-        rows.filter { it.first != "Name" }.forEach { (k, v) ->
-            Column(Modifier.padding(vertical = 5.dp)) {
-                Text(k, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(v, style = MaterialTheme.typography.bodyMedium)
+        rows.forEach { (k, v) ->
+            val edit = when (k) {
+                "Name" -> InfoEdit.NAME
+                "Modified" -> InfoEdit.DATE
+                "Folder" -> InfoEdit.FOLDER
+                else -> null
+            }?.takeIf { it in editable }
+            if (k == "Name") return@forEach // the name is the header (its pencil renames)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                    .then(if (edit != null) Modifier.clickable { onEdit(edit) } else Modifier)
+                    .padding(vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (k == "Modified" && edit != null) "Modified (date & time)" else k, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(v, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (edit != null) Icon(
+                    Icons.Outlined.Edit,
+                    when (edit) { InfoEdit.NAME -> "Rename"; InfoEdit.DATE -> "Change date and time"; InfoEdit.FOLDER -> "Move to another folder" },
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp).size(20.dp),
+                )
             }
         }
         if (details == null) Text("Reading details...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -230,9 +269,18 @@ fun FileInfoSheetContent(target: InfoTarget, details: FileDetails?, actions: Lis
 @Composable
 fun FileInfoSheet(target: InfoTarget, actions: List<SheetAction>, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val details by produceState<FileDetails?>(null, target) { value = runCatching { FileDetailsLoader.load(context, target) }.getOrNull() }
+    // The file shown: follows a rename or move made from this sheet.
+    var current by remember(target) { mutableStateOf(target) }
+    var reload by remember { mutableIntStateOf(0) }
+    val details by produceState<FileDetails?>(null, current, reload) { value = runCatching { FileDetailsLoader.load(context, current) }.getOrNull() }
+    val editable = remember(current, reload) { editableFor(current.path) }
+    val edits = remember { InfoEditState() }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
-        FileInfoSheetContent(target, details, actions)
+        FileInfoSheetContent(current, details, actions, editable, onEdit = { edits.open = it })
+    }
+    InfoEditDialogs(edits, current.path) { changed ->
+        current = InfoTarget.of(changed)
+        reload++
     }
 }
 

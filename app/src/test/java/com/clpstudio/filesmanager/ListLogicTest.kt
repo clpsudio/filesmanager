@@ -1,5 +1,6 @@
 package com.clpstudio.filesmanager
 
+import com.clpstudio.filesmanager.data.DateGrouping
 import com.clpstudio.filesmanager.data.Category
 import com.clpstudio.filesmanager.data.DateSections
 import com.clpstudio.filesmanager.data.FileItem
@@ -49,13 +50,13 @@ class ListLogicTest {
     }
 
     @Test fun dateSections() {
-        val now = Calendar.getInstance().apply { set(2026, Calendar.OCTOBER, 31, 11, 0, 0) }.timeInMillis
+        val utc = java.util.TimeZone.getTimeZone("UTC")
+        val now = Calendar.getInstance(utc).apply { clear(); set(2026, Calendar.OCTOBER, 31, 11, 0, 0) }.timeInMillis
         val h = 3600_000L
-        assertEquals("Today", DateSections.label(now - h, now))
-        assertEquals("Yesterday", DateSections.label(now - 13 * h, now))
-        assertEquals("Older", DateSections.label(now - 90 * 24 * h, now))
-        val groups = DateSections.group(listOf(item("a", modified = now - h), item("b", modified = now - 2 * h), item("c", modified = now - 24 * 40 * h)), now)
-        assertEquals(listOf("Today" to 2, "Older" to 1), groups.map { it.first to it.second.size })
+        assertEquals("October 2026", DateSections.label(now - h, DateGrouping.MONTH, utc))
+        assertEquals("August 2026", DateSections.label(now - 90 * 24 * h, DateGrouping.MONTH, utc))
+        val groups = DateSections.group(listOf(item("a", modified = now - h), item("b", modified = now - 2 * h), item("c", modified = now - 24 * 40 * h)), DateGrouping.MONTH, utc)
+        assertEquals(listOf("October 2026" to 2, "September 2026" to 1), groups.map { it.first to it.second.size })
     }
 
     @Test fun columnsAdaptToWidth() {

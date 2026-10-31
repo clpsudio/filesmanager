@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.material.icons.filled.Slideshow
 import com.clpstudio.filesmanager.data.distinctByPath
 import com.clpstudio.filesmanager.data.uniqueSections
+import com.clpstudio.filesmanager.data.SelectionLogic
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -221,13 +224,37 @@ fun ListRow(item: FileItem, selected: Boolean, selectionMode: Boolean, onClick: 
 }
 
 @Composable
-private fun SectionHeader(label: String) {
-    Text(
-        label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.fillMaxWidth().padding(start = 10.dp, top = 14.dp, bottom = 6.dp),
-    )
+private fun SectionHeader(label: String, items: List<FileItem>, selection: SelectionState) {
+    val paths = remember(items) { items.map { it.path } }
+    val state = SelectionLogic.groupState(selection.paths, paths)
+    Row(
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 6.dp, top = 10.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text("  ·  ${items.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        // In select mode: select / unselect this whole group (a dash when only some are selected).
+        if (selection.active) {
+            androidx.compose.material3.TriStateCheckbox(
+                state = when (state) {
+                    SelectionLogic.GroupState.ALL -> androidx.compose.ui.state.ToggleableState.On
+                    SelectionLogic.GroupState.SOME -> androidx.compose.ui.state.ToggleableState.Indeterminate
+                    SelectionLogic.GroupState.NONE -> androidx.compose.ui.state.ToggleableState.Off
+                },
+                onClick = { selection.selectAll(SelectionLogic.toggleGroup(selection.paths.toList(), paths)) },
+                modifier = Modifier.semantics { contentDescription = if (state == SelectionLogic.GroupState.ALL) "Unselect $label" else "Select $label" },
+            )
+        } else {
+            Spacer(Modifier.size(40.dp))
+        }
+    }
 }
+
+/** Settings → "Group files by", provided once at the app root (Monthly when not provided). */
+val LocalDateGrouping = androidx.compose.runtime.staticCompositionLocalOf { com.clpstudio.filesmanager.data.DateGrouping.MONTH }
 
 /** The folder a zip was just extracted to (etc.) gets a soft accent glow for a few seconds. */
 @Composable
@@ -272,7 +299,9 @@ fun FileCollection(
     } else contentPadding
     // Unique paths and section labels: duplicate keys crash lazy grids (see data/UniqueKeys.kt).
     val unique = remember(items) { items.distinctByPath() }
-    val groups = remember(unique, sections) { uniqueSections(if (sections) DateSections.group(unique) else listOf("" to unique)) }
+    // Date-sorted lists only: one header per day / week / month / quarter / year (Settings → Group files by).
+    val grouping = LocalDateGrouping.current
+    val groups = remember(unique, sections, grouping) { uniqueSections(if (sections) DateSections.group(unique, grouping) else listOf("" to unique)) }
     val keys = remember(groups) { groups.flatMap { g -> g.second.map { it.path } } } // in drawn order, for drag-select ranges
     val mode = selection.active
     // "Real ratio" is for photos and videos only; any other file falls back to Grid.
@@ -289,7 +318,7 @@ fun FileCollection(
                     modifier = Modifier.fillMaxSize().dragToSelect(remember(state) { state.hitTester() }, keys, selection),
                 ) {
                     for ((label, list) in groups) {
-                        if (label.isNotEmpty()) item(key = "§$label", span = { GridItemSpan(maxLineSpan) }, contentType = "h") { SectionHeader(label) }
+                        if (label.isNotEmpty()) item(key = "§$label", span = { GridItemSpan(maxLineSpan) }, contentType = "h") { SectionHeader(label, list, selection) }
                         items(list.size, key = { list[it].path }, contentType = { "t" }) { i ->
                             val f = list[i]
                             GridTile(f, selection.isSelected(f.path), mode, { onClick(f) }, highlightModifier(f.path))
@@ -305,7 +334,7 @@ fun FileCollection(
                     modifier = Modifier.fillMaxSize().dragToSelect(remember(state) { state.hitTester() }, keys, selection),
                 ) {
                     for ((label, list) in groups) {
-                        if (label.isNotEmpty()) item(key = "§$label", span = StaggeredGridItemSpan.FullLine, contentType = "h") { SectionHeader(label) }
+                        if (label.isNotEmpty()) item(key = "§$label", span = StaggeredGridItemSpan.FullLine, contentType = "h") { SectionHeader(label, list, selection) }
                         items(list.size, key = { list[it].path }, contentType = { "t" }) { i ->
                             val f = list[i]
                             LargeTile(f, selection.isSelected(f.path), mode, { onClick(f) }, highlightModifier(f.path))
@@ -321,7 +350,7 @@ fun FileCollection(
                     modifier = Modifier.fillMaxSize().dragToSelect(remember(state) { state.hitTester() }, keys, selection),
                 ) {
                     for ((label, list) in groups) {
-                        if (label.isNotEmpty()) item(key = "§$label", contentType = "h") { SectionHeader(label) }
+                        if (label.isNotEmpty()) item(key = "§$label", contentType = "h") { SectionHeader(label, list, selection) }
                         items(list.size, key = { list[it].path }, contentType = { "r" }) { i ->
                             val f = list[i]
                             ListRow(f, selection.isSelected(f.path), mode, { onClick(f) }, highlightModifier(f.path))

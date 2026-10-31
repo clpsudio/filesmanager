@@ -50,6 +50,15 @@ data class AppSettings(
     val backgroundPlay: Boolean = true,
     /** Home / app switch while a video plays opens picture-in-picture. */
     val autoPip: Boolean = true,
+    /** Settings → Default sort for every list (Date, newest first, unless changed). */
+    val defaultSortBy: SortBy = SortBy.DATE,
+    val defaultSortAscending: Boolean = false,
+    /** Settings → Folder filters: per category (Category.name) chip order and hidden chips. */
+    val chipConfig: Map<String, ChipConfig> = emptyMap(),
+    /** Settings → "Group files by" (date-sorted lists only). */
+    val dateGrouping: DateGrouping = DateGrouping.MONTH,
+    /** Settings → "Lower volume for notifications" (default on). */
+    val duckForNotifications: Boolean = true,
     /** Settings → Video player → Loop videos (default: loop forever). */
     val loopMode: LoopMode = LoopMode.FOREVER,
     /** Extra plays for [LoopMode.TIMES] (1–10). */
@@ -78,6 +87,11 @@ class SettingsRepository(private val context: Context) {
         val autoPip = booleanPreferencesKey("auto_pip")
         val doubleTapSkip = androidx.datastore.preferences.core.intPreferencesKey("double_tap_skip")
         val loopMode = stringPreferencesKey("loop_mode")
+        val dateGrouping = stringPreferencesKey("date_grouping")
+        val chipConfig = stringPreferencesKey("chip_config")
+        val duck = androidx.datastore.preferences.core.booleanPreferencesKey("duck_notifications")
+        val defaultSortBy = stringPreferencesKey("default_sort_by")
+        val defaultSortAsc = androidx.datastore.preferences.core.booleanPreferencesKey("default_sort_asc")
         val loopTimes = androidx.datastore.preferences.core.intPreferencesKey("loop_times")
     }
 
@@ -97,6 +111,11 @@ class SettingsRepository(private val context: Context) {
             autoPip = p[Keys.autoPip] ?: true,
             doubleTapSkipSeconds = DoubleTapSkip.clamp(p[Keys.doubleTapSkip] ?: DoubleTapSkip.DEFAULT),
             loopMode = LoopMode.parse(p[Keys.loopMode]),
+            dateGrouping = DateGrouping.parse(p[Keys.dateGrouping]),
+            chipConfig = ChipConfig.decode(p[Keys.chipConfig]),
+            duckForNotifications = p[Keys.duck] ?: true,
+            defaultSortBy = p[Keys.defaultSortBy]?.let { runCatching { SortBy.valueOf(it) }.getOrNull() } ?: SortBy.DATE,
+            defaultSortAscending = p[Keys.defaultSortAsc] ?: false,
             loopTimes = LoopPolicy.clampTimes(p[Keys.loopTimes] ?: LoopPolicy.DEFAULT_TIMES),
         )
     }
@@ -118,6 +137,21 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHideInRecents(on: Boolean) = context.dataStore.edit { it[Keys.hideInRecents] = on }
     suspend fun setBackgroundPlay(on: Boolean) = context.dataStore.edit { it[Keys.backgroundPlay] = on }
     suspend fun setAutoPip(on: Boolean) = context.dataStore.edit { it[Keys.autoPip] = on }
+    /** Settings → Default sort: every list, and the folder browser too. */
+    suspend fun setDefaultSort(by: SortBy, ascending: Boolean) = context.dataStore.edit {
+        it[Keys.defaultSortBy] = by.name
+        it[Keys.defaultSortAsc] = ascending
+        it[Keys.sortBy] = by.name
+        it[Keys.sortAsc] = ascending
+    }
+    /** Folder filters for one category; null resets it to the default. */
+    suspend fun setChipConfig(category: String, config: ChipConfig?) = context.dataStore.edit {
+        val m = ChipConfig.decode(it[Keys.chipConfig]).toMutableMap()
+        if (config == null) m.remove(category) else m[category] = config
+        it[Keys.chipConfig] = ChipConfig.encode(m)
+    }
+    suspend fun setDuckForNotifications(on: Boolean) = context.dataStore.edit { it[Keys.duck] = on }
+    suspend fun setDateGrouping(g: DateGrouping) = context.dataStore.edit { it[Keys.dateGrouping] = g.name }
     suspend fun setLoop(mode: LoopMode, times: Int? = null) = context.dataStore.edit {
         it[Keys.loopMode] = mode.name
         if (times != null) it[Keys.loopTimes] = LoopPolicy.clampTimes(times)

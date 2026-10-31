@@ -166,7 +166,7 @@ fun BrowserScreen(startPath: String?, opener: Opener, onBack: () -> Unit, onSear
                     navigation = { CloseSelectionButton { selection.clear() } },
                     actions = {
                         PlaySelectedButton(selectedItems, opener)
-                        SelectionActionsRow(selectedItems, actions) { selection.selectAll(items.map { it.path }) }
+                        SelectionActionsRow(selectedItems, actions, allSelected = com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selection.paths, items.map { it.path })) { selection.selectAll(com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selection.paths, items.map { it.path })) }
                     },
                 )
             } else {

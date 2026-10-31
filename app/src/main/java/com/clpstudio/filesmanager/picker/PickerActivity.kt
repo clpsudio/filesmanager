@@ -175,6 +175,11 @@ private fun PickerHost(
             needsPermission = !granted,
         ),
         selected = selected.toSet(),
+        onToggleAll = {
+            val files = items.orEmpty().filter { !it.isDir }.map { it.path }
+            val next = com.clpstudio.filesmanager.data.SelectionLogic.toggleAll(selected.toList(), files)
+            selected.clear(); selected.addAll(next)
+        },
         onSection = { s -> section = s; if (s != PickerSection.BROWSE) folder = null },
         onQuery = { query = it },
         onOpenFolder = { p -> section = PickerSection.BROWSE; folder = p; query = "" },

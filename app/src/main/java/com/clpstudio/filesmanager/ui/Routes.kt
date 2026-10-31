@@ -16,6 +16,7 @@ object Routes {
     const val FAVORITES = "favorites"
     const val STORAGE = "storage"
     const val HIDDEN = "hidden"
+    const val FOLDER_FILTERS = "folder_filters"
 
     fun storageKind(kind: com.clpstudio.filesmanager.data.StorageKind, volume: String) = "storage_kind?kind=${kind.name}&vol=${Uri.encode(volume)}"
     fun storageCleanup(mode: String, volume: String) = "storage_clean?mode=${Uri.encode(mode)}&vol=${Uri.encode(volume)}"

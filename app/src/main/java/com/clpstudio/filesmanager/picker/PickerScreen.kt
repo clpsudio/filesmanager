@@ -90,6 +90,8 @@ data class PickerUi(
 fun PickerContent(
     ui: PickerUi,
     selected: Set<String>,
+    /** Multi-select: Select all / Deselect all of the files shown. */
+    onToggleAll: (() -> Unit)? = null,
     onSection: (PickerSection) -> Unit,
     onQuery: (String) -> Unit,
     onOpenFolder: (String?) -> Unit,
@@ -120,6 +122,10 @@ fun PickerContent(
                     }
                 },
                 actions = {
+                    if (ui.request.multiple && selected.isNotEmpty() && onToggleAll != null) {
+                        val files = ui.items.orEmpty().filter { !it.isDir }.map { it.path }
+                        com.clpstudio.filesmanager.ui.components.SelectAllToggle(com.clpstudio.filesmanager.data.SelectionLogic.allSelected(selected, files), onToggleAll)
+                    }
                     IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) onQuery("") }) { Icon(Icons.Filled.Search, "Search") }
                 },
                 below = {

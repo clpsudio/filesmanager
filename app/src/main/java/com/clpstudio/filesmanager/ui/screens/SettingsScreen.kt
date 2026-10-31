@@ -23,6 +23,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Add
 import com.clpstudio.filesmanager.data.DoubleTapSkip
@@ -63,7 +68,7 @@ import com.clpstudio.filesmanager.ui.glass.glassPanel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onCrashReports: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onCrashReports: () -> Unit = {}, onFolderFilters: () -> Unit = {}) {
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     SettingsContent(
@@ -82,6 +87,10 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
         onDoubleTapSkip = { scope.launch { Graph.settingsRepo.setDoubleTapSkip(it) } },
         onLoop = { mode, times -> scope.launch { Graph.settingsRepo.setLoop(mode, times) } },
+        onDateGrouping = { scope.launch { Graph.settingsRepo.setDateGrouping(it) } },
+        onDefaultSort = { by, asc -> scope.launch { Graph.settingsRepo.setDefaultSort(by, asc) } },
+        onFolderFilters = onFolderFilters,
+        onDuck = { scope.launch { Graph.settingsRepo.setDuckForNotifications(it) } },
     )
 }
 
@@ -102,6 +111,10 @@ fun SettingsContent(
     onAutoPip: (Boolean) -> Unit = {},
     onDoubleTapSkip: (Int) -> Unit = {},
     onLoop: (com.clpstudio.filesmanager.data.LoopMode, Int) -> Unit = { _, _ -> },
+    onDateGrouping: (com.clpstudio.filesmanager.data.DateGrouping) -> Unit = {},
+    onDefaultSort: (com.clpstudio.filesmanager.data.SortBy, Boolean) -> Unit = { _, _ -> },
+    onFolderFilters: () -> Unit = {},
+    onDuck: (Boolean) -> Unit = {},
 ) {
     GlassScaffold(topBar = { GlassTopBar("Settings", onBack = onBack) }) { padding ->
         LazyColumn(
@@ -179,6 +192,10 @@ fun SettingsContent(
                     }
                 }
             }
+            item { Header("Sorting & grouping") }
+            item { DefaultSortCard(settings.defaultSortBy, settings.defaultSortAscending, onDefaultSort) }
+            item { GroupByCard(settings.dateGrouping, onDateGrouping) }
+            item { FolderFiltersRow(onFolderFilters) }
             item { Header("Video player") }
             item {
                 SwitchCard(Icons.Filled.Headphones, "Background play", "Videos keep playing with the screen off or in other apps, with controls in the notification. Close the player to stop.", settings.backgroundPlay, onBackgroundPlay)
@@ -187,6 +204,13 @@ fun SettingsContent(
                 SwitchCard(Icons.Filled.PictureInPictureAlt, "Auto picture-in-picture", "Going Home while a video plays shows it in a small window over other apps.", settings.autoPip, onAutoPip)
             }
             item { LoopVideosCard(settings.loopMode, settings.loopTimes, onLoop) }
+            item {
+                SwitchCard(
+                    Icons.AutoMirrored.Filled.VolumeDown, "Lower volume for notifications",
+                    "Videos and music get quieter for a moment while a notification sounds. Calls always pause them; they play again 2 seconds after the call.",
+                    settings.duckForNotifications, onDuck,
+                )
+            }
             item { DoubleTapSkipCard(settings.doubleTapSkipSeconds, onDoubleTapSkip) }
             item { Header("Security") }
             item {
@@ -382,6 +406,85 @@ fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, o
                     enabled = times < com.clpstudio.filesmanager.data.LoopPolicy.MAX_TIMES,
                 ) { Icon(Icons.Filled.Add, "More") }
             }
+        }
+    }
+}
+
+/** Settings → "Group files by": headers in lists sorted by date (Daily / Weekly / Monthly / Quarterly / Yearly / None). */
+@Composable
+fun GroupByCard(value: com.clpstudio.filesmanager.data.DateGrouping, onChange: (com.clpstudio.filesmanager.data.DateGrouping) -> Unit) {
+    Card {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RowIcon(Icons.Filled.CalendarMonth)
+            Column(Modifier.weight(1f)) {
+                Text("Group files by", style = MaterialTheme.typography.titleSmall)
+                Text("Only when a list is sorted by Date: headers like \"October 2026\". In select mode tick a header to select that group.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.size(10.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            val order = listOf(
+                com.clpstudio.filesmanager.data.DateGrouping.DAY, com.clpstudio.filesmanager.data.DateGrouping.WEEK,
+                com.clpstudio.filesmanager.data.DateGrouping.MONTH, com.clpstudio.filesmanager.data.DateGrouping.QUARTER,
+                com.clpstudio.filesmanager.data.DateGrouping.YEAR, com.clpstudio.filesmanager.data.DateGrouping.NONE,
+            )
+            order.forEach { g ->
+                androidx.compose.material3.FilterChip(
+                    selected = g == value, onClick = { onChange(g) }, label = { Text(g.label) },
+                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = androidx.compose.ui.graphics.Color.White,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/** Settings → Default sort: Date / Name / Size / Type and the direction (Date, newest first by default). */
+@Composable
+fun DefaultSortCard(by: com.clpstudio.filesmanager.data.SortBy, ascending: Boolean, onChange: (com.clpstudio.filesmanager.data.SortBy, Boolean) -> Unit) {
+    val opts = listOf(
+        com.clpstudio.filesmanager.data.SortBy.DATE to "Date", com.clpstudio.filesmanager.data.SortBy.NAME to "Name",
+        com.clpstudio.filesmanager.data.SortBy.SIZE to "Size", com.clpstudio.filesmanager.data.SortBy.TYPE to "Type",
+    )
+    Card {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RowIcon(Icons.AutoMirrored.Filled.Sort)
+            Column(Modifier.weight(1f)) {
+                Text("Default sort", style = MaterialTheme.typography.titleSmall)
+                Text("Every list and folder opens sorted like this. The sort menu on a screen still changes it there.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.size(10.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            opts.forEachIndexed { i, (s, label) ->
+                SegmentedButton(selected = by == s, onClick = { onChange(s, ascending) }, shape = SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label) }
+            }
+        }
+        Spacer(Modifier.size(8.dp))
+        val (descLabel, ascLabel) = when (by) {
+            com.clpstudio.filesmanager.data.SortBy.DATE -> "Newest first" to "Oldest first"
+            com.clpstudio.filesmanager.data.SortBy.SIZE -> "Largest first" to "Smallest first"
+            else -> "Z to A" to "A to Z"
+        }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SegmentedButton(selected = !ascending, onClick = { onChange(by, false) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text(descLabel) }
+            SegmentedButton(selected = ascending, onClick = { onChange(by, true) }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text(ascLabel) }
+        }
+    }
+}
+
+/** Settings → Folder filters: opens its own screen. */
+@Composable
+fun FolderFiltersRow(onClick: () -> Unit) {
+    Card(Modifier.clickable(onClick = onClick)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RowIcon(Icons.Filled.FilterList)
+            Column(Modifier.weight(1f)) {
+                Text("Folder filters", style = MaterialTheme.typography.titleSmall)
+                Text("Choose which chips (Camera, Screenshots, WhatsApp...) show above your lists, and their order.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
