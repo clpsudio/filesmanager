@@ -53,6 +53,7 @@ class Opener(private val context: Context, private val nav: NavController) {
             FileKind.TEXT -> nav.navigate(Routes.text(Uri.fromFile(file), item.name))
             FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) nav.navigate(Routes.zip(item.path)) else nav.navigate(Routes.info(item.path))
             FileKind.APK -> installApk(context, file)
+            FileKind.FONT -> nav.navigate(Routes.font(Uri.fromFile(file), item.name))
             FileKind.DOCUMENT, FileKind.OTHER, FileKind.FOLDER -> nav.navigate(Routes.info(item.path))
         }
     }

@@ -42,6 +42,7 @@ class FilesApp : Application(), SingletonImageLoader.Factory {
                 add(VideoFrameDecoder.Factory())
                 if (Build.VERSION.SDK_INT >= 28) add(AnimatedImageDecoder.Factory()) else add(GifDecoder.Factory())
                 add(SvgDecoder.Factory())
+                add(com.clpstudio.filesmanager.thumbs.RawPreviewFetcher.Factory())
                 add(AudioArtFetcher.Factory())
                 add(PdfThumbFetcher.Factory())
                 add(AppIconFetcher.ApkFactory())

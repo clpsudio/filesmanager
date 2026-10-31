@@ -21,6 +21,8 @@ object Routes {
     fun image(path: String) = "image?path=${Uri.encode(path)}"
     fun pdf(uri: Uri, name: String) = "pdf?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun text(uri: Uri, name: String) = "text?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
+    fun font(uri: Uri, name: String) = "font?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
+    fun hex(uri: Uri, name: String) = "hex?uri=${Uri.encode(uri.toString())}&name=${Uri.encode(name)}"
     fun zip(path: String) = "zip?path=${Uri.encode(path)}"
     fun info(path: String) = "info?path=${Uri.encode(path)}"
 }

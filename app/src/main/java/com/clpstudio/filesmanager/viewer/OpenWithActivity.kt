@@ -22,6 +22,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -123,8 +126,16 @@ class OpenWithActivity : ComponentActivity() {
                     FileInfoScreen(f, back)
                 }
             }
-            else -> FileInfoScreen(f, back) {
-                IconButton(onClick = { scope.launch { saveCopy(f) } }) { Icon(Icons.Filled.SaveAlt, "Save a copy to Downloads") }
+            FileKind.FONT -> FontPreviewScreen(f.uri, f.name, back)
+            else -> {
+                var mode by remember { mutableStateOf(0) }
+                when (mode) {
+                    1 -> TextViewerScreen(f.uri, f.name, { mode = 0 }, actions)
+                    2 -> HexViewerScreen(f.uri, f.name) { mode = 0 }
+                    else -> FileInfoScreen(f, back, onViewText = { mode = 1 }, onViewHex = { mode = 2 }) {
+                        IconButton(onClick = { scope.launch { saveCopy(f) } }) { Icon(Icons.Filled.SaveAlt, "Save a copy to Downloads") }
+                    }
+                }
             }
         }
     }

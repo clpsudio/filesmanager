@@ -3,7 +3,7 @@ package com.clpstudio.filesmanager.data
 import java.util.Locale
 
 /** What kind of file something is, decided by its extension (fast, no I/O). */
-enum class FileKind { FOLDER, IMAGE, VIDEO, AUDIO, PDF, TEXT, DOCUMENT, APK, ARCHIVE, OTHER }
+enum class FileKind { FOLDER, IMAGE, VIDEO, AUDIO, PDF, TEXT, DOCUMENT, APK, ARCHIVE, FONT, OTHER }
 
 object FileTypes {
     val imageExt = setOf("jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "svg", "ico", "dng")
@@ -25,6 +25,9 @@ object FileTypes {
         "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub", "pages",
         "numbers", "key", "wps", "xlsm", "dotx",
     )
+    /** Camera RAW: shown through their embedded JPEG preview. */
+    val rawExt = setOf("dng", "cr2", "nef", "nrw", "arw", "rw2", "orf", "pef", "srw", "raf")
+    val fontExt = setOf("ttf", "otf", "ttc")
     val apkExt = setOf("apk", "apks", "xapk", "apkm")
     val archiveExt = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "zst", "lz", "cab", "iso", "jar")
 
@@ -39,7 +42,7 @@ object FileTypes {
     fun kindOf(name: String, isDirectory: Boolean = false): FileKind {
         if (isDirectory) return FileKind.FOLDER
         return when (val ext = extension(name)) {
-            in imageExt -> FileKind.IMAGE
+            in imageExt, in rawExt -> FileKind.IMAGE
             in videoExt -> FileKind.VIDEO
             in audioExt -> FileKind.AUDIO
             "pdf" -> FileKind.PDF
@@ -47,6 +50,7 @@ object FileTypes {
             in officeExt -> FileKind.DOCUMENT
             in apkExt -> FileKind.APK
             in archiveExt -> FileKind.ARCHIVE
+            in fontExt -> FileKind.FONT
             else -> if (ext.isEmpty()) FileKind.OTHER else FileKind.OTHER
         }
     }
@@ -56,6 +60,7 @@ object FileTypes {
         if (mime.isNullOrBlank()) return null
         val m = mime.lowercase(Locale.ROOT)
         return when {
+            m.startsWith("font/") || m == "application/x-font-ttf" || m == "application/font-sfnt" -> FileKind.FONT
             m.startsWith("image/") -> FileKind.IMAGE
             m.startsWith("video/") -> FileKind.VIDEO
             m.startsWith("audio/") || m == "application/ogg" -> FileKind.AUDIO

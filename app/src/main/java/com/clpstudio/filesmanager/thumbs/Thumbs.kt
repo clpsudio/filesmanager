@@ -22,6 +22,28 @@ import com.clpstudio.filesmanager.data.FileItem
 import com.clpstudio.filesmanager.data.FileKind
 import java.io.File
 
+/**
+ * Camera RAW (DNG, CR2, NEF, ARW...): the JPEG preview embedded in the file, read with
+ * ExifInterface (offline). Returns null for anything else so Coil's own decoders take over.
+ */
+class RawPreviewFetcher(private val path: String) : Fetcher {
+    override suspend fun fetch(): FetchResult? = try {
+        val exif = androidx.exifinterface.media.ExifInterface(path)
+        exif.thumbnailBitmap?.let { ImageFetchResult(it.asImage(), true, DataSource.DISK) }
+    } catch (_: Exception) {
+        null
+    }
+
+    class Factory : Fetcher.Factory<coil3.Uri> {
+        override fun create(data: coil3.Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
+            val path = data.path ?: return null
+            if (data.scheme != null && data.scheme != "file") return null
+            if (com.clpstudio.filesmanager.data.FileTypes.extension(path) !in com.clpstudio.filesmanager.data.FileTypes.rawExt) return null
+            return RawPreviewFetcher(path)
+        }
+    }
+}
+
 /** Thumbnail models: Coil picks the right fetcher from the model's type. */
 data class AudioArt(val path: String, val modified: Long)
 data class PdfThumb(val path: String, val modified: Long)

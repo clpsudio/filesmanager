@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FontDownload
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -62,6 +63,7 @@ fun kindIcon(kind: FileKind): ImageVector = when (kind) {
     FileKind.DOCUMENT -> Icons.Filled.Description
     FileKind.APK -> Icons.Filled.Android
     FileKind.ARCHIVE -> Icons.Filled.FolderZip
+    FileKind.FONT -> Icons.Filled.FontDownload
     FileKind.OTHER -> Icons.AutoMirrored.Filled.InsertDriveFile
 }
 
@@ -75,6 +77,7 @@ fun kindColor(kind: FileKind): Color = when (kind) {
     FileKind.DOCUMENT -> Color(0xFF2563EB)
     FileKind.APK -> Color(0xFF65A30D)
     FileKind.ARCHIVE -> Color(0xFFD97706)
+    FileKind.FONT -> Color(0xFF0D9488)
     FileKind.OTHER -> Color(0xFF6B7280)
 }
 

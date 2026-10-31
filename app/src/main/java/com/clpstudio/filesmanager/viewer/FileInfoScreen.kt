@@ -19,6 +19,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,7 +41,13 @@ import java.io.File
 
 /** For types without an in-app viewer yet (Office, RAR, 7z, unknown): info, open with, share. */
 @Composable
-fun FileInfoScreen(file: OpenedFile, onBack: () -> Unit, extra: @Composable () -> Unit = {}) {
+fun FileInfoScreen(
+    file: OpenedFile,
+    onBack: () -> Unit,
+    onViewText: (() -> Unit)? = null,
+    onViewHex: (() -> Unit)? = null,
+    extra: @Composable () -> Unit = {},
+) {
     val context = LocalContext.current
     val shareUri = file.path?.let { FileOps.uriFor(context, File(it)) } ?: file.uri
     GlassScaffold(topBar = { GlassTopBar(file.name, onBack = onBack) }) { padding ->
@@ -78,6 +86,10 @@ fun FileInfoScreen(file: OpenedFile, onBack: () -> Unit, extra: @Composable () -
                 }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Share, null)
                     Text("  Share")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    if (onViewText != null) TextButton(onClick = onViewText, modifier = Modifier.weight(1f)) { Text("View as text") }
+                    if (onViewHex != null) TextButton(onClick = onViewHex, modifier = Modifier.weight(1f)) { Text("Hex view") }
                 }
                 extra()
             }

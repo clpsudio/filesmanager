@@ -43,6 +43,8 @@ import com.clpstudio.filesmanager.ui.screens.SettingsScreen
 import com.clpstudio.filesmanager.ui.screens.StoragePermission
 import com.clpstudio.filesmanager.ui.screens.typeFilter
 import com.clpstudio.filesmanager.viewer.FileInfoScreen
+import com.clpstudio.filesmanager.viewer.FontPreviewScreen
+import com.clpstudio.filesmanager.viewer.HexViewerScreen
 import com.clpstudio.filesmanager.data.ExternalFiles
 import com.clpstudio.filesmanager.viewer.ImageViewerScreen
 import com.clpstudio.filesmanager.viewer.MusicPlayerScreen
@@ -167,7 +169,18 @@ fun AppRoot(nowPlayingTick: Int = 0) {
         }
         composable("info?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             val path = e.arguments?.getString("path").orEmpty()
-            FileInfoScreen(ExternalFiles.fromFile(File(path)), back)
+            val f = File(path)
+            FileInfoScreen(
+                ExternalFiles.fromFile(f), back,
+                onViewText = { nav.navigate(Routes.text(Uri.fromFile(f), f.name)) },
+                onViewHex = { nav.navigate(Routes.hex(Uri.fromFile(f), f.name)) },
+            )
+        }
+        composable("font?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
+            FontPreviewScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
+        }
+        composable("hex?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
+            HexViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
     }
 
