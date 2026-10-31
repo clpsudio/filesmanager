@@ -13,9 +13,10 @@ enum class OfficeFormat { DOCX, XLSX, PPTX }
  * (files shared from other apps often have no extension), else from the parts inside the zip.
  */
 object OfficeFormats {
-    private val docx = setOf("docx", "dotx", "docm", "dotm")
-    private val xlsx = setOf("xlsx", "xlsm")
-    private val pptx = setOf("pptx")
+    // Item 11 (F11): Word / Excel / PowerPoint 97–2003 open in the same viewers (own binary readers).
+    private val docx = setOf("docx", "dotx", "docm", "dotm", "doc", "dot")
+    private val xlsx = setOf("xlsx", "xlsm", "xls", "xlt")
+    private val pptx = setOf("pptx", "ppt", "pps", "pot")
 
     fun byExtension(name: String): OfficeFormat? = when (FileTypes.extension(name)) {
         in docx -> OfficeFormat.DOCX
@@ -29,16 +30,16 @@ object OfficeFormats {
         return when {
             m.startsWith("application/vnd.openxmlformats-officedocument.wordprocessingml.") ||
                 m == "application/vnd.ms-word.document.macroenabled.12" ||
-                m == "application/vnd.ms-word.template.macroenabled.12" -> OfficeFormat.DOCX
+                m == "application/vnd.ms-word.template.macroenabled.12" || m == "application/msword" -> OfficeFormat.DOCX
             m.startsWith("application/vnd.openxmlformats-officedocument.spreadsheetml.") ||
-                m == "application/vnd.ms-excel.sheet.macroenabled.12" -> OfficeFormat.XLSX
-            m.startsWith("application/vnd.openxmlformats-officedocument.presentationml.presentation") -> OfficeFormat.PPTX
+                m == "application/vnd.ms-excel.sheet.macroenabled.12" || m == "application/vnd.ms-excel" -> OfficeFormat.XLSX
+            m.startsWith("application/vnd.openxmlformats-officedocument.presentationml.presentation") || m == "application/vnd.ms-powerpoint" -> OfficeFormat.PPTX
             else -> null
         }
     }
 
     /** Looks inside the zip (slow-ish: call off the main thread). */
-    fun sniff(file: File): OfficeFormat? = try {
+    fun sniff(file: File): OfficeFormat? = if (Cfb.isCfb(file)) sniffLegacy(file) else try {
         ZipFile(file).use { z ->
             when {
                 z.getEntry("word/document.xml") != null -> OfficeFormat.DOCX
@@ -59,6 +60,17 @@ object OfficeFormats {
         null
     }
 
+    private fun sniffLegacy(file: File): OfficeFormat? = runCatching {
+        Cfb.open(file).use { c ->
+            when {
+                c.has("WordDocument") -> OfficeFormat.DOCX
+                c.has("Workbook") || c.has("Book") -> OfficeFormat.XLSX
+                c.has("PowerPoint Document") -> OfficeFormat.PPTX
+                else -> null
+            }
+        }
+    }.getOrNull()
+
     /** Extension / MIME only (no file access): safe on the main thread. */
     fun quick(name: String, mime: String? = null): OfficeFormat? = byExtension(name) ?: byMime(mime)
 
@@ -69,9 +81,6 @@ object OfficeFormats {
      * a short name for the "no preview" card, or null.
      */
     fun noPreviewLabel(name: String): String? = when (FileTypes.extension(name)) {
-        "doc", "dot" -> "Word 97–2003 documents (.doc)"
-        "xls" -> "Excel 97–2003 sheets (.xls)"
-        "ppt", "pps" -> "PowerPoint 97–2003 slides (.ppt)"
         "odt" -> "OpenDocument text (.odt)"
         "ods" -> "OpenDocument sheets (.ods)"
         "odp" -> "OpenDocument slides (.odp)"

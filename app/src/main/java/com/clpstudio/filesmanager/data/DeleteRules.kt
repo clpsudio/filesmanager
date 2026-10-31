@@ -84,7 +84,8 @@ object PermanentDelete {
             if (f.exists()) {
                 if (f.isDirectory) f.walkTopDown().take(2000).filter { it.isFile }.forEach { scan += it.absolutePath }
                 val parent = f.parentFile
-                if (f.deleteRecursively() || !f.exists()) {
+                // Item 1 (F11): SD card on Android 8–10 → through the card permission.
+                if (SafAccess.deleteRecursively(context, f) || !f.exists()) {
                     done++
                     gone += f.absolutePath
                     HiddenScan.forget(f.absolutePath)

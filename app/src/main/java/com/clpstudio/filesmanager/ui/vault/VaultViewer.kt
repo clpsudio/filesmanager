@@ -106,8 +106,8 @@ fun VaultViewerScreen(startId: String, onBack: () -> Unit, onOpenDoc: (VaultItem
             when (item.kind) {
                 FileKind.IMAGE -> VaultImagePage(item)
                 FileKind.VIDEO, FileKind.AUDIO -> VaultMediaPage(item, active = pager.currentPage == page)
-                FileKind.PDF, FileKind.TEXT -> VaultDocPage(item, "Open") { onOpenDoc(item) }
-                else -> VaultDocPage(item, null) {}
+                // Item 13: every other type opens in the app's own viewer too.
+                else -> VaultDocPage(item, "Open") { onOpenDoc(item) }
             }
         }
         Box(Modifier.align(Alignment.TopCenter)) {

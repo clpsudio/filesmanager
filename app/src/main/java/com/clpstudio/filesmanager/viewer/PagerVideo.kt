@@ -115,6 +115,8 @@ class PagerVideo(context: Context) {
     var onNext: (() -> Unit)? = null
     /** "2/3" while "Play N times" is counting. */
     var loopHint by mutableStateOf<String?>(null)
+    /** Item 12 (F11): why this video can't play, shown on the page instead of a stuck black screen. */
+    var error by mutableStateOf<String?>(null)
         private set
     private var settings: AppSettings = AppSettings()
 
@@ -127,6 +129,9 @@ class PagerVideo(context: Context) {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             override fun onRenderedFirstFrame() { firstFrame = true }
+            override fun onPlayerError(e: androidx.media3.common.PlaybackException) {
+                error = VideoErrors.message(path.orEmpty().substringAfterLast('/'), e.errorCode)
+            }
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                 val turned = videoSize.unappliedRotationDegrees % 180 != 0
                 aspect = if (turned) VideoPip.clampAspect(videoSize.height, videoSize.width) else VideoPip.clampAspect(videoSize.width, videoSize.height)
@@ -154,6 +159,7 @@ class PagerVideo(context: Context) {
         path = item.path
         repeats = 0
         firstFrame = false
+        error = null
         if (fast) { fast = false } // a hold never carries over to the next video
         position = 0L
         duration = 0L
@@ -412,6 +418,8 @@ fun InlineVideoPage(
             },
         )
         if (active) SkipGlow(video)
+        val err = video.error
+        if (active && err != null) VideoErrorCard(item, err, Modifier.align(Alignment.Center))
         // Leaving the page while holding: back to the chosen speed.
         androidx.compose.runtime.DisposableEffect(active) { onDispose { if (active) video.endFast() } }
         if (active && video.fast) SpeedPill(Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
@@ -467,5 +475,45 @@ object VideoSpeed {
     /** Only the menu's speeds; anything else falls back to normal. */
     fun set(s: Float) {
         value = if (s in SPEEDS) s else 1f
+    }
+}
+
+
+/** Item 12 (F11): plain words for a video the phone can't play (pure, unit tested). */
+object VideoErrors {
+    /** Containers / codecs no Android phone decodes and Files doesn't bundle a decoder for. */
+    private val windowsMedia = setOf("wmv", "asf", "wma")
+    private val realMedia = setOf("rm", "rmvb")
+
+    fun message(name: String, errorCode: Int): String {
+        val ext = com.clpstudio.filesmanager.data.FileTypes.extension(name)
+        return when {
+            ext in windowsMedia -> "Files can't play Windows Media (WMV) videos. Android has no WMV player built in and Files doesn't include one yet. Open it with another app."
+            ext in realMedia -> "Files can't play RealMedia (RMVB) videos. Open it with another app."
+            errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+                errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ->
+                "This phone can't decode this video's format. Open it with another app."
+            errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ->
+                "This video file's format isn't supported here, or the file is damaged. Open it with another app."
+            errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "This video isn't there any more."
+            else -> "This video can't be played here. Open it with another app."
+        }
+    }
+}
+
+@Composable
+private fun VideoErrorCard(item: FileItem, message: String, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.foundation.layout.Column(
+        modifier.padding(28.dp).background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        androidx.compose.material3.Text(message, color = Color.White, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
+        androidx.compose.material3.Button(onClick = {
+            val f = java.io.File(item.path)
+            runCatching { com.clpstudio.filesmanager.data.FileOps.openWithOtherApp(context, com.clpstudio.filesmanager.data.FileOps.uriFor(context, f), com.clpstudio.filesmanager.data.FileTypes.mimeOf(f.name)) }
+        }) { androidx.compose.material3.Text("Open with another app") }
     }
 }

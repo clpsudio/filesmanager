@@ -26,7 +26,7 @@ data class OpProgress(
     val fraction: Float get() = if (totalBytes > 0) (doneBytes.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
 }
 
-class FileOpException(message: String) : IOException(message)
+open class FileOpException(message: String) : IOException(message)
 
 object FileOps {
     private const val BUFFER = 256 * 1024
@@ -41,7 +41,8 @@ object FileOps {
         if (!isValidFileName(name)) throw FileOpException("That name can't be used")
         val dir = File(parent, name.trim())
         if (dir.exists()) throw FileOpException("A file or folder with that name already exists")
-        if (!dir.mkdirs()) throw FileOpException("Couldn't create the folder here")
+        // Item 1 (F11): an SD card on Android 8–10 is written through the kept card permission.
+        if (!SafAccess.mkdirsAny(runCatching { com.clpstudio.filesmanager.Graph.app }.getOrNull(), dir)) throw FileOpException("Couldn't create the folder here")
         return dir
     }
 
@@ -49,7 +50,7 @@ object FileOps {
         if (!isValidFileName(newName)) throw FileOpException("That name can't be used")
         val target = File(file.parentFile, newName.trim())
         if (target.exists()) throw FileOpException("A file or folder with that name already exists")
-        if (!file.renameTo(target)) throw FileOpException("Couldn't rename it")
+        if (!SafAccess.renameAny(context, file, target)) throw FileOpException("Couldn't rename it")
         Favorites.onMoved(file.absolutePath, target.absolutePath)
         runCatching { Playlists.get(context).pathChanged(file.absolutePath, target.absolutePath) }
         FileEvents.moved(file.absolutePath, target.absolutePath)
@@ -82,7 +83,7 @@ object FileOps {
         // A StatFs that reports a 0-byte volume knows nothing (emulated paths, tests): no check then.
         val free = runCatching { android.os.StatFs(targetDir.absolutePath) }.getOrNull()
             ?.takeIf { it.totalBytes > 0 }?.availableBytes
-        TransferRules.problem(total, free, targetDir.canWrite() || !targetDir.exists(), targetLoc, sameVolumeMove)
+        TransferRules.problem(total, free, !targetDir.exists() || SafAccess.canWrite(context, targetDir), targetLoc, sameVolumeMove)
             ?.let { throw FileOpException(it) }
         var done = 0L
         val results = ArrayList<File>()
@@ -96,23 +97,25 @@ object FileOps {
             val name = uniqueName(src.name, src.isDirectory) { File(targetDir, it).exists() }
             val dest = File(targetDir, name)
             onProgress(OpProgress(title, src.name, done, total, index, sources.size))
-            if (move && src.renameTo(dest)) {
+            val safMoved = move && !src.renameTo(dest) && sameVolumeMove && dest.name == src.name &&
+                SafAccess.applies(src.path, SdCards.removableRoots(context)) && SafAccess.move(context, src, targetDir)
+            if (move && (dest.exists() && !src.exists() || safMoved)) {
                 done += sizeOf(dest)
             } else {
                 try {
-                    copyRecursively(src, dest) { bytes, current ->
+                    copyRecursively(context, src, dest) { bytes, current ->
                         done += bytes
                         onProgress(OpProgress(title, current, done, total, index, sources.size))
                     }
                 } catch (e: Throwable) {
                     // Stopped or failed half-way: never leave a half-written copy behind (the
                     // original is untouched; a move only deletes it after a full copy).
-                    withContext(kotlinx.coroutines.NonCancellable) { runCatching { dest.deleteRecursively() } }
+                    withContext(kotlinx.coroutines.NonCancellable) { runCatching { SafAccess.deleteRecursively(context, dest) } }
                     if (e is kotlinx.coroutines.CancellationException || e is FileOpException) throw e
                     Diagnostics.log("transfer", "${src.path} -> ${dest.path} failed", e)
                     throw FileOpException(TransferRules.friendlyError(e, targetLoc))
                 }
-                if (move && !src.deleteRecursively()) throw FileOpException("Copied, but couldn't remove the original of ${src.name}")
+                if (move && !SafAccess.deleteRecursively(context, src)) throw FileOpException("Copied, but couldn't remove the original of ${src.name}")
             }
             if (move) {
                 scanPaths += src.absolutePath
@@ -130,14 +133,14 @@ object FileOps {
         results
     }
 
-    private suspend fun copyRecursively(src: File, dest: File, onBytes: (Long, String) -> Unit) {
+    private suspend fun copyRecursively(context: Context, src: File, dest: File, onBytes: (Long, String) -> Unit) {
         if (src.isDirectory) {
-            if (!dest.exists() && !dest.mkdirs()) throw FileOpException("Couldn't create ${dest.name}")
-            src.listFiles()?.forEach { child -> copyRecursively(child, File(dest, child.name), onBytes) }
+            if (!dest.exists() && !SafAccess.mkdirsAny(context, dest)) throw FileOpException("Couldn't create ${dest.name}")
+            src.listFiles()?.forEach { child -> copyRecursively(context, child, File(dest, child.name), onBytes) }
         } else {
-            dest.parentFile?.mkdirs()
+            dest.parentFile?.let { SafAccess.mkdirsAny(context, it) }
             src.inputStream().use { input ->
-                dest.outputStream().use { output ->
+                SafAccess.outputAny(context, dest).use { output ->
                     val buf = ByteArray(BUFFER)
                     while (true) {
                         coroutineContext.ensureActive()

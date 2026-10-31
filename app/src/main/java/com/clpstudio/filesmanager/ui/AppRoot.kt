@@ -103,6 +103,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         LocalMiniPlayerInset provides if (showMini && com.clpstudio.filesmanager.ui.screens.MiniPlayerPosition.fraction.collectAsState().value == 0f) com.clpstudio.filesmanager.ui.screens.MiniPlayerHeight else 0.dp,
         com.clpstudio.filesmanager.ui.components.LocalDateGrouping provides com.clpstudio.filesmanager.Graph.settings.collectAsState().value.dateGrouping,
     ) {
+    SafAccessDialog()
     NavHost(
         navController = nav,
         startDestination = Routes.HOME,
@@ -218,6 +219,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
         }
         composable("view?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
             val path = e.arguments?.getString("path").orEmpty()
+            VaultTempGuard(path, e, nav, back)
             com.clpstudio.filesmanager.viewer.FilePagerScreen(
                 paths = ViewerSession.files,
                 start = path,
@@ -235,9 +237,11 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
             TextViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
         composable("zip?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
+            VaultTempGuard(e.arguments?.getString("path").orEmpty(), e, nav, back)
             ZipViewerScreen(e.arguments?.getString("path").orEmpty(), back) { extracted -> opener.open(FileItem.of(extracted)) }
         }
         composable("apk?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
+            VaultTempGuard(e.arguments?.getString("path").orEmpty(), e, nav, back)
             com.clpstudio.filesmanager.viewer.ApkViewerScreen(
                 e.arguments?.getString("path").orEmpty(), back,
                 onBrowseFiles = { f -> nav.navigate(Routes.zip(f.absolutePath)) },
@@ -245,6 +249,7 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
             )
         }
         composable("epub?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
+            VaultTempGuard(e.arguments?.getString("path").orEmpty(), e, nav, back)
             com.clpstudio.filesmanager.viewer.EpubReaderScreen(File(e.arguments?.getString("path").orEmpty()), back)
         }
         composable("info?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType })) { e ->
@@ -257,9 +262,11 @@ fun AppRoot(nowPlayingTick: Int = 0, browsePath: String? = null, onBrowseHandled
             )
         }
         composable("font?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
+            Uri.parse(e.arguments?.getString("uri")).takeIf { it.scheme == "file" }?.path?.let { VaultTempGuard(it, e, nav, back) }
             FontPreviewScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
         composable("hex?uri={uri}&name={name}", arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("name") { type = NavType.StringType })) { e ->
+            VaultDocGuard(Uri.parse(e.arguments?.getString("uri")), back)
             HexViewerScreen(Uri.parse(e.arguments?.getString("uri")), e.arguments?.getString("name").orEmpty(), back)
         }
     }

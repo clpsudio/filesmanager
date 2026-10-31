@@ -157,14 +157,14 @@ class Round10cTest {
         val supported = listOf(
             "a.jpg", "a.heic", "a.avif", "a.webp", "a.gif", "a.svg", "a.mp4", "a.mkv", "a.3gp", "a.mp3", "a.m4a", "a.opus", "a.flac",
             "a.pdf", "a.txt", "a.json", "a.xml", "a.log", "a.csv", "a.srt", "a.vcf", "a.ics", "a.html", "a.md",
-            "a.docx", "a.xlsx", "a.pptx", "a.epub", "a.zip", "a.apk", "a.xapk", "a.ttf", "a.otf", "a.psd",
+            "a.docx", "a.xlsx", "a.pptx", "a.doc", "a.xls", "a.ppt", "a.epub", "a.zip", "a.apk", "a.xapk", "a.ttf", "a.otf", "a.psd",
         )
         for (n in supported) assertFalse(n, OpenRules.opensOutside(n))
         assertEquals(FileKind.TEXT, FileTypes.kindOf("contact.vcf"))
         assertEquals(FileKind.TEXT, FileTypes.kindOf("event.ics"))
         assertEquals(FileKind.FONT, FileTypes.kindOf("ABHILASH (1).ttf"))
         // Truly unsupported → Android's "Open with".
-        for (n in listOf("a.bin", "a.doc", "a.odt", "a.xyz")) assertTrue(n, OpenRules.opensOutside(n))
+        for (n in listOf("a.bin", "a.odt", "a.xyz")) // .doc opens in-app since F11 assertTrue(n, OpenRules.opensOutside(n))
         // The pager draws fonts itself.
         assertTrue(File("src/main/java/com/clpstudio/filesmanager/viewer/FilePagerScreen.kt").readText().contains("FileKind.FONT -> FontPreviewContent("))
     }

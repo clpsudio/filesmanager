@@ -74,8 +74,9 @@ class BinRepository(
             val isDir = f.isDirectory
             // Collect media paths before the move so the index forgets them.
             if (isDir) f.walkTopDown().take(2000).filter { it.isFile }.forEach { scan += it.absolutePath } else scan += f.absolutePath
+            // Item 1 (F11): on an SD card on Android 8–10 the original is removed through the card permission.
             val ok = f.renameTo(data) || run {
-                runCatching { f.copyRecursively(data, overwrite = true) }.isSuccess && f.deleteRecursively()
+                runCatching { f.copyRecursively(data, overwrite = true) }.isSuccess && SafAccess.deleteRecursively(context, f)
             }
             if (ok) {
                 val meta = JSONObject()
@@ -123,11 +124,11 @@ class BinRepository(
         for (e in entries) {
             val original = File(e.originalPath)
             val parent = original.parentFile ?: continue
-            parent.mkdirs()
+            SafAccess.mkdirsAny(context, parent)
             val name = uniqueName(original.name, e.isDir) { File(parent, it).exists() }
             val target = File(parent, name)
             val ok = e.dataFile.renameTo(target) || run {
-                runCatching { e.dataFile.copyRecursively(target, overwrite = false) }.isSuccess && e.dataFile.deleteRecursively()
+                SafAccess.copyTree(context, e.dataFile, target) && e.dataFile.deleteRecursively()
             }
             if (ok) {
                 metaOf(e).delete()

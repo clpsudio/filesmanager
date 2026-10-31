@@ -201,7 +201,7 @@ object Archives {
         onProgress: (OpProgress) -> Unit,
     ): Int {
         val root = target.canonicalFile
-        root.mkdirs()
+        SafAccess.mkdirsAny(SafAccess.appContext(), root)
         val title = "Extracting " + file.name
         var done = 0L
         var count = 0
@@ -231,10 +231,10 @@ object Archives {
                         if (e !in want) continue
                         coroutineContext.ensureActive()
                         val out = outFile(root, sevenZName(e), stripPrefix) ?: continue
-                        if (e.isDirectory) { out.mkdirs(); continue }
-                        out.parentFile?.mkdirs()
+                        if (e.isDirectory) { SafAccess.mkdirsAny(SafAccess.appContext(), out); continue }
+                        out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
                         try {
-                            progressing(out.outputStream().buffered(128 * 1024), total, all.size, out.name).use { o ->
+                            progressing(SafAccess.outputAny(SafAccess.appContext(), out).buffered(128 * 1024), total, all.size, out.name).use { o ->
                                 if (e.hasStream()) z.getInputStream(e).copyTo(o, 128 * 1024)
                             }
                         } catch (ex: Exception) {
@@ -255,10 +255,10 @@ object Archives {
                     for (h in all) {
                         coroutineContext.ensureActive()
                         val out = outFile(root, rarName(h), stripPrefix) ?: continue
-                        if (h.isDirectory) { out.mkdirs(); continue }
-                        out.parentFile?.mkdirs()
+                        if (h.isDirectory) { SafAccess.mkdirsAny(SafAccess.appContext(), out); continue }
+                        out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
                         try {
-                            progressing(out.outputStream().buffered(128 * 1024), total, all.size, out.name).use { o -> a.extractFile(h, o) }
+                            progressing(SafAccess.outputAny(SafAccess.appContext(), out).buffered(128 * 1024), total, all.size, out.name).use { o -> a.extractFile(h, o) }
                         } catch (ex: Exception) {
                             out.delete(); throw ex
                         }
@@ -280,18 +280,18 @@ object Archives {
             ArchiveFormat.SEVEN_Z -> wrapPassword(password) {
                 openSevenZ(file, password).use { z ->
                     val e = z.entries.firstOrNull { sevenZName(it) == entry && !it.isDirectory } ?: throw IOException("Not found in the archive: $entry")
-                    out.parentFile?.mkdirs()
+                    out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
                     try {
-                        out.outputStream().use { o -> if (e.hasStream()) z.getInputStream(e).use { it.copyTo(o, 128 * 1024) } }
+                        SafAccess.outputAny(SafAccess.appContext(), out).use { o -> if (e.hasStream()) z.getInputStream(e).use { it.copyTo(o, 128 * 1024) } }
                     } catch (ex: Exception) { out.delete(); throw ex }
                 }
             }
             ArchiveFormat.RAR -> wrapPassword(password) {
                 openRar(file, password).use { a ->
                     val h = a.fileHeaders.firstOrNull { rarName(it) == entry && !it.isDirectory } ?: throw IOException("Not found in the archive: $entry")
-                    out.parentFile?.mkdirs()
+                    out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
                     try {
-                        out.outputStream().use { o -> a.extractFile(h, o) }
+                        SafAccess.outputAny(SafAccess.appContext(), out).use { o -> a.extractFile(h, o) }
                     } catch (ex: Exception) { out.delete(); throw ex }
                 }
             }

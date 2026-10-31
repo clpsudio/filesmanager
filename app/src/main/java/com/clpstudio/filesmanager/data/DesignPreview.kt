@@ -344,9 +344,11 @@ object DesignPreview {
             if (s.contains("%PDF-")) return Result("", Image.PdfPage(file), "Page 1 (PDF compatible)")
             val thumb = xmpThumbnail(file)
             if (thumb != null) return Result("", Image.Encoded(thumb), "Embedded thumbnail")
+            // Item 9 (F11): PostScript-based AI / EPS: the TIFF or EPSI preview saved with it.
+            EpsPreview.read(file)?.let { return Result("", it, "Preview saved with the file") }
             return Result(
                 "", null,
-                if (s.startsWith("%!PS")) "Saved without \"PDF compatible\" and no thumbnail: no offline preview"
+                if (s.startsWith("%!PS") || start[0] == 0xC5.toByte()) "Saved without \"PDF compatible\" and without a preview image: nothing to show offline"
                 else "No preview inside this file",
             )
         }

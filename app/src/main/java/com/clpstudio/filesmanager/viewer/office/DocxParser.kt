@@ -199,6 +199,8 @@ object DocxParser {
 
     /** Parses [file]. Throws [OfficeParseException] when nothing at all can be read. */
     fun parse(file: File, maxBlocks: Int = MAX_BLOCKS): DocxDocument {
+        // Item 11 (F11): the 97–2003 binary format (.doc / .xls / .ppt) goes to its own reader, same viewer.
+        if (Cfb.isCfb(file)) return LegacyDoc.read(file)
         val zip = try {
             ZipFile(file)
         } catch (e: Exception) {

@@ -136,25 +136,27 @@ class DocxPreviewTest {
     @Test fun formatDetection() {
         assertEquals(OfficeFormat.DOCX, OfficeFormats.byExtension("Report.DOCX"))
         assertEquals(OfficeFormat.DOCX, OfficeFormats.byExtension("macro.docm"))
-        assertNull(OfficeFormats.byExtension("old.doc"))
+        assertEquals(OfficeFormat.DOCX, OfficeFormats.byExtension("old.doc")) // F11 item 11
+        assertNull(OfficeFormats.byExtension("old.odt"))
         assertEquals(OfficeFormat.DOCX, OfficeFormats.byMime("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
         assertEquals(OfficeFormat.XLSX, OfficeFormats.byMime("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
         assertEquals(OfficeFormat.PPTX, OfficeFormats.byMime("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
-        assertNull(OfficeFormats.byMime("application/msword"))
+        assertEquals(OfficeFormat.DOCX, OfficeFormats.byMime("application/msword")) // F11 item 11: .doc opens in-app
         // Open with: a content:// file named without an extension still gets the Word viewer.
         assertTrue(hasOfficeViewer("DOC-20261031-WA0003", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
         assertFalse(hasOfficeViewer("DOC-20261031-WA0003", "application/octet-stream"))
         assertEquals(OfficeFormat.DOCX, OfficeFormats.sniff(sample("word_sample.docx", "no_extension")))
         assertEquals(OfficeFormat.DOCX, OfficeFormats.detect("shared", null, sample("google_docs_style.docx", "shared")))
         assertNull(OfficeFormats.sniff(sample("legacy.doc")))
-        assertTrue(OfficeFormats.noPreviewMessage("old.doc").contains(".doc"))
-        assertFalse(OfficeFormats.noPreviewMessage("old.doc").contains("next update"))
+        assertTrue(OfficeFormats.noPreviewMessage("old.odt").contains(".odt"))
+        assertFalse(OfficeFormats.noPreviewMessage("old.odt").contains("next update"))
     }
 
     @Test fun thumbnailModels() {
         val d = sample("word_sample.docx")
         assertEquals(OfficeThumb(d.path, 5L), thumbModel(FileItem(d.path, d.name, false, d.length(), 5L)))
-        assertNull(thumbModel(FileItem("/x/old.doc", "old.doc", false, 10, 5L)))
+        assertNotNull(thumbModel(FileItem("/x/old.doc", "old.doc", false, 10, 5L))) // F11: .doc gets a snapshot thumbnail
+        assertNull(thumbModel(FileItem("/x/old.odt", "old.odt", false, 10, 5L)))
         assertEquals(FileKind.DOCUMENT, FileItem("/x/a.docm", "a.docm", false, 1, 1).kind)
     }
 

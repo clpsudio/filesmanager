@@ -67,6 +67,7 @@ object Vault {
         appContext = context.applicationContext
         prefs = appContext.getSharedPreferences("vault", Context.MODE_PRIVATE)
         store = VaultStore(StoragePaths.vaultDir(appContext), KeystoreKeyWrapper())
+        VaultTemp.init(appContext)
         refreshState()
     }
 
@@ -162,6 +163,7 @@ object Vault {
     fun lock() {
         if (!::store.isInitialized) return
         store.lock()
+        VaultTemp.wipeAll()
         thumbs.evictAll()
         _items.value = emptyList()
         refreshState()

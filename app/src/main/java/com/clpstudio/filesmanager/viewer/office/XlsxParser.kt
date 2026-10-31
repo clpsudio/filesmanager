@@ -46,6 +46,8 @@ object XlsxParser {
     const val MAX_COLS = 256
 
     fun parse(file: File): XlsxWorkbook {
+        // Item 11 (F11): the 97–2003 binary format (.doc / .xls / .ppt) goes to its own reader, same viewer.
+        if (Cfb.isCfb(file)) return LegacyXls.read(file)
         val zip = try {
             ZipFile(file)
         } catch (e: Exception) {

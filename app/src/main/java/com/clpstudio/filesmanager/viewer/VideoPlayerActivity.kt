@@ -97,6 +97,11 @@ class VideoPlayerActivity : ComponentActivity() {
     private val settings get() = Graph.settings.value
 
     private val listener = object : Player.Listener {
+        // Item 12 (F11): say why a video (e.g. WMV) can't play instead of a black screen.
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            val name = controller?.currentMediaItem?.mediaMetadata?.title?.toString() ?: intent?.data?.lastPathSegment.orEmpty()
+            android.widget.Toast.makeText(this@VideoPlayerActivity, VideoErrors.message(name, error.errorCode), android.widget.Toast.LENGTH_LONG).show()
+        }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

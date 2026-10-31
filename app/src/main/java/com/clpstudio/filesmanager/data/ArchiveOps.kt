@@ -147,7 +147,7 @@ object ArchiveOps {
             }
             val total = headers.filter { !it.isDirectory }.sumOf { it.uncompressedSize.coerceAtLeast(0) }
             val root = target.canonicalFile
-            root.mkdirs()
+            SafAccess.mkdirsAny(SafAccess.appContext(), root)
             var done = 0L
             var count = 0
             val title = "Extracting " + zip.name
@@ -159,13 +159,13 @@ object ArchiveOps {
                 val out = File(root, rel).canonicalFile
                 if (out != root && !out.path.startsWith(root.path + File.separator)) continue // zip slip
                 if (h.isDirectory) {
-                    out.mkdirs()
+                    SafAccess.mkdirsAny(SafAccess.appContext(), out)
                     continue
                 }
-                out.parentFile?.mkdirs()
+                out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
                 try {
                     z.getInputStream(h).use { input ->
-                        out.outputStream().use { o ->
+                        SafAccess.outputAny(SafAccess.appContext(), out).use { o ->
                             val buf = ByteArray(128 * 1024)
                             var last = 0L
                             while (true) {
@@ -199,9 +199,9 @@ object ArchiveOps {
         open(zip, password).use { z ->
             val h: FileHeader = z.getFileHeader(entry) ?: z.fileHeaders.firstOrNull { it.fileName.replace('\\', '/') == entry }
                 ?: throw IOException("Not found in the archive: $entry")
-            out.parentFile?.mkdirs()
+            out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
             try {
-                z.getInputStream(h).use { i -> out.outputStream().use { i.copyTo(it, 128 * 1024) } }
+                z.getInputStream(h).use { i -> SafAccess.outputAny(SafAccess.appContext(), out).use { i.copyTo(it, 128 * 1024) } }
             } catch (e: Exception) {
                 out.delete()
                 if (isWrongPassword(e)) throw WrongPasswordException()
@@ -238,7 +238,7 @@ object ArchiveOps {
         onProgress(OpProgress(title, totalBytes = total, totalItems = files.size))
         val tmp = File(out.parentFile, out.name + ".part")
         try {
-            ZipOutputStream(tmp.outputStream().buffered(256 * 1024), password?.takeIf { it.isNotEmpty() }).use { zos ->
+            ZipOutputStream(SafAccess.outputAny(SafAccess.appContext(), tmp).buffered(256 * 1024), password?.takeIf { it.isNotEmpty() }).use { zos ->
                 val buf = ByteArray(128 * 1024)
                 for ((f, name) in files) {
                     coroutineContext.ensureActive()
@@ -277,10 +277,10 @@ object ArchiveOps {
                     count++
                 }
             }
-            if (out.exists()) out.delete()
-            if (!tmp.renameTo(out)) throw IOException("Couldn't save ${out.name}")
+            if (out.exists()) SafAccess.deleteRecursively(SafAccess.appContext(), out)
+            if (!SafAccess.renameAny(SafAccess.appContext(), tmp, out)) throw IOException("Couldn't save ${out.name}")
         } catch (e: Throwable) {
-            tmp.delete()
+            SafAccess.deleteRecursively(SafAccess.appContext(), tmp)
             throw e
         }
         out

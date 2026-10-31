@@ -26,19 +26,32 @@ import kotlin.math.roundToInt
 /**
  * List / grid thumbnails for Office files, fully offline:
  *  1. the picture the saving app stored in the file (docProps/thumbnail.*), when there is one;
- *  2. for Word files without one, a small snapshot of the first page (white page, real text).
+ *  2. for files without one, a small snapshot: Word = the first page, Excel = the top-left of the first sheet
+ *     (grid, real values), PowerPoint = the first slide (title, text, first picture) — item 10 (F11).
  */
 object OfficeThumbnails {
     /** Blocks parsed for a snapshot: plenty for a first page, cheap for a huge document. */
     private const val SNAPSHOT_BLOCKS = 400
+    const val SNAPSHOT_MAX_BYTES = 40L shl 20
 
     fun load(file: File, format: OfficeFormat?, maxPx: Int): Bitmap? {
         val fmt = format ?: OfficeFormats.sniff(file) ?: return null
+        // Item 10/11: 97–2003 files have no stored thumbnail here; draw the same snapshot from the binary reader.
+        if (Cfb.isCfb(file)) return if (file.length() > SNAPSHOT_MAX_BYTES) null else runCatching {
+            when (fmt) {
+                OfficeFormat.DOCX -> DocxSnapshot.render(LegacyDoc.read(file), maxPx)
+                OfficeFormat.XLSX -> XlsxSnapshot.render(LegacyXls.read(file), maxPx)
+                OfficeFormat.PPTX -> PptxSnapshot.render(LegacyPpt.read(file), maxPx)
+            }
+        }.getOrNull()
         val zip = try { ZipFile(file) } catch (e: Exception) { return null }
         return zip.use { z ->
-            embedded(z, maxPx) ?: if (fmt == OfficeFormat.DOCX) {
-                runCatching { DocxSnapshot.render(DocxParser.parse(z, maxBlocks = SNAPSHOT_BLOCKS), maxPx) }.getOrNull()
-            } else null
+            embedded(z, maxPx) ?: when (fmt) {
+                OfficeFormat.DOCX -> runCatching { DocxSnapshot.render(DocxParser.parse(z, maxBlocks = SNAPSHOT_BLOCKS), maxPx) }.getOrNull()
+                // Big workbooks / decks: the full parse costs too much for a list thumbnail.
+                OfficeFormat.XLSX -> if (file.length() > SNAPSHOT_MAX_BYTES) null else runCatching { XlsxSnapshot.render(XlsxParser.parse(z), maxPx) }.getOrNull()
+                OfficeFormat.PPTX -> if (file.length() > SNAPSHOT_MAX_BYTES) null else runCatching { PptxSnapshot.render(PptxParser.parse(z), maxPx) }.getOrNull()
+            }
         }
     }
 
@@ -219,4 +232,133 @@ object DocxSnapshot {
         val h = hex.removePrefix("#")
         if (h.length != 6) null else (0xFF000000.toInt() or h.toInt(16))
     }.getOrNull()
+}
+
+
+/** Item 10: the top-left of the first visible sheet as a small grid with the real values. */
+object XlsxSnapshot {
+    const val ROWS = 14
+    const val COLS = 6
+
+    fun render(book: XlsxWorkbook, widthPx: Int = 256): Bitmap {
+        val w = widthPx.coerceIn(64, 1024)
+        val h = (w * 0.8f).roundToInt()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawColor(Color.WHITE)
+        val sheet = book.sheets.firstOrNull { !it.hidden } ?: book.sheets.firstOrNull()
+        val headerH = h / (ROWS + 1f)
+        val rowH = headerH
+        val headW = w * 0.08f
+        // Column widths in proportion to Excel's, over the visible columns.
+        val cols = (0 until COLS).map { sheet?.columnWidths?.get(it) ?: sheet?.defaultColumnWidth ?: 8.43f }
+        val total = cols.sum().coerceAtLeast(1f)
+        val colW = cols.map { it / total * (w - headW) }
+        val head = Paint().apply { color = 0xFFF1F3F6.toInt() }
+        c.drawRect(0f, 0f, w.toFloat(), headerH, head)
+        c.drawRect(0f, 0f, headW, h.toFloat(), head)
+        val grid = Paint().apply { color = 0xFFD6DAE0.toInt(); strokeWidth = max(1f, w / 400f) }
+        val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = INK; textSize = rowH * 0.55f }
+        val dim = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF6B7280.toInt(); textSize = rowH * 0.5f; textAlign = Paint.Align.CENTER }
+        var x = headW
+        for ((i, cw) in colW.withIndex()) {
+            c.drawText(('A' + i).toString(), x + cw / 2, headerH * 0.72f, dim)
+            x += cw
+        }
+        for (r in 0 until ROWS) {
+            val top = headerH + r * rowH
+            c.drawText((r + 1).toString(), headW / 2, top + rowH * 0.72f, dim)
+            var cx = headW
+            for (col in 0 until COLS) {
+                val cw = colW[col]
+                val cell = sheet?.cell(r, col)
+                if (cell != null) {
+                    cell.fillHex?.let { hex -> parse(hex)?.let { fc -> c.drawRect(cx, top, cx + cw, top + rowH, Paint().apply { color = fc }) } }
+                    if (cell.text.isNotEmpty()) {
+                        text.isFakeBoldText = cell.bold
+                        text.color = cell.colorHex?.let(::parse) ?: INK
+                        val s = TextUtilsCompat.ellipsize(cell.text, text, cw - rowH * 0.3f)
+                        val right = cell.align == DocAlign.END || (cell.align == null && cell.isNumber)
+                        val tx = if (right) cx + cw - rowH * 0.15f - text.measureText(s) else cx + rowH * 0.15f
+                        c.save(); c.clipRect(cx, top, cx + cw, top + rowH)
+                        c.drawText(s, tx, top + rowH * 0.72f, text)
+                        c.restore()
+                    }
+                }
+                cx += cw
+            }
+        }
+        // Grid lines.
+        var gx = headW
+        c.drawLine(gx, 0f, gx, h.toFloat(), grid)
+        for (cw in colW) { gx += cw; c.drawLine(gx, 0f, gx, h.toFloat(), grid) }
+        for (r in 0..ROWS) { val y = headerH + r * rowH; c.drawLine(0f, y, w.toFloat(), y, grid) }
+        c.drawLine(0f, headerH, w.toFloat(), headerH, grid)
+        c.drawRect(RectF(0.5f, 0.5f, w - 0.5f, h - 0.5f), Paint().apply { color = 0xFFD9DCE1.toInt(); style = Paint.Style.STROKE; strokeWidth = max(1f, w / 256f) })
+        return bmp
+    }
+
+    private const val INK = 0xFF111111.toInt()
+    private fun parse(hex: String): Int? = runCatching { val h = hex.removePrefix("#").takeLast(6); if (h.length != 6) null else (0xFF000000.toInt() or h.toInt(16)) }.getOrNull()
+}
+
+/** Item 10: the first slide (16:9 or the deck's own shape): title, text lines and its first picture. */
+object PptxSnapshot {
+    fun render(deck: PptxPresentation, widthPx: Int = 256): Bitmap {
+        val w = widthPx.coerceIn(64, 1024)
+        val ratio = (deck.slideHeightPt / deck.slideWidthPt).coerceIn(0.4f, 1.5f)
+        val h = (w * ratio).roundToInt()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawColor(Color.WHITE)
+        val slide = deck.slides.firstOrNull { !it.hidden } ?: deck.slides.firstOrNull()
+        val pad = w * 0.07f
+        var y = pad
+        val paras = slide?.items?.filterIsInstance<SlideItem.Paragraph>().orEmpty().filter { it.text.isNotBlank() }
+        val pic = slide?.items?.filterIsInstance<SlideItem.Picture>()?.firstNotNullOfOrNull { p -> deck.images[p.path]?.let { decodeOfficeImage(it, w) } }
+        val title = paras.firstOrNull { it.isTitle } ?: paras.firstOrNull()
+        val body = paras.filter { it !== title }
+        val textW = if (pic != null && body.isNotEmpty()) (w - 2 * pad) * 0.55f else w - 2 * pad
+        if (title != null) {
+            val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF111111.toInt(); textSize = h * 0.11f; isFakeBoldText = true }
+            val l = StaticLayout.Builder.obtain(title.text, 0, title.text.length, tp, (w - 2 * pad).toInt()).setMaxLines(2)
+                .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                .setAlignment(if (body.isEmpty() && pic == null) Layout.Alignment.ALIGN_CENTER else Layout.Alignment.ALIGN_NORMAL).setIncludePad(false).build()
+            if (body.isEmpty() && pic == null) y = (h - l.height) / 2f
+            c.save(); c.translate(pad, y); l.draw(c); c.restore()
+            y += l.height + h * 0.05f
+        }
+        val bp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF333333.toInt(); textSize = h * 0.065f }
+        val bodyTop = y
+        for (p in body) {
+            if (y > h - pad) break
+            val t = (p.bullet?.let { "$it " } ?: "") + p.text
+            val indent = p.level * bp.textSize
+            val l = StaticLayout.Builder.obtain(t, 0, t.length, bp, (textW - indent).toInt().coerceAtLeast(8)).setMaxLines(2)
+                .setEllipsize(android.text.TextUtils.TruncateAt.END).setIncludePad(false).build()
+            c.save(); c.translate(pad + indent, y); l.draw(c); c.restore()
+            y += l.height + bp.textSize * 0.35f
+        }
+        if (pic != null) {
+            val left = if (body.isNotEmpty()) pad + textW + pad * 0.5f else pad
+            val boxW = w - pad - left
+            val boxH = h - pad - bodyTop
+            if (boxW > 8 && boxH > 8) {
+                val s = min(boxW / pic.width, boxH / pic.height)
+                val dw = pic.width * s
+                val dh = pic.height * s
+                val dx = left + (boxW - dw) / 2
+                val dy = bodyTop + (boxH - dh) / 2
+                c.drawBitmap(pic, null, RectF(dx, dy, dx + dw, dy + dh), Paint(Paint.FILTER_BITMAP_FLAG))
+            }
+        }
+        c.drawRect(RectF(0.5f, 0.5f, w - 0.5f, h - 0.5f), Paint().apply { color = 0xFFD9DCE1.toInt(); style = Paint.Style.STROKE; strokeWidth = max(1f, w / 256f) })
+        return bmp
+    }
+}
+
+/** android.text.TextUtils.ellipsize without the CharSequence dance. */
+internal object TextUtilsCompat {
+    fun ellipsize(s: String, p: TextPaint, width: Float): String =
+        android.text.TextUtils.ellipsize(s, p, width.coerceAtLeast(1f), android.text.TextUtils.TruncateAt.END).toString()
 }
