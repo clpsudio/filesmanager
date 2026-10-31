@@ -6,6 +6,7 @@ import com.clpstudio.filesmanager.viewer.MixedPlaylist
 import com.clpstudio.filesmanager.viewer.SPEEDS
 import com.clpstudio.filesmanager.viewer.SwipeAction
 import com.clpstudio.filesmanager.viewer.VideoGestureMath
+import com.clpstudio.filesmanager.viewer.VideoGesture
 import com.clpstudio.filesmanager.viewer.ViewerGestureMath
 import com.clpstudio.filesmanager.viewer.ViewerKind
 import com.clpstudio.filesmanager.viewer.Zone
@@ -20,7 +21,7 @@ class VideoGestureMathTest {
     private val lock = 16f * 2.75f
 
     private fun gesture(x: Float, dx: Float, dy: Float): String {
-        val zone = ViewerGestureMath.zoneOf(x, w)
+        val zone = VideoGestureMath.sideZoneOf(x, w)
         return when (ViewerGestureMath.lockDirection(dx, dy, lock)) {
             Axis.NONE -> "none"
             Axis.HORIZONTAL -> VideoGestureMath.horizontalAction(zone).name
@@ -28,17 +29,40 @@ class VideoGestureMathTest {
         }
     }
 
-    @Test fun sidewaysOnTheSidesScrubs() {
-        assertEquals("SCRUB", gesture(100f, 200f, 10f))
-        assertEquals("SCRUB", gesture(1000f, -200f, -20f))
-        assertEquals(HorizontalAction.SCRUB, VideoGestureMath.horizontalAction(Zone.LEFT))
-        assertEquals(HorizontalAction.SCRUB, VideoGestureMath.horizontalAction(Zone.RIGHT))
+    // Charan, Oct 31 14:26: timeline only in the middle, sides move to another file.
+    @Test fun sidewaysOnTheSidesPages() {
+        assertEquals("PAGE", gesture(100f, 200f, 10f))
+        assertEquals("PAGE", gesture(1000f, -200f, -20f))
+        assertEquals(HorizontalAction.PAGE, VideoGestureMath.horizontalAction(Zone.LEFT))
+        assertEquals(HorizontalAction.PAGE, VideoGestureMath.horizontalAction(Zone.RIGHT))
     }
 
-    @Test fun sidewaysInTheMiddlePages() {
-        assertEquals("PAGE", gesture(540f, 200f, 0f))
-        assertEquals("PAGE", gesture(540f, -200f, 30f))
-        assertEquals(HorizontalAction.PAGE, VideoGestureMath.horizontalAction(Zone.MIDDLE))
+    @Test fun sidewaysInTheMiddleScrubs() {
+        assertEquals("SCRUB", gesture(540f, 200f, 0f))
+        assertEquals("SCRUB", gesture(300f, -200f, 30f))
+        assertEquals(HorizontalAction.SCRUB, VideoGestureMath.horizontalAction(Zone.MIDDLE))
+    }
+
+    @Test fun zonesAre20_60_20() {
+        assertEquals(Zone.LEFT, VideoGestureMath.sideZoneOf(0f, w))
+        assertEquals(Zone.LEFT, VideoGestureMath.sideZoneOf(215f, w))
+        assertEquals(Zone.MIDDLE, VideoGestureMath.sideZoneOf(217f, w))
+        assertEquals(Zone.MIDDLE, VideoGestureMath.sideZoneOf(863f, w))
+        assertEquals(Zone.RIGHT, VideoGestureMath.sideZoneOf(865f, w))
+        assertEquals(Zone.MIDDLE, VideoGestureMath.sideZoneOf(5f, 0f))
+    }
+
+    @Test fun classifierCoversEveryGesture() {
+        val c = { x: Float, axis: Axis, dy: Float -> VideoGestureMath.classify(x, w, axis, dy) }
+        assertEquals(VideoGesture.SCRUB, c(540f, Axis.HORIZONTAL, 0f))
+        assertEquals(VideoGesture.PAGE, c(50f, Axis.HORIZONTAL, 0f))
+        assertEquals(VideoGesture.PAGE, c(1050f, Axis.HORIZONTAL, 0f))
+        assertEquals(VideoGesture.BRIGHTNESS, c(50f, Axis.VERTICAL, -100f))
+        assertEquals(VideoGesture.BRIGHTNESS, c(50f, Axis.VERTICAL, 100f)) // a side drag down never closes
+        assertEquals(VideoGesture.VOLUME, c(1050f, Axis.VERTICAL, 100f))
+        assertEquals(VideoGesture.DISMISS, c(540f, Axis.VERTICAL, 100f))
+        assertEquals(VideoGesture.INFO, c(540f, Axis.VERTICAL, -100f))
+        assertEquals(VideoGesture.NONE, c(540f, Axis.NONE, 0f))
     }
 
     @Test fun verticalKeepsBrightnessVolumeInfoClose() {

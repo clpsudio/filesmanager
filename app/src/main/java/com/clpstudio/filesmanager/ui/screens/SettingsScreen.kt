@@ -374,7 +374,7 @@ fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, o
             Column(Modifier.weight(1f)) {
                 Text("Loop videos", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Play the same video again when it ends. The Loop button in the player changes this too.",
+                    "Forever plays the same video again and again. N times plays it N times, then the next video. Off plays the next video.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -383,7 +383,7 @@ fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, o
         }
         Spacer(Modifier.size(10.dp))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            val labels = listOf("Off", "Forever", "Times")
+            val labels = listOf("Off", "Forever", "N times")
             modes.forEachIndexed { i, m ->
                 SegmentedButton(selected = mode == m, onClick = { onChange(m, times) }, shape = SegmentedButtonDefaults.itemShape(i, modes.size)) { Text(labels[i]) }
             }
@@ -391,13 +391,13 @@ fun LoopVideosCard(mode: com.clpstudio.filesmanager.data.LoopMode, times: Int, o
         if (mode == com.clpstudio.filesmanager.data.LoopMode.TIMES) {
             Spacer(Modifier.size(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Play again", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text("Play each video", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 androidx.compose.material3.FilledTonalIconButton(
                     onClick = { onChange(mode, com.clpstudio.filesmanager.data.LoopPolicy.clampTimes(times - 1)) },
                     enabled = times > com.clpstudio.filesmanager.data.LoopPolicy.MIN_TIMES,
                 ) { Icon(Icons.Filled.Remove, "Fewer") }
                 Text(
-                    if (times == 1) "1 time" else "$times times",
+                    "$times times",
                     style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )

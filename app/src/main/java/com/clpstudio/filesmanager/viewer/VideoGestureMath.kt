@@ -6,6 +6,9 @@ import kotlin.math.roundToLong
 /** What a sideways drag on the video does, by where it started. */
 enum class HorizontalAction { SCRUB, PAGE }
 
+/** What one drag on a video does (see [VideoGestureMath.classify]). */
+enum class VideoGesture { NONE, SCRUB, PAGE, BRIGHTNESS, VOLUME, INFO, DISMISS }
+
 /**
  * The pure part of the video player's gestures (Charan, Oct 31, 12:33):
  *  - left / right third: sideways = move the timeline (live, with a time bubble); up / down = brightness / volume.
@@ -21,7 +24,43 @@ object VideoGestureMath {
     /** Live seeks while scrubbing are spaced at least this far apart. */
     const val SCRUB_SEEK_EVERY_MS = 60L
 
-    fun horizontalAction(zone: Zone): HorizontalAction = if (zone == Zone.MIDDLE) HorizontalAction.PAGE else HorizontalAction.SCRUB
+    /** Share of the width each side zone takes (left 20 % · middle 60 % · right 20 %). */
+    const val SIDE_ZONE = 0.2f
+
+    /**
+     * Charan, Oct 31 14:26: "Timeline works only at the middle, and swiping at the sides means moving to another file."
+     * Sideways from the middle = timeline, from a side = previous / next file.
+     */
+    fun horizontalAction(zone: Zone): HorizontalAction = if (zone == Zone.MIDDLE) HorizontalAction.SCRUB else HorizontalAction.PAGE
+
+    /** The video's zones: left 20 %, middle 60 %, right 20 %. */
+    fun sideZoneOf(x: Float, width: Float): Zone {
+        if (width <= 0f) return Zone.MIDDLE
+        val f = x / width
+        return when {
+            f < SIDE_ZONE -> Zone.LEFT
+            f > 1f - SIDE_ZONE -> Zone.RIGHT
+            else -> Zone.MIDDLE
+        }
+    }
+
+    /**
+     * Every video gesture in one place (pager video and the player), from where the drag started ([x] of [width])
+     * and the locked [axis]; [dy] < 0 is up. Sides: up/down = brightness (left) / volume (right), sideways = other file.
+     * Middle: sideways = timeline, down = close, up = info. Side drags never close.
+     */
+    fun classify(x: Float, width: Float, axis: Axis, dy: Float): VideoGesture {
+        val zone = sideZoneOf(x, width)
+        return when (axis) {
+            Axis.NONE -> VideoGesture.NONE
+            Axis.HORIZONTAL -> if (horizontalAction(zone) == HorizontalAction.SCRUB) VideoGesture.SCRUB else VideoGesture.PAGE
+            Axis.VERTICAL -> when (zone) {
+                Zone.LEFT -> VideoGesture.BRIGHTNESS
+                Zone.RIGHT -> VideoGesture.VOLUME
+                Zone.MIDDLE -> if (dy < 0) VideoGesture.INFO else VideoGesture.DISMISS
+            }
+        }
+    }
 
     /** How much time one full screen width covers for a video of [durationMs]. */
     fun msPerWidth(durationMs: Long): Long = when {

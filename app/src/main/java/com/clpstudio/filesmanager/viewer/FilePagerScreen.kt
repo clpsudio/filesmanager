@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -127,6 +128,7 @@ fun FilePagerScreen(
     var chrome by remember { mutableStateOf(true) }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var orientation by rememberSaveable { mutableStateOf<Int?>(null) }
+    var fsRotated by rememberSaveable { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var mdSource by rememberSaveable { mutableStateOf(false) } // Markdown: Preview (default) or Source
@@ -141,8 +143,27 @@ fun FilePagerScreen(
     val video = remember { PagerVideo(context) }
     DisposableEffect(video) { onDispose { video.release() } }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    // Leaving the app with a video playing: Background play (Settings, on by default) keeps the sound going in the
+    // media service with its notification; coming back picks it up here at the same spot.
     DisposableEffect(lifecycle) {
-        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) video.pause() }
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    val act = context.findActivity()
+                    val cur = video.path
+                    val videos = list.filter { pagerPageType(it.kind) == PagerPage.VIDEO }
+                    val idx = videos.indexOfFirst { it.path == cur }
+                    if (video.playing && idx >= 0 && Graph.settings.value.backgroundPlay && act?.isChangingConfigurations != true) {
+                        video.handOff(context, videos, idx)
+                    } else video.pause()
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_START -> video.takeBack(context) { p, _, _ ->
+                    val i = list.indexOfFirst { it.path == p }
+                    if (i >= 0 && i != pager.currentPage) scope.launch { pager.scrollToPage(i) }
+                }
+                else -> Unit
+            }
+        }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
     }
@@ -180,6 +201,9 @@ fun FilePagerScreen(
     LaunchedEffect(current.path, isVideo) {
         if (isVideo) video.load(current, Graph.settings.value) else video.stop()
     }
+    // When a video is done (Off, or after "Play N times"): the next video in this list, skipping photos and other files.
+    val nextVideo = remember(list.toList(), page) { com.clpstudio.filesmanager.ui.VideoOpen.nextVideo(list.map { pagerPageType(it.kind) == PagerPage.VIDEO }, page) }
+    video.onNext = nextVideo?.let { n -> { scope.launch { pager.animateScrollToPage(n) } } }
     LaunchedEffect(current.path, isVideo) {
         while (isVideo) { video.tick(); kotlinx.coroutines.delay(250) }
     }
@@ -192,6 +216,32 @@ fun FilePagerScreen(
     OrientationEffect(orientation)
     LaunchedEffect(pager.currentPage) { if (!isImage && !isVideo) chrome = true }
 
+    // Side-zone swipes on a video page move the pager by hand (its own scrolling is off on video pages).
+    var pagerWidth by remember { mutableStateOf(0f) }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val pageGestures = remember(pager) {
+        object : VideoPageGestureCallbacks {
+            var applied = 0f
+            var startPage = -1
+            override fun onPageDrag(dx: Float) {
+                if (startPage < 0) startPage = pager.currentPage
+                val p = startPage
+                val off = VideoGestureMath.pageOffset(dx, hasPrev = p > 0, hasNext = p < pager.pageCount - 1)
+                pager.dispatchRawDelta(-(off - applied))
+                applied = off
+            }
+            override fun onPageEnd(dx: Float, velocityPxS: Float) {
+                applied = 0f
+                val p = if (startPage >= 0) startPage else pager.currentPage
+                startPage = -1
+                val d = VideoGestureMath.pageDecision(dx, pagerWidth, velocityPxS, density, hasPrev = p > 0, hasNext = p < pager.pageCount - 1)
+                scope.launch { pager.animateScrollToPage((p + d).coerceIn(0, (pager.pageCount - 1).coerceAtLeast(0))) }
+            }
+            override fun onInfo() { info = true }
+            override fun onDismiss() { onBack() }
+        }
+    }
+
     val dark = isMedia
     val dismissing = ViewerGestureMath.dismissProgress(dismiss.value, dismissPx)
     Box(Modifier.fillMaxSize().background(if (dark) Color.Black.copy(alpha = 1f - dismissing) else paperDeskColor())) {
@@ -199,8 +249,9 @@ fun FilePagerScreen(
             state = pager,
             key = { list.getOrNull(it)?.path ?: "#$it" },
             beyondViewportPageCount = 1,
-            userScrollEnabled = zooms[pager.currentPage]?.zoomed != true,
-            modifier = Modifier.fillMaxSize(),
+            // A video page handles its own drags (brightness / volume / timeline / sides = other file): see videoPageGestures.
+            userScrollEnabled = zooms[pager.currentPage]?.zoomed != true && !isVideo,
+            modifier = Modifier.fillMaxSize().onSizeChanged { pagerWidth = it.width.toFloat() },
         ) { index ->
             // The list shrinks on Hide / Delete; a stale page index must not crash the pager.
             val item = list.getOrNull(index) ?: return@HorizontalPager
@@ -226,7 +277,18 @@ fun FilePagerScreen(
                             }
                         },
                 ) { ZoomableImage(uri, zoom) { chrome = !chrome } }
-                FileKind.VIDEO -> InlineVideoPage(item, isCurrent = index == pager.currentPage, video = video, onTap = { chrome = !chrome })
+                FileKind.VIDEO -> InlineVideoPage(
+                    item, isCurrent = index == pager.currentPage, video = video, onTap = { chrome = !chrome },
+                    gestures = pageGestures, pill = pill, dismiss = dismiss,
+                    modifier = Modifier.graphicsLayer {
+                        if (index == pager.currentPage) {
+                            translationY = dismiss.value
+                            val s = 1f - 0.15f * ViewerGestureMath.dismissProgress(dismiss.value, dismissPx)
+                            scaleX = s
+                            scaleY = s
+                        }
+                    },
+                )
                 FileKind.PDF -> PdfContent(uri, item.name, paper, topPadding = top)
                 FileKind.TEXT -> if (Markdown.isMarkdown(item.name)) MarkdownContent(uri, mdSource, paper, topPadding = top) else TextContent(uri, paper, topPadding = top)
                 FileKind.DOCUMENT -> OfficePage(item, paper, top) { openFull(item, list.toList()) }
@@ -254,14 +316,21 @@ fun FilePagerScreen(
                     if (isVideo) {
                         // Hand over to the full player (picture-in-picture, background play), same list.
                         IconButton(onClick = {
+                            // Picture-in-picture needs its own window: the player opens straight into the small window
+                            // at the same spot and speed.
+                            val at = video.position
                             video.pause()
                             val media = list.filter { it.kind == FileKind.VIDEO || it.kind == FileKind.IMAGE }
-                            VideoPlayerActivity.startFiles(context, media, media.indexOfFirst { it.path == current.path }.coerceAtLeast(0))
+                            VideoPlayerActivity.startFiles(context, media, media.indexOfFirst { it.path == current.path }.coerceAtLeast(0), positionMs = at, pip = true)
                         }) { Icon(Icons.Filled.PictureInPictureAlt, "Open in video player (picture-in-picture)") }
                     }
                     IconButton(onClick = { info = true }) { Icon(Icons.Filled.Info, "File info") }
                 }
-                IconButton(onClick = { fullscreen = true; chrome = false }) { Icon(Icons.Filled.Fullscreen, "Full screen") }
+                IconButton(onClick = {
+                    fullscreen = true; chrome = false
+                    // A video goes full screen in this same view: bars hidden, turned to landscape when the video is wide.
+                    if (isVideo && video.isWide() && orientation == null) { orientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE; fsRotated = true }
+                }) { Icon(Icons.Filled.Fullscreen, "Full screen") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                     DropdownMenu(menu, { menu = false }) {
@@ -306,7 +375,7 @@ fun FilePagerScreen(
         }
         if (fullscreen) {
             IconButton(
-                onClick = { fullscreen = false; chrome = true },
+                onClick = { fullscreen = false; chrome = true; if (fsRotated) { orientation = null; fsRotated = false } },
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).glassBar(RoundedCornerShape(24.dp)),
             ) { Icon(Icons.Filled.FullscreenExit, "Exit full screen") }
         }
@@ -338,7 +407,7 @@ fun FilePagerScreen(
                     video = {
                         VideoSeekRow(video.position, video.duration, onSeek = { ms, _ -> video.seek(ms) })
                         VideoControlRow(
-                            muted = video.muted, speed = video.speed, loop = video.loop, fill = video.fill,
+                            muted = video.muted, speed = video.speed, loop = video.loop, fill = video.fill, loopHint = video.loopHint,
                             onMute = video::toggleMute, onSpeed = video::changeSpeed,
                             onLoop = { video.changeLoop(!video.loop) }, onFit = { video.fill = !video.fill },
                         )

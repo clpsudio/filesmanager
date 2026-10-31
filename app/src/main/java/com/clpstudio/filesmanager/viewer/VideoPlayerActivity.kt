@@ -108,14 +108,15 @@ class VideoPlayerActivity : ComponentActivity() {
             val c = controller ?: return
             // Settings → Loop videos: forever, or N more times, then on like Loop off.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                // One more play finished. Repeat again only while another play is due ("Play N times").
                 repeatsDone++
-                if (!com.clpstudio.filesmanager.data.LoopPolicy.keepRepeating(settings.loopMode, settings.loopTimes, repeatsDone)) {
-                    c.repeatMode = Player.REPEAT_MODE_OFF
-                }
+                c.repeatMode = if (com.clpstudio.filesmanager.data.LoopPolicy.keepRepeating(settings.loopMode, settings.loopTimes, repeatsDone)) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             } else {
                 repeatsDone = 0
                 c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             }
+            // With repeat off the playlist moves on by itself: the next video (photos are not in it), or stops at the last.
+            ui.loopHint = if (ui.loop) com.clpstudio.filesmanager.data.LoopPolicy.hint(settings.loopMode, settings.loopTimes, repeatsDone) else null
             if (ui.photo != null) return
             val e = playlist.entryOfMedia(c.currentMediaItemIndex)
             if (e >= 0 && e != entry) {
@@ -230,11 +231,15 @@ class VideoPlayerActivity : ComponentActivity() {
                         val startEntry = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, entries.size - 1)
                         entry = startEntry
                         val media = playlist.mediaIndexOf(startEntry).coerceAtLeast(0)
-                        c.setMediaItems(items, media, 0L)
+                        c.setMediaItems(items, media, intent.getLongExtra(EXTRA_POSITION, 0L).coerceAtLeast(0L))
                         c.prepare()
                     }
                     c.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                    // The speed chosen in any video view (the pager's "1x" pill) carries over.
+                    c.setPlaybackSpeed(VideoSpeed.value)
                     if (isVideoEntry(entry)) c.play() else showPhoto(entry)
+                    // Opened from the pager's picture-in-picture button: straight into the small window.
+                    if (intent.getBooleanExtra(EXTRA_PIP, false) && isVideoEntry(entry)) playerView.post { enterPip() }
                 }
                 ui.flashName()
             }
@@ -632,6 +637,7 @@ class VideoPlayerActivity : ComponentActivity() {
                 .show()
         }
         override fun setSpeed(speed: Float) {
+            VideoSpeed.set(speed)
             controller?.setPlaybackSpeed(speed)
             normalSpeed = speed
             ui.speed = speed
@@ -647,6 +653,7 @@ class VideoPlayerActivity : ComponentActivity() {
             repeatsDone = 0
             controller?.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             ui.loop = on
+            ui.loopHint = null
             ui.note(if (on) "Loop on" else "Loop off")
         }
         override fun toggleMute() {
@@ -683,6 +690,12 @@ class VideoPlayerActivity : ComponentActivity() {
             if (done) {
                 endScrub(ms)
                 sliderActive = false
+                // Dragged back to the start: the play count starts again.
+                if (ms < 1_000) {
+                    repeatsDone = 0
+                    controller?.repeatMode = if (loopPref()) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                    ui.loopHint = if (ui.loop) com.clpstudio.filesmanager.data.LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null
+                }
             } else {
                 scrubTo(ms)
             }
@@ -836,6 +849,8 @@ class VideoPlayerActivity : ComponentActivity() {
         private const val EXTRA_URIS = "uris"
         private const val EXTRA_NAMES = "names"
         private const val EXTRA_INDEX = "index"
+        private const val EXTRA_POSITION = "position"
+        private const val EXTRA_PIP = "pip"
         private const val EXTRA_KINDS = "kinds"
         private const val ACTION_PIP = "com.clpstudio.filesmanager.PIP_CONTROL"
         const val ACTION_RESUME = "com.clpstudio.filesmanager.VIDEO_RESUME"
@@ -845,9 +860,11 @@ class VideoPlayerActivity : ComponentActivity() {
         private const val CMD_PREV = 3
 
         /** [files] may mix photos and videos (Media): the player shows the photos in place and plays the videos. */
-        fun startFiles(context: Context, files: List<FileItem>, index: Int) {
+        fun startFiles(context: Context, files: List<FileItem>, index: Int, positionMs: Long = 0L, pip: Boolean = false) {
             context.startActivity(
                 Intent(context, VideoPlayerActivity::class.java)
+                    .putExtra(EXTRA_POSITION, positionMs)
+                    .putExtra(EXTRA_PIP, pip)
                     .putStringArrayListExtra(EXTRA_URIS, ArrayList(files.map { Uri.fromFile(File(it.path)).toString() }))
                     .putStringArrayListExtra(EXTRA_NAMES, ArrayList(files.map { it.name }))
                     .putExtra(EXTRA_KINDS, files.map { it.kind == FileKind.VIDEO }.toBooleanArray())

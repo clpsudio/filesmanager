@@ -77,6 +77,8 @@ class VideoOverlayState {
     var fill by mutableStateOf(false)
     /** The current file is hidden: the ⋮ menu offers Unhide instead of Hide. */
     var hidden by mutableStateOf(false)
+    /** "2/3" while "Play N times" is counting. */
+    var loopHint by mutableStateOf<String?>(null)
 
     // Playback, refreshed by the activity a few times a second.
     var position by mutableLongStateOf(0L)
@@ -244,13 +246,21 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
                     subtitle = if (state.items.size > 1) "${state.index + 1} of ${state.items.size}" else null,
                     onBack = actions::back,
                 ) {
+                    // Same icons, same order as the gallery pager: ★ · PiP · info · full screen · ⋮.
+                    state.favorite?.let { fav ->
+                        IconButton(onClick = actions::toggleFavorite) {
+                            Icon(if (fav) Icons.Filled.Star else Icons.Filled.StarBorder, if (fav) "Remove from favorites" else "Add to favorites", tint = if (fav) FavoriteOn else LocalContentColor.current)
+                        }
+                    }
                     if (state.pipSupported && state.photo == null) {
                         IconButton(onClick = actions::pip) { Icon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture") }
                     }
-                    IconButton(onClick = actions::rotate) { Icon(Icons.Filled.ScreenRotation, "Rotate") }
+                    IconButton(onClick = actions::info) { Icon(Icons.Filled.Info, "File info") }
+                    IconButton(onClick = { state.controls = false }) { Icon(Icons.Filled.Fullscreen, "Full screen") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = LocalContentColor.current) }
                     DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("Rotate") }, leadingIcon = { Icon(Icons.Filled.ScreenRotation, null) }, onClick = { menu = false; actions.rotate() })
                         DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; actions.edit() })
                         if (state.hidden) DropdownMenuItem(text = { Text("Unhide") }, leadingIcon = { Icon(Icons.Filled.Visibility, null) }, onClick = { menu = false; actions.unhide() })
                         else DropdownMenuItem(text = { Text("Hide") }, leadingIcon = { Icon(Icons.Filled.VisibilityOff, null) }, onClick = { menu = false; actions.hide() })
@@ -317,14 +327,7 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
                 onInfo = actions::info,
                 onDelete = actions::delete,
                 modifier = Modifier.onGloballyPositioned { state.controlRects["bottom"] = it.boundsInRoot() },
-                nameToast = {
-                    VideoNameToast(
-                        name = state.title,
-                        position = if (state.items.size > 1) "${state.index + 1} / ${state.items.size}" else null,
-                        visible = nameVisible,
-                        modifier = Modifier.padding(bottom = 6.dp),
-                    )
-                },
+                // No name pill over the seek row: the name is in the top bar (Charan: "name on top of the time").
                 video = if (state.photo != null) null else ({
                     VideoSeekRow(
                         positionMs = if (state.scrubbing) state.scrubMs else state.position,
@@ -333,7 +336,7 @@ fun VideoOverlay(state: VideoOverlayState, actions: VideoActions, sheetActions: 
                         onTouch = { state.touchStamp++ },
                     )
                     VideoControlRow(
-                        muted = state.muted, speed = state.speed, loop = state.loop, fill = state.fill,
+                        muted = state.muted, speed = state.speed, loop = state.loop, fill = state.fill, loopHint = state.loopHint,
                         onMute = { state.touchStamp++; actions.toggleMute() },
                         onSpeed = { state.touchStamp++; actions.setSpeed(it) },
                         onLoop = { state.touchStamp++; actions.setLoop(!state.loop) },

@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,8 +91,8 @@ class PagerVideo(context: Context) {
         private set
     var muted by mutableStateOf(false)
         private set
-    var speed by mutableStateOf(1f)
-        private set
+    /** Shared by every video view (pager pages and the full player), kept while paging. */
+    val speed: Float get() = VideoSpeed.value
     var loop by mutableStateOf(true)
         private set
     var fill by mutableStateOf(false)
@@ -101,6 +102,11 @@ class PagerVideo(context: Context) {
     var seekAmount by mutableIntStateOf(10)
 
     private var repeats = 0
+    /** Set by the pager: go to the next video page (null at the last one). */
+    var onNext: (() -> Unit)? = null
+    /** "2/3" while "Play N times" is counting. */
+    var loopHint by mutableStateOf<String?>(null)
+        private set
     private var settings: AppSettings = AppSettings()
 
     // Calls pause it and it plays again 2 s after; notifications lower it (Settings).
@@ -112,11 +118,17 @@ class PagerVideo(context: Context) {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             override fun onRenderedFirstFrame() { firstFrame = true }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
-                    repeats++
-                    if (!LoopPolicy.keepRepeating(settings.loopMode, settings.loopTimes, repeats)) player.repeatMode = Player.REPEAT_MODE_OFF
+            override fun onPlaybackStateChanged(state: Int) {
+                // One play finished: again, the next video, or stop (Settings → Loop videos / the Loop button).
+                if (state != Player.STATE_ENDED || path == null) return
+                repeats++
+                val mode = if (loop) settings.loopMode.takeIf { it != LoopMode.OFF } ?: LoopMode.FOREVER else LoopMode.OFF
+                when (LoopPolicy.afterPlay(mode, settings.loopTimes, repeats, hasNext = onNext != null)) {
+                    LoopPolicy.After.REPLAY -> { player.seekTo(0); player.play() }
+                    LoopPolicy.After.NEXT -> onNext?.invoke()
+                    LoopPolicy.After.STOP -> Unit
                 }
+                loopHint = if (loop) LoopPolicy.hint(mode, settings.loopTimes, repeats) else null
             }
         })
     }
@@ -133,10 +145,14 @@ class PagerVideo(context: Context) {
         loop = s.loopMode != LoopMode.OFF
         val uri = if (item.path.startsWith("content://")) Uri.parse(item.path) else Uri.fromFile(File(item.path))
         player.setMediaItem(MediaItem.fromUri(uri))
-        player.repeatMode = if (LoopPolicy.repeatsAtStart(s.loopMode, s.loopTimes)) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        // We count plays ourselves (no REPEAT_MODE_ONE, which never ends).
+        player.repeatMode = Player.REPEAT_MODE_OFF
+        loopHint = if (loop) LoopPolicy.hint(s.loopMode, s.loopTimes, 0) else null
         player.setPlaybackSpeed(speed)
         player.volume = if (muted) 0f else 1f
         player.prepare()
+        pendingSeek?.let { (p, ms) -> if (p == item.path) player.seekTo(ms) }
+        pendingSeek = null
         player.play()
     }
 
@@ -149,13 +165,98 @@ class PagerVideo(context: Context) {
 
     fun pause() = player.pause()
 
+    // ---- Background play (Settings → Video player → Background play): leaving the app hands the video to the
+    // media service (sound + notification keep going); coming back takes it back at the same spot.
+    private var handed: List<FileItem> = emptyList()
+    private var pendingSeek: Pair<String, Long>? = null
+
+    fun handOff(context: Context, videos: List<FileItem>, index: Int) {
+        if (videos.isEmpty() || index !in videos.indices) return
+        val at = player.currentPosition.coerceAtLeast(0L)
+        player.pause()
+        handed = videos
+        val items = videos.map { com.clpstudio.filesmanager.playback.PlaybackService.item(Uri.fromFile(File(it.path)), it.name.substringBeforeLast('.'), isVideo = true) }
+        val repeatOne = loop && settings.loopMode == LoopMode.FOREVER
+        Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            runCatching {
+                val c = com.clpstudio.filesmanager.playback.PlayerConnection.controller(context)
+                c.setMediaItems(items, index, at)
+                c.repeatMode = if (repeatOne) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                c.setPlaybackSpeed(VideoSpeed.value)
+                c.prepare()
+                c.play()
+            }
+        }
+    }
+
+    /** Back in the app: stop the background copy; [onResume] gets the file it was on and where. */
+    fun takeBack(context: Context, onResume: (path: String, positionMs: Long, playing: Boolean) -> Unit) {
+        val list = handed
+        if (list.isEmpty()) return
+        handed = emptyList()
+        Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            runCatching {
+                val c = com.clpstudio.filesmanager.playback.PlayerConnection.controller(context)
+                val item = list.getOrNull(c.currentMediaItemIndex) ?: return@runCatching
+                val pos = c.currentPosition.coerceAtLeast(0L)
+                val playing = c.isPlaying
+                c.pause()
+                c.clearMediaItems()
+                if (item.path == path) {
+                    seek(pos)
+                    if (playing) player.play()
+                } else {
+                    pendingSeek = item.path to pos
+                }
+                onResume(item.path, pos, playing)
+            }
+        }
+    }
+
+    /** Wider than tall (or not known yet): full screen turns to landscape. */
+    fun isWide(): Boolean {
+        val s = player.videoSize
+        if (s.width == 0 || s.height == 0) return true
+        val turned = s.unappliedRotationDegrees % 180 != 0
+        return if (turned) s.height >= s.width else s.width >= s.height
+    }
+
     fun playPause() {
         if (player.isPlaying) { player.pause(); return }
         if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
         player.play()
     }
 
+    /** Middle sideways drag: the time bubble shows [scrubMs] (null when not scrubbing). */
+    var scrubMs by mutableStateOf<Long?>(null)
+        private set
+    var scrubStartMs by mutableLongStateOf(0L)
+        private set
+    private var scrubWasPlaying = false
+
+    fun scrubStart(fromMs: Long) {
+        scrubStartMs = fromMs
+        scrubMs = fromMs
+        scrubWasPlaying = player.isPlaying
+        player.pause()
+    }
+
+    /** Live position while dragging; [seek] = also move the picture now (throttled by the caller). */
+    fun scrubTo(ms: Long, seek: Boolean) {
+        scrubMs = ms
+        position = ms
+        if (seek) player.seekTo(ms)
+    }
+
+    fun scrubEnd(cancelled: Boolean) {
+        val target = scrubMs
+        scrubMs = null
+        if (!cancelled && target != null) seek(target) else player.seekTo(scrubStartMs)
+        if (scrubWasPlaying) player.play()
+    }
+
     fun seek(ms: Long) {
+        if (ms < 1_000) { repeats = 0; loopHint = if (loop) LoopPolicy.hint(settings.loopMode, settings.loopTimes, 0) else null }
         player.seekTo(ms.coerceIn(0, duration.takeIf { it > 0 } ?: Long.MAX_VALUE))
         position = ms
     }
@@ -175,15 +276,15 @@ class PagerVideo(context: Context) {
     }
 
     fun changeSpeed(s: Float) {
-        speed = s
-        player.setPlaybackSpeed(s)
+        VideoSpeed.set(s)
+        player.setPlaybackSpeed(VideoSpeed.value)
     }
 
     /** The Loop button: this video now, and remembered as Settings → Loop videos. */
     fun changeLoop(on: Boolean) {
         loop = on
         repeats = 0
-        player.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        loopHint = null
         val mode = if (on) LoopPolicy.toggled(LoopMode.OFF, settings.loopMode) else LoopMode.OFF
         settings = settings.copy(loopMode = mode)
         runCatching { Graph.appScope.launch { Graph.settingsRepo.setLoop(mode) } }
@@ -203,7 +304,16 @@ class PagerVideo(context: Context) {
 /** One video page: the inline player when it's the current page, its first frame otherwise. */
 @OptIn(UnstableApi::class)
 @Composable
-fun InlineVideoPage(item: FileItem, isCurrent: Boolean, video: PagerVideo, onTap: () -> Unit, modifier: Modifier = Modifier) {
+fun InlineVideoPage(
+    item: FileItem,
+    isCurrent: Boolean,
+    video: PagerVideo,
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier,
+    gestures: VideoPageGestureCallbacks? = null,
+    pill: LevelPillState? = null,
+    dismiss: DismissDragState? = null,
+) {
     val active = isCurrent && video.path == item.path
     Box(modifier.fillMaxSize().background(Color.Black)) {
         if (active) {
@@ -227,7 +337,9 @@ fun InlineVideoPage(item: FileItem, isCurrent: Boolean, video: PagerVideo, onTap
         // The first frame until the video draws (no black flash on swipe).
         if (!active || !video.firstFrame) EntryStill(item, Modifier.fillMaxSize())
         Box(
-            Modifier.fillMaxSize().pointerInput(item.path, active) {
+            Modifier.fillMaxSize()
+                .videoPageGestures(video, enabled = active && gestures != null && pill != null && dismiss != null, pill = pill ?: LevelPillState(), dismiss = dismiss ?: DismissDragState(), callbacks = gestures ?: NoPageGestures)
+                .pointerInput(item.path, active) {
                 detectTapGestures(
                     onTap = { onTap() },
                     onDoubleTap = { o ->
@@ -240,7 +352,18 @@ fun InlineVideoPage(item: FileItem, isCurrent: Boolean, video: PagerVideo, onTap
             },
         )
         if (active) SkipGlow(video)
+        val scrub = video.scrubMs
+        if (active && scrub != null) {
+            ScrubBubble(scrub, video.duration, scrub - video.scrubStartMs, Modifier.align(Alignment.Center))
+        }
     }
+}
+
+private object NoPageGestures : VideoPageGestureCallbacks {
+    override fun onPageDrag(dx: Float) {}
+    override fun onPageEnd(dx: Float, velocityPxS: Float) {}
+    override fun onInfo() {}
+    override fun onDismiss() {}
 }
 
 @Composable
@@ -265,5 +388,19 @@ private fun androidx.compose.foundation.layout.BoxScope.SkipGlow(video: PagerVid
                 Text("${video.seekAmount} s", color = Color.White, style = MaterialTheme.typography.labelLarge)
             }
         }
+    }
+}
+
+/**
+ * The playback speed every video view shares (the "1x" pill in the pager and in the player): chosen once,
+ * kept while paging to the next video and when the full player opens. Not saved across app restarts.
+ */
+object VideoSpeed {
+    var value by mutableFloatStateOf(1f)
+        private set
+
+    /** Only the menu's speeds; anything else falls back to normal. */
+    fun set(s: Float) {
+        value = if (s in SPEEDS) s else 1f
     }
 }

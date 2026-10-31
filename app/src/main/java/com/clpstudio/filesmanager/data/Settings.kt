@@ -184,7 +184,7 @@ object DoubleTapSkip {
 
 /** Settings → Video player → Loop videos. */
 enum class LoopMode(val label: String) {
-    OFF("Off"), FOREVER("Loop forever"), TIMES("Loop a number of times");
+    OFF("Off"), FOREVER("Loop forever"), TIMES("Play N times");
 
     companion object {
         fun parse(value: String?): LoopMode = entries.firstOrNull { it.name == value } ?: FOREVER
@@ -196,28 +196,40 @@ enum class LoopMode(val label: String) {
  * times after the first, then go on like Loop off (next video in the list, or stop at the last).
  */
 object LoopPolicy {
+    /** "Play N times" = N plays in total (2–10), then on to the next video. */
     const val DEFAULT_TIMES = 3
-    const val MIN_TIMES = 1
+    const val MIN_TIMES = 2
     const val MAX_TIMES = 10
 
     fun clampTimes(n: Int): Int = n.coerceIn(MIN_TIMES, MAX_TIMES)
 
-    /** Repeat the current item at the start of a video? (Off: no.) */
-    fun repeatsAtStart(mode: LoopMode, times: Int): Boolean = when (mode) {
-        LoopMode.OFF -> false
-        LoopMode.FOREVER -> true
-        LoopMode.TIMES -> clampTimes(times) > 0
-    }
+    enum class After { REPLAY, NEXT, STOP }
 
     /**
-     * Called after the video repeated once more ([repeatsDone] counts repeats so far, this one included).
-     * Returns whether it should keep repeating after this play.
+     * What happens when a play of the video ends; [playsDone] counts finished plays, this one included.
+     * Forever: play it again, never advance. Off: next video (stop at the last). N times: again until N plays,
+     * then the next video (stop at the last).
      */
-    fun keepRepeating(mode: LoopMode, times: Int, repeatsDone: Int): Boolean = when (mode) {
-        LoopMode.OFF -> false
-        LoopMode.FOREVER -> true
-        LoopMode.TIMES -> repeatsDone < clampTimes(times)
+    fun afterPlay(mode: LoopMode, times: Int, playsDone: Int, hasNext: Boolean): After = when {
+        mode == LoopMode.FOREVER -> After.REPLAY
+        mode == LoopMode.TIMES && playsDone < clampTimes(times) -> After.REPLAY
+        hasNext -> After.NEXT
+        else -> After.STOP
     }
+
+    /** For a player that can only repeat by itself: repeat the item while another play is still due. */
+    fun repeatCurrent(mode: LoopMode, times: Int, playsDone: Int): Boolean =
+        afterPlay(mode, times, playsDone + 1, hasNext = true) == After.REPLAY
+
+    /** Back-compat names used by the players. */
+    fun repeatsAtStart(mode: LoopMode, times: Int): Boolean = repeatCurrent(mode, times, 0)
+
+    /** After a repeat started ([repeatsDone] repeats so far): repeat again after this play? */
+    fun keepRepeating(mode: LoopMode, times: Int, repeatsDone: Int): Boolean = repeatCurrent(mode, times, repeatsDone)
+
+    /** The "2/3" hint next to the Loop button while counting (null otherwise). */
+    fun hint(mode: LoopMode, times: Int, playsDone: Int): String? =
+        if (mode == LoopMode.TIMES) "${(playsDone + 1).coerceAtMost(clampTimes(times))}/${clampTimes(times)}" else null
 
     /** The in-player Loop button: off ↔ the last chosen looping mode (forever when it was off). */
     fun toggled(current: LoopMode, lastOn: LoopMode): LoopMode =
@@ -226,6 +238,6 @@ object LoopPolicy {
     fun label(mode: LoopMode, times: Int): String = when (mode) {
         LoopMode.OFF -> "Off"
         LoopMode.FOREVER -> "Forever"
-        LoopMode.TIMES -> if (clampTimes(times) == 1) "1 more time" else "${clampTimes(times)} more times"
+        LoopMode.TIMES -> "Play ${clampTimes(times)} times"
     }
 }

@@ -41,17 +41,28 @@ class VideoRound5Test {
         assertFalse(LoopPolicy.keepRepeating(LoopMode.OFF, 3, 0))
     }
 
-    @Test fun loopNTimesPlaysNExtraTimesThenStops() {
-        // 2 more times: first play, repeat #1 (keep), repeat #2 (stop after this one).
-        assertTrue(LoopPolicy.repeatsAtStart(LoopMode.TIMES, 2))
-        assertTrue(LoopPolicy.keepRepeating(LoopMode.TIMES, 2, 1))
-        assertFalse(LoopPolicy.keepRepeating(LoopMode.TIMES, 2, 2))
-        assertFalse(LoopPolicy.keepRepeating(LoopMode.TIMES, 1, 1))
-        // Clamped to 1..10.
-        assertEquals(1, LoopPolicy.clampTimes(0))
+    @Test fun playNTimesThenNextVideo() {
+        // "Play 3 times": plays 1 and 2 end → again; play 3 ends → the next video, or stop at the last one.
+        assertEquals(LoopPolicy.After.REPLAY, LoopPolicy.afterPlay(LoopMode.TIMES, 3, 1, hasNext = true))
+        assertEquals(LoopPolicy.After.REPLAY, LoopPolicy.afterPlay(LoopMode.TIMES, 3, 2, hasNext = true))
+        assertEquals(LoopPolicy.After.NEXT, LoopPolicy.afterPlay(LoopMode.TIMES, 3, 3, hasNext = true))
+        assertEquals(LoopPolicy.After.STOP, LoopPolicy.afterPlay(LoopMode.TIMES, 3, 3, hasNext = false))
+        // A player that repeats by itself: repeat while another play is due.
+        assertTrue(LoopPolicy.repeatsAtStart(LoopMode.TIMES, 3))
+        assertTrue(LoopPolicy.keepRepeating(LoopMode.TIMES, 3, 1))
+        assertFalse(LoopPolicy.keepRepeating(LoopMode.TIMES, 3, 2))
+        // Clamped to 2..10; the hint counts the current play.
+        assertEquals(2, LoopPolicy.clampTimes(0))
         assertEquals(10, LoopPolicy.clampTimes(50))
-        assertTrue(LoopPolicy.keepRepeating(LoopMode.TIMES, 50, 9))
-        assertFalse(LoopPolicy.keepRepeating(LoopMode.TIMES, 50, 10))
+        assertEquals("1/3", LoopPolicy.hint(LoopMode.TIMES, 3, 0))
+        assertEquals("3/3", LoopPolicy.hint(LoopMode.TIMES, 3, 5))
+        assertEquals(null, LoopPolicy.hint(LoopMode.FOREVER, 3, 1))
+    }
+
+    @Test fun foreverNeverAdvancesOffAlwaysDoes() {
+        assertEquals(LoopPolicy.After.REPLAY, LoopPolicy.afterPlay(LoopMode.FOREVER, 3, 99, hasNext = true))
+        assertEquals(LoopPolicy.After.NEXT, LoopPolicy.afterPlay(LoopMode.OFF, 3, 1, hasNext = true))
+        assertEquals(LoopPolicy.After.STOP, LoopPolicy.afterPlay(LoopMode.OFF, 3, 1, hasNext = false))
     }
 
     @Test fun loopButtonTogglesAndRemembersTheLastMode() {
@@ -59,7 +70,7 @@ class VideoRound5Test {
         assertEquals(LoopMode.FOREVER, LoopPolicy.toggled(LoopMode.OFF, LoopMode.OFF))
         assertEquals(LoopMode.TIMES, LoopPolicy.toggled(LoopMode.OFF, LoopMode.TIMES))
         assertEquals("Forever", LoopPolicy.label(LoopMode.FOREVER, 3))
-        assertEquals("3 more times", LoopPolicy.label(LoopMode.TIMES, 3))
-        assertEquals("1 more time", LoopPolicy.label(LoopMode.TIMES, 1))
+        assertEquals("Play 3 times", LoopPolicy.label(LoopMode.TIMES, 3))
+        assertEquals("Play 2 times", LoopPolicy.label(LoopMode.TIMES, 1))
     }
 }

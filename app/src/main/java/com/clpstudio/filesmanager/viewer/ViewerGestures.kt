@@ -399,7 +399,7 @@ class VideoGestureLayout(context: Context) : FrameLayout(context) {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.x; downY = ev.y
-                zone = ViewerGestureMath.zoneOf(ev.x, width.toFloat())
+                zone = VideoGestureMath.sideZoneOf(ev.x, width.toFloat())
                 axis = Axis.NONE; action = SwipeAction.NONE; fired = false
                 tracking = !cb.blocked() && !cb.overControls(ev.x, ev.y)
                 velocity?.clear()

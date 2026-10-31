@@ -13,7 +13,6 @@ import com.clpstudio.filesmanager.data.FileKind
 import com.clpstudio.filesmanager.data.FileOps
 import com.clpstudio.filesmanager.data.FileTypes
 import com.clpstudio.filesmanager.playback.PlayerConnection
-import com.clpstudio.filesmanager.viewer.VideoPlayerActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
@@ -44,8 +43,10 @@ class Opener(private val context: Context, private val nav: NavController) {
                 nav.navigate(Routes.MUSIC) { launchSingleTop = true }
             }
             PlayRoute.VIDEO -> {
+                // The same gallery-style video view as everywhere else, over just these videos.
                 val videos = items.filter { it.kind == FileKind.VIDEO }
-                VideoPlayerActivity.startFiles(context, videos, 0)
+                ViewerSession.files = videos.map { it.path }
+                nav.navigate(Routes.view(videos.first().path))
             }
             PlayRoute.SLIDESHOW -> {
                 ViewerSession.playItems = items
@@ -60,10 +61,22 @@ class Opener(private val context: Context, private val nav: NavController) {
             return
         }
         when (item.kind) {
-            FileKind.VIDEO, FileKind.AUDIO, FileKind.APK -> openFull(item, siblings)
+            // Videos play in the photo / video pager (one video UI everywhere: Videos, Media, Recent, search, folders, Favorites).
+            FileKind.VIDEO -> openVideo(item, siblings)
+            FileKind.AUDIO, FileKind.APK -> openFull(item, siblings)
             FileKind.ARCHIVE -> if (item.extension in setOf("zip", "jar")) openFull(item, siblings) else openPager(item, siblings)
             else -> openPager(item, siblings)
         }
+    }
+
+    /**
+     * A video: the pager over the photos and videos of the same list (Media swipes through both; a list of only
+     * videos, or a folder, swipes through its videos), so every video opens in the same gallery-style view.
+     */
+    private fun openVideo(item: FileItem, siblings: List<FileItem>) {
+        val media = siblings.filter { !it.isDir && (it.kind == FileKind.VIDEO || it.kind == FileKind.IMAGE) }
+        ViewerSession.files = VideoOpen.pages(item.path, media.map { it.path to (it.kind == FileKind.VIDEO) })
+        nav.navigate(Routes.view(item.path))
     }
 
     /** Photos, PDFs, text, documents...: the swipeable viewer over the same list. */
@@ -77,13 +90,7 @@ class Opener(private val context: Context, private val nav: NavController) {
     fun openFull(item: FileItem, siblings: List<FileItem>) {
         val file = File(item.path)
         when (item.kind) {
-            FileKind.VIDEO -> {
-                // From Media (or any list mixing photos and videos) the player swipes through both.
-                val media = siblings.filter { it.kind == FileKind.VIDEO || it.kind == FileKind.IMAGE }
-                val list = (if (media.any { it.kind == FileKind.IMAGE }) media else siblings.filter { it.kind == FileKind.VIDEO })
-                    .takeIf { l -> l.any { it.path == item.path } } ?: listOf(item)
-                VideoPlayerActivity.startFiles(context, list, list.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
-            }
+            FileKind.VIDEO -> openVideo(item, siblings)
             FileKind.AUDIO -> {
                 val audios = siblings.filter { it.kind == FileKind.AUDIO }.ifEmpty { listOf(item) }
                 val index = audios.indexOfFirst { it.path == item.path }.coerceAtLeast(0)
@@ -112,4 +119,19 @@ class Opener(private val context: Context, private val nav: NavController) {
         /** Opens the system install prompt directly (no copy to Downloads). */
         fun installApk(context: Context, uri: Uri) = ApkInstaller.install(context, uri)
     }
+}
+
+/** Which pages a video opens with (pure, unit tested). */
+object VideoOpen {
+    /**
+     * [media] = the list's photos and videos in order (path to isVideo). The pager gets all of them, so Media swipes
+     * through photos and videos together; the opened video is always in it (alone when the list doesn't have it).
+     */
+    fun pages(open: String, media: List<Pair<String, Boolean>>): List<String> {
+        val paths = media.map { it.first }.distinct()
+        return if (open in paths) paths else listOf(open)
+    }
+
+    /** After a video is done (Off, or "Play N times" finished): the next video page after [from], skipping photos and other files. */
+    fun nextVideo(isVideo: List<Boolean>, from: Int): Int? = (from + 1 until isVideo.size).firstOrNull { isVideo[it] }
 }

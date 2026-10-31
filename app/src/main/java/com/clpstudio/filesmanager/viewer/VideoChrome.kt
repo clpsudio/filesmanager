@@ -145,6 +145,7 @@ fun VideoControlRow(
     onLoop: () -> Unit,
     onFit: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    loopHint: String? = null,
 ) {
     var speedMenu by remember { mutableStateOf(false) }
     Row(modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -176,6 +177,9 @@ fun VideoControlRow(
             contentAlignment = Alignment.Center,
         ) {
             Icon(if (loop) Icons.Filled.RepeatOne else Icons.Filled.Repeat, if (loop) "Loop on" else "Loop off", tint = if (loop) MaterialTheme.colorScheme.onPrimary else Color.White, modifier = Modifier.size(22.dp))
+        }
+        if (loopHint != null) {
+            Text("  $loopHint", color = Color.White, style = MaterialTheme.typography.labelLarge.merge(Tnum))
         }
         Spacer(Modifier.weight(1f))
         if (onFit != null) {
