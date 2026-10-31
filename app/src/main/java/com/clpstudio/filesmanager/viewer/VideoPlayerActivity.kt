@@ -751,7 +751,7 @@ class VideoPlayerActivity : ComponentActivity() {
     private fun shareCurrent(uri: Uri) {
         val shareUri = if (uri.scheme == "file") com.clpstudio.filesmanager.data.FileOps.uriFor(this, File(uri.path!!)) else uri
         val type = if (ui.photo != null) "image/*" else "video/*"
-        com.clpstudio.filesmanager.data.SafeStart.start(this, Intent.createChooser(Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, shareUri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"), "This video can't be shared from here")
+        com.clpstudio.filesmanager.data.SafeStart.shareForeign(this, shareUri, type, ui.current()?.name)
     }
 
     private fun openWithOther(uri: Uri) {

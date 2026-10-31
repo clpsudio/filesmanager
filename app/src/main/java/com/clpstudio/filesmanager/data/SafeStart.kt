@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import kotlinx.coroutines.launch
 
 /**
  * Item 27 (crash from Samsung Camera's preview): some providers (Samsung's secure media, content://secmedia/...)
@@ -45,5 +46,44 @@ object SafeStart {
         }
         runCatching { Toast.makeText(context, failMessage, Toast.LENGTH_SHORT).show() }
         return false
+    }
+
+    /**
+     * Share someone else's uri (opened from another app). When its provider refuses to let the grant be passed on,
+     * a copy in our cache is shared through our own FileProvider instead, so the other app can still read it.
+     */
+    fun shareForeign(context: Context, uri: android.net.Uri, mime: String, name: String?) {
+        val send = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            context.startActivity(Intent.createChooser(send, "Share"))
+            return
+        } catch (_: ActivityNotFoundException) {
+            runCatching { Toast.makeText(context, "No app to share with", Toast.LENGTH_SHORT).show() }
+            return
+        } catch (_: SecurityException) {
+        }
+        com.clpstudio.filesmanager.Graph.appScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            val copy = runCatching { ExternalFiles.copyToCache(context, uri, name ?: shareName(mime)) }.getOrNull()
+            if (copy == null) {
+                runCatching { Toast.makeText(context, "This file can't be shared from here", Toast.LENGTH_SHORT).show() }
+                return@launch
+            }
+            val ours = FileOps.uriFor(context, copy)
+            start(
+                context,
+                Intent.createChooser(Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, ours).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                "This file can't be shared from here",
+            )
+        }
+    }
+
+    /** A file name for a copy when the other app gave none. */
+    fun shareName(mime: String): String = "shared." + when {
+        mime.startsWith("image/") -> "jpg"
+        mime.startsWith("video/") -> "mp4"
+        mime.startsWith("audio/") -> "m4a"
+        mime == "application/pdf" -> "pdf"
+        else -> "bin"
     }
 }
