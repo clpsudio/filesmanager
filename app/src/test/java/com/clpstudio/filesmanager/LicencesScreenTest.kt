@@ -206,4 +206,18 @@ class LicencesScreenTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage(File(shots, "files_licences_junrar.png").path)
     }
+
+    /** README.md: same wording rule as the screen, licence marked pending, every preview it shows exists. */
+    @Test fun readmeKeepsTheLicenceWordingAndItsPreviews() {
+        val readme = File("../README.md").readText()
+        val t = flat(readme).lowercase()
+        assertFalse("README: 'fully open source'", t.contains("fully open source"))
+        assertFalse("README: 'entirely apache'", t.contains("entirely apache"))
+        assertFalse("README: 'files is licensed under'", t.contains("files is licensed under"))
+        assertTrue("README marks the licence as pending", t.contains("licence status: pending"))
+        assertTrue("README: no INTERNET permission stated", readme.contains("There is no `INTERNET` permission"))
+        val pics = Regex("docs/screenshots/[A-Za-z0-9._-]+\\.png").findAll(readme).map { it.value }.toList()
+        assertTrue("README shows previews", pics.size >= 6)
+        for (s in pics) assertTrue("$s missing", File("../$s").isFile)
+    }
 }

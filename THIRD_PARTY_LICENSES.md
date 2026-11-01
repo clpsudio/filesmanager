@@ -320,14 +320,11 @@ Test fixtures in `app/src/test/resources/` that did not originate with CLP Studi
 - `legacy/*.doc`, `legacy/*.xls`, `legacy/*.ppt` (9 files): byte-for-byte copies of files from Apache POI's
   `test-data` folder (https://github.com/apache/poi/tree/trunk/test-data), distributed by the Apache
   Software Foundation under Apache-2.0.
-- `fmt/real_2018_prefix.dwg` and `fmt/real_r2000_prefix.dwg`: the first bytes (header and preview image)
-  of `test/test-data/example_2018.dwg` and `example_2000.dwg` from LibreDWG
-  (https://github.com/LibreDWG/libredwg), a project licensed GPL-3.0-or-later. These two files are not part
-  of the app and are only used by unit tests, but their licence differs from the project licence; see the
-  open item in `README.md`.
 - `docx/word_sample.docx` and `docx/with_thumbnail.docx` were generated with python-docx and contain its
   default document template (python-docx is MIT-licensed).
-- The other fixtures (archives, PSD, AI, APK, DOCX/DOC samples) were generated for this project.
+- The other fixtures (archives, PSD, AI, APK, DOCX/DOC samples) were generated for this project. The two DWG
+  fixtures (`fmt/sample_r2018_preview.dwg`, `fmt/sample_r2000_preview.dwg`) are written from scratch by
+  `scripts/test-fixtures/make-dwg-fixtures.py` and contain no third-party drawing data.
 
 ## 5. Full inventory of the release runtime classpath
 

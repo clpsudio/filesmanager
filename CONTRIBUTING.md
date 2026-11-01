@@ -14,7 +14,7 @@ Thanks for helping improve Files. This guide explains how to propose a change.
 
 ## Building and testing
 
-See the Build section of [`README.md`](README.md). Before opening a pull
+See "Build from source" in [`README.md`](README.md#build-from-source). Before opening a pull
 request, run:
 
 ```

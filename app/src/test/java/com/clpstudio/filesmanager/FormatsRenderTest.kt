@@ -65,9 +65,9 @@ class FormatsRenderTest {
         val loaded = DesignBitmaps.load(fixture("art_rgb.psd"))
         assertNotNull(loaded.bitmap)
         assertEquals(120, loaded.bitmap!!.width)
-        val thumb = DesignBitmaps.load(fixture("real_2018_prefix.dwg"), maxPx = 256, thumbnail = true)
+        val thumb = DesignBitmaps.load(fixture("sample_r2018_preview.dwg"), maxPx = 256, thumbnail = true)
         assertNotNull("DWG PNG preview decodes on Android", thumb.bitmap)
-        val bmp = DesignBitmaps.load(fixture("real_r2000_prefix.dwg"), maxPx = 256, thumbnail = true)
+        val bmp = DesignBitmaps.load(fixture("sample_r2000_preview.dwg"), maxPx = 256, thumbnail = true)
         assertNotNull("DWG BMP preview decodes on Android", bmp.bitmap)
     }
 
@@ -78,7 +78,7 @@ class FormatsRenderTest {
     }
 
     @Test fun dwgPreviewScreen() {
-        val f = fixture("real_2018_prefix.dwg")
+        val f = fixture("sample_r2018_preview.dwg")
         compose.setContent { FilesTheme(ThemeMode.DARK, liquidGlass = false) { DesignViewerScreen(f, "floor plan.dwg", {}) } }
         shot("files_p2_dwg_preview", "Preview saved by AutoCAD")
     }

@@ -92,15 +92,15 @@ class DesignPreviewTest {
         assertEquals(27, p.height)
     }
 
-    @Test fun dwgPreviewsFromRealFiles() {
-        val r2000 = DesignPreview.read(fixture("real_r2000_prefix.dwg"))
+    @Test fun dwgPreviewsFromSampleFiles() {
+        val r2000 = DesignPreview.read(fixture("sample_r2000_preview.dwg"))
         val bmp = r2000.image as DesignPreview.Image.Encoded
         assertEquals("BMP", DesignPreview.imageKind(bmp.bytes))
         val img = decode(bmp.bytes)!!
         assertTrue(img.width > 16 && img.height > 16)
         assertTrue(r2000.details.first().second.contains("AutoCAD 2000"))
 
-        val r2018 = DesignPreview.read(fixture("real_2018_prefix.dwg"))
+        val r2018 = DesignPreview.read(fixture("sample_r2018_preview.dwg"))
         val png = r2018.image as DesignPreview.Image.Encoded
         assertEquals("PNG", DesignPreview.imageKind(png.bytes))
         assertNotNull(decode(png.bytes))
