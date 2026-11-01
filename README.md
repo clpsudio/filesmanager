@@ -74,6 +74,22 @@ key.
 The APK contains native code for ARM phones only (`arm64-v8a`,
 `armeabi-v7a`), so it does not install on x86 emulators.
 
+Checks that CI runs and you can run locally:
+
+- `scripts/ci/check-no-prebuilt-native.sh` fails if any prebuilt native binary
+  (`*.so`, `*.a`, `*.o`, an ELF or `ar` file under any name, or a package
+  containing one) is committed, or if a Gradle file points at `jniLibs`, a local
+  `.aar` or the old Jellyfin decoder package. FFmpeg and `libffmpegJNI.so` are
+  always built from the pinned source; CI caches only the sha256-checked FFmpeg
+  source tarball, never built libraries.
+- `scripts/ci/check-apk-r8.py <apk> --mapping app/build/outputs/mapping/release/mapping.txt --dexdump <build-tools>/dexdump`
+  checks the release APK after R8: the FFmpeg decoder classes, every JNI
+  function exported by `libffmpegJNI.so` (both ABIs) and its native method,
+  the archive (Junrar, Commons Compress, Zip4j, XZ), PDF (PdfRenderer path,
+  PdfBox-Android) and player classes.
+- `scripts/test-fixtures/make-fresh-archives.sh` rebuilds the RAR4/RAR5/ZIP/7z/
+  tar.gz fixtures used by `FeatureVerificationTest`.
+
 Screenshots: `./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest*' -Proborazzi.test.record=true`
 (written to `app/build/screenshots`).
 
@@ -157,7 +173,8 @@ APK**:
   `av_sscanf`, is MIT). Anyone distributing an APK must give the LGPL notice
   and licence text, make the corresponding FFmpeg source available (the
   `ffmpeg-corresponding-source` bundle), and allow the library to be replaced
-  ([`RELINKING.md`](RELINKING.md)). See `licenses/FFMPEG-NOTICE.txt`.
+  ([`RELINKING.md`](RELINKING.md)). See `licenses/FFMPEG-NOTICE.txt`,
+  `licenses/FFMPEG-SOURCE.txt` and `licenses/FFMPEG-RELINKING.txt`.
 - **Junrar** (RAR4 archives) is under the UnRAR licence, which is not an
   open-source licence: the code may not be used to re-create the RAR
   compression algorithm, and modified versions must state that the code may

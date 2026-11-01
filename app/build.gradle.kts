@@ -105,7 +105,7 @@ abstract class LicenceAssetsTask : DefaultTask() {
         out.deleteRecursively()
         out.mkdirs()
         sources.files.sortedBy { it.name }.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
-        check(out.resolve("FFMPEG-NOTICE.txt").isFile && out.resolve("LGPL-2.1.txt").isFile) { "licence texts missing" }
+        check(listOf("FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt", "FFMPEG-RELINKING.txt", "LGPL-2.1.txt", "MIT-musl-avsscanf.txt", "UnRAR-junrar-7.5.5.txt").all { out.resolve(it).isFile }) { "licence texts missing" }
     }
 }
 

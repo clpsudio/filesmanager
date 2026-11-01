@@ -70,8 +70,9 @@ FFmpeg developers. Version: commit d388c347d41e4eb516dec05910551c5461e65615
 (release/6.0), configured without GPL, version3 or non-free parts, with 11
 audio decoders, linked statically into lib/<abi>/libffmpegJNI.so. Licence
 text: licenses/LGPL-2.1.txt. Where to get the corresponding source code and
-how to rebuild or replace the library: licenses/FFMPEG-NOTICE.txt and
-RELINKING.md.
+how to rebuild or replace the library: licenses/FFMPEG-NOTICE.txt,
+licenses/FFMPEG-SOURCE.txt (source, exact build configuration, written offer),
+licenses/FFMPEG-RELINKING.txt and RELINKING.md.
 
 libavutil/avsscanf.c in FFmpeg (av_sscanf) is derived from musl libc:
 Copyright (c) 2005-2014 Rich Felker, et al., MIT licence (full notice in

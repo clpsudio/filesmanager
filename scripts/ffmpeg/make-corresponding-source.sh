@@ -41,7 +41,7 @@ cp "$TARBALL" "$STAGE/"
 # 2. Decoder module + scripts + docs (FFmpeg tree and build outputs excluded).
 (cd "$ROOT" && tar -cf - --exclude='decoder-ffmpeg/src/main/jni/ffmpeg' --exclude='decoder-ffmpeg/build' \
     --exclude='decoder-ffmpeg/.cxx' decoder-ffmpeg scripts/ffmpeg RELINKING.md) | tar -xf - -C "$STAGE/source"
-cp "$ROOT"/licenses/{LGPL-2.1.txt,MIT-musl-avsscanf.txt,FFMPEG-NOTICE.txt,Apache-2.0.txt} "$STAGE/licenses/"
+cp "$ROOT"/licenses/{LGPL-2.1.txt,MIT-musl-avsscanf.txt,FFMPEG-NOTICE.txt,FFMPEG-SOURCE.txt,FFMPEG-RELINKING.txt,Apache-2.0.txt} "$STAGE/licenses/"
 
 # 3. Relink kit: JNI glue object files and the exact link commands from the last Gradle release build.
 NINJA="${NINJA:-}"

@@ -30,6 +30,12 @@ jobs:
       - name: Check out
         uses: actions/checkout@v7
 
+      # Fails if any prebuilt .so/.a (or other native binary) is committed, so FFmpeg and
+      # libffmpegJNI.so always come from the pinned source below, never from a stored binary.
+      - name: Guard - no prebuilt native libraries in the repository
+        shell: bash
+        run: bash scripts/ci/check-no-prebuilt-native.sh
+
       - name: Set up Java 21
         uses: actions/setup-java@v6
         with:
@@ -47,19 +53,20 @@ jobs:
           grep -q "Pkg.Revision = $NDK_VERSION" "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
-      # FFmpeg's static libraries depend only on the pinned commit, the configure
-      # script and decoder list, and the NDK, all of which are in these files.
-      - name: Cache FFmpeg build
+      # Only the FFmpeg source tarball is cached (fetch-ffmpeg.sh checks its sha256 and the
+      # unpacked tree hash on every run). FFmpeg itself is compiled from that source in every
+      # run; no previously built FFmpeg library or .so is restored.
+      - name: Cache the FFmpeg source tarball
         uses: actions/cache@v4
         with:
-          path: |
-            decoder-ffmpeg/src/main/jni/ffmpeg
-            build/ffmpeg-download
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/versions.env', 'scripts/ffmpeg/fetch-ffmpeg.sh', 'scripts/ffmpeg/build-ffmpeg.sh', 'decoder-ffmpeg/src/main/jni/build_ffmpeg.sh') }}
+          path: build/ffmpeg-download
+          key: ffmpeg-src-${{ hashFiles('scripts/ffmpeg/versions.env') }}
 
       - name: Build FFmpeg (sha256-checked source, pinned NDK)
         shell: bash
-        run: scripts/ffmpeg/build-ffmpeg.sh "$ANDROID_NDK_HOME"
+        run: |
+          test ! -e decoder-ffmpeg/src/main/jni/ffmpeg/android-libs || { echo "::error::FFmpeg libraries exist before the build"; exit 1; }
+          scripts/ffmpeg/build-ffmpeg.sh "$ANDROID_NDK_HOME"
 
       # A Linux build of the same decoder sources, so the JVM tests can run the real
       # Java -> JNI -> FFmpeg decoding path (never packaged; the APK has only ARM code).
@@ -91,8 +98,10 @@ jobs:
             echo "::error::Unexpected native ABI in the APK."
             exit 1
           fi
+          # R8 kept the decoder/JNI, archive, PDF and player classes; every JNI export has its native method.
+          python3 scripts/ci/check-apk-r8.py "$apk" --mapping app/build/outputs/mapping/release/mapping.txt --dexdump "$bt/dexdump"
           # The licence texts shown in Settings > Open-source licences.
-          for f in FFMPEG-NOTICE.txt LGPL-2.1.txt MIT-musl-avsscanf.txt UnRAR-junrar-7.5.5.txt NOTICE THIRD_PARTY_LICENSES.md; do
+          for f in ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt UnRAR-junrar-7.5.5.txt NOTICE THIRD_PARTY_LICENSES.md; do
             unzip -l "$apk" "assets/licenses/$f" > /dev/null || { echo "::error::assets/licenses/$f missing from the APK"; exit 1; }
           done
           mkdir -p dist

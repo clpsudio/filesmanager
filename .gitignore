@@ -34,3 +34,6 @@ app/release/
 
 # FFmpeg source and static libraries: fetched and built by scripts/ffmpeg/ (pinned, sha256-checked)
 decoder-ffmpeg/src/main/jni/ffmpeg/
+
+# Python bytecode (scripts/ci)
+__pycache__/

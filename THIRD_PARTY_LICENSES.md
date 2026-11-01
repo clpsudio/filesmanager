@@ -120,10 +120,11 @@ upstream sources; no Jellyfin file is used.
   - corresponding source: `scripts/ffmpeg/make-corresponding-source.sh` writes the bundle (FFmpeg source
     tarball, build scripts and configure options, decoder module source, JNI object files, relinking steps);
     CI attaches it to every build as `ffmpeg-corresponding-source`, and it is to be attached to every
-    published release; `licenses/FFMPEG-NOTICE.txt` also contains a written offer;
+    published release; `licenses/FFMPEG-SOURCE.txt` says where it is published, gives the exact build
+    configuration and contains a written offer;
   - relinking: FFmpeg is linked statically into `libffmpegJNI.so`, which is itself a separate shared library
     in the APK; `RELINKING.md` and `scripts/ffmpeg/build-jni-standalone.sh` show how to rebuild it with a
-    modified FFmpeg and replace it.
+    modified FFmpeg and replace it as a whole (summary in the app: `licenses/FFMPEG-RELINKING.txt`).
 
 ### 3.2 Junrar 7.5.5 (UnRAR licence)
 

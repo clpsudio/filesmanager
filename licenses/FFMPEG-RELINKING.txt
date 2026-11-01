@@ -1,0 +1,35 @@
+FFmpeg in Files: replacing or relinking FFmpeg
+==============================================
+
+You may modify FFmpeg and use your modified version with Files.
+
+How FFmpeg is linked: FFmpeg's libavcodec, libavutil and libswresample are
+linked statically into one shared library, libffmpegJNI.so, together with
+AndroidX Media's JNI glue (ffmpeg_jni.cc, Apache-2.0). The rest of the app
+does not contain FFmpeg; it loads libffmpegJNI.so at run time
+(System.loadLibrary("ffmpegJNI")). So FFmpeg is replaced by replacing
+libffmpegJNI.so as a whole, for each ABI (lib/arm64-v8a/ and
+lib/armeabi-v7a/ in the APK).
+
+What you need is published (see "Source code and build configuration"):
+- the FFmpeg source and the exact build scripts and configure options;
+- the source of the JNI glue and its CMake files (decoder-ffmpeg/);
+- the relink kit: the compiled JNI glue object file for each ABI
+  (relink-kit/<abi>/ffmpeg_jni.cc.o) and the exact link command the build
+  used (relink-kit/<abi>/link-command.txt), in the
+  "ffmpeg-corresponding-source" bundle;
+- step-by-step instructions: RELINKING.md in the source repository and in the
+  bundle.
+
+The steps:
+1. Build FFmpeg's static libraries (scripts/ffmpeg/build-ffmpeg.sh, or your
+   own modified build of the same libraries).
+2. Link a new libffmpegJNI.so (scripts/ffmpeg/build-jni-standalone.sh, which
+   needs only CMake and the Android NDK, or by hand from the relink kit).
+3. Either build the whole app from the repository, or replace
+   lib/<abi>/libffmpegJNI.so in the APK, align it and sign it with your own
+   key.
+
+Android only installs signed APKs, so a modified APK has your signature, not
+CLP Studio's: uninstall the official app first (its data on the phone is
+removed). This is an Android rule, not a restriction added by CLP Studio.

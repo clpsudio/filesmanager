@@ -1,0 +1,58 @@
+FFmpeg in Files: source code and build configuration
+===================================================
+
+FFmpeg is linked statically into libffmpegJNI.so (lib/arm64-v8a/ and
+lib/armeabi-v7a/ in the APK). The complete corresponding source of that
+library, and the exact configuration it was built with, are published in
+these places:
+
+1. The source repository, https://github.com/clpsudio/filesmanager:
+   - decoder-ffmpeg/ holds the JNI glue (ffmpeg_jni.cc), the Java classes and
+     the CMake files.
+   - scripts/ffmpeg/fetch-ffmpeg.sh downloads FFmpeg at commit
+     d388c347d41e4eb516dec05910551c5461e65615 and checks the tarball's sha256
+     (f89916923b8b935d1f0aaf8b77d21cb0c507c270d66c00d0f256a62cc7ff22ec).
+   - scripts/ffmpeg/build-ffmpeg.sh builds it with the configure options
+     below; scripts/ffmpeg/versions.env pins every version.
+   - RELINKING.md explains how to rebuild or replace the library.
+2. Every build made by the project's GitHub Actions workflows carries the
+   artifact "ffmpeg-corresponding-source": the FFmpeg source tarball itself,
+   the build scripts and configure options, the decoder module source, the
+   compiled JNI object files with their exact link commands (relink kit), and
+   the relinking instructions.
+3. Each published release of Files has the same bundle attached next to the
+   APK, as ffmpeg-corresponding-source-<version>.tar.gz.
+
+Build configuration
+-------------------
+Toolchain: Android NDK r26b (26.1.10909125), CMake 3.22.1, Android API
+level 21. FFmpeg is configured by AndroidX Media's build_ffmpeg.sh
+(unmodified, in decoder-ffmpeg/src/main/jni/) with these options for both
+ABIs:
+
+--target-os=android --enable-static --disable-shared --disable-doc
+--disable-programs --disable-everything --disable-avdevice --disable-avformat
+--disable-swscale --disable-postproc --disable-avfilter --disable-symver
+--enable-swresample --extra-ldexeflags=-pie --disable-v4l2-m2m
+--disable-vulkan --enable-decoder=flac --enable-decoder=alac
+--enable-decoder=pcm_mulaw --enable-decoder=pcm_alaw --enable-decoder=mp3
+--enable-decoder=aac --enable-decoder=ac3 --enable-decoder=eac3
+--enable-decoder=dca --enable-decoder=mlp --enable-decoder=truehd
+
+armeabi-v7a adds: --arch=arm --cpu=armv7-a
+--extra-cflags="-march=armv7-a -mfloat-abi=softfp"
+--extra-ldflags="-Wl,--fix-cortex-a8"
+
+arm64-v8a adds: --arch=aarch64 --cpu=armv8-a
+
+Not used: --enable-gpl, --enable-version3, --enable-nonfree, and no external
+libraries.
+
+Written offer
+-------------
+For at least three years after CLP Studio last distributes a given version of
+Files, CLP Studio will give anyone who asks a complete machine-readable copy
+of the corresponding FFmpeg source and build files for that version, on a
+medium customarily used for software interchange, for no more than the cost
+of physically performing the distribution. Ask through the contact on
+https://github.com/clpsudio, naming the Files version.
