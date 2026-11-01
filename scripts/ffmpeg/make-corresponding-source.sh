@@ -53,7 +53,7 @@ for abi in arm64-v8a armeabi-v7a; do
     mkdir -p "$STAGE/relink-kit/$abi"
     cp "$obj" "$STAGE/relink-kit/$abi/ffmpeg_jni.cc.o"
     if [[ -n "$NINJA" ]]; then
-      (cd "$bdir" && "$NINJA" -t commands jni/libffmpegJNI.so | tail -1) > "$STAGE/relink-kit/$abi/link-command.txt"
+      (cd "$bdir" && "$NINJA" -t commands ffmpegJNI | tail -1) > "$STAGE/relink-kit/$abi/link-command.txt"
     fi
   else
     echo "note: no Gradle native build for $abi found; relink-kit/$abi not included" >&2

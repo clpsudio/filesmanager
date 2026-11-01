@@ -68,7 +68,7 @@ cp files-<version>.apk files-relinked.apk
 mkdir -p lib/arm64-v8a lib/armeabi-v7a
 cp build/ffmpeg-jni-standalone/arm64-v8a/libffmpegJNI.stripped.so   lib/arm64-v8a/libffmpegJNI.so
 cp build/ffmpeg-jni-standalone/armeabi-v7a/libffmpegJNI.stripped.so lib/armeabi-v7a/libffmpegJNI.so
-zip -d files-relinked.apk 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/MANIFEST.MF'   # old v1 signature, if any
+zip -d files-relinked.apk 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/MANIFEST.MF' || true   # old v1 signature, if any
 zip -0 files-relinked.apk lib/arm64-v8a/libffmpegJNI.so lib/armeabi-v7a/libffmpegJNI.so
 zipalign -f -P 16 4 files-relinked.apk files-relinked-aligned.apk      # build-tools 35+
 apksigner sign --ks your.keystore files-relinked-aligned.apk
@@ -76,4 +76,7 @@ adb install files-relinked-aligned.apk
 ```
 
 Native libraries are stored uncompressed (`zip -0`) and 16 KB page-aligned
-(`zipalign -P 16`), as the Android Gradle plugin stores them.
+(`zipalign -P 16`), as the Android Gradle plugin stores them. (These steps were
+checked on an unsigned CI-style APK: the result passes `zipalign -c -P 16` and
+`apksigner verify` and carries the new library byte for byte. Installing it on
+a phone has not been tested.)
