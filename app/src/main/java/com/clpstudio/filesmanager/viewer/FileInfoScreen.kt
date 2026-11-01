@@ -39,7 +39,7 @@ import com.clpstudio.filesmanager.ui.glass.GlassScaffold
 import com.clpstudio.filesmanager.ui.glass.glassPanel
 import java.io.File
 
-/** For types without an in-app viewer yet (Office, RAR, 7z, unknown): info, open with, share. */
+/** For types without an in-app viewer (some Office files, RAR, tar, unknown): info, open with, share. */
 @Composable
 fun FileInfoScreen(
     file: OpenedFile,
@@ -66,7 +66,7 @@ fun FileInfoScreen(
                 Text(
                     when (file.kind) {
                         FileKind.DOCUMENT -> com.clpstudio.filesmanager.viewer.office.OfficeFormats.noPreviewMessage(file.name)
-                        FileKind.ARCHIVE -> "Files opens ZIP, 7z and RAR archives. This archive type isn't supported yet."
+                        FileKind.ARCHIVE -> com.clpstudio.filesmanager.data.Archives.UNSUPPORTED_MESSAGE
                         else -> "Files can't preview this type yet."
                     },
                     textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,

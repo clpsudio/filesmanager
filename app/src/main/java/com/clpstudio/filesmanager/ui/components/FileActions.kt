@@ -136,18 +136,18 @@ class FileActions(private val context: Context, private val afterCopyOrMove: () 
         }
     }
 
-    /** Extract each archive (ZIP, 7z, RAR4) into a folder next to it, or everything into [dest]. Asks for passwords first. */
+    /** Extract each archive (ZIP, 7z) into a folder next to it, or everything into [dest]. Asks for passwords first. */
     fun extract(items: List<FileItem>, dest: File?) {
         val zips = items.filter { !it.isDir && com.clpstudio.filesmanager.data.Archives.canBrowse(it.name) }.map { File(it.path) }
         if (zips.isEmpty()) {
-            Toast.makeText(context, "Select ZIP, 7z or RAR files to extract", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Select ZIP or 7z files to extract", Toast.LENGTH_SHORT).show()
             return
         }
         Graph.appScope.launch(Dispatchers.Main) {
             val plan = ArrayList<Triple<File, CharArray?, File>>()
             for (zip in zips) {
                 val encrypted = withContext(Dispatchers.IO) { runCatching { com.clpstudio.filesmanager.data.Archives.probe(zip).encrypted } }.getOrElse {
-                    val why = if (it is com.clpstudio.filesmanager.data.Rar5NotSupportedException) "RAR5 not supported" else "it may be damaged"
+                    val why = if (it is com.clpstudio.filesmanager.data.UnsupportedArchiveException) "this archive type isn't supported" else "it may be damaged"
                     Toast.makeText(context, "Can't open ${zip.name}: $why", Toast.LENGTH_LONG).show()
                     continue
                 }

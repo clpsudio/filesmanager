@@ -196,8 +196,8 @@ object FileDetailsLoader {
                         "Items inside" to if (p.listLocked) "Locked" else p.entries.size.toString(),
                         "Password" to if (p.encrypted) "Yes" else "No",
                     )
-                } catch (e: com.clpstudio.filesmanager.data.Rar5NotSupportedException) {
-                    listOf("Format" to "RAR5 (not supported yet)")
+                } catch (e: com.clpstudio.filesmanager.data.UnsupportedArchiveException) {
+                    listOf("Format" to "Not supported")
                 }
             }
             ArchiveOps.open(File(path)).use { z ->

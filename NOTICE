@@ -7,8 +7,8 @@ that code is the Apache License, Version 2.0 (text kept, not in force, in
 LICENSE.pending-review.md); no licence has been granted yet, and it would
 cover only CLP Studio's own code. The APK as a whole is not distributed under
 a single licence and is not "entirely Apache-2.0": it also contains FFmpeg
-(LGPL-2.1-or-later), Junrar (UnRAR licence) and the other components below,
-each under its own licence.
+(LGPL-2.1-or-later) and the other components below, each under its own
+licence. Files includes no RAR library.
 
 The app also uses third-party components that keep their own licences. Their
 names, versions, licences and sources are listed in THIRD_PARTY_LICENSES.md.
@@ -81,14 +81,3 @@ licenses/MIT-musl-avsscanf.txt).
 AndroidX Media FFmpeg decoder (androidx.media3.decoder.ffmpeg, ffmpeg_jni.cc)
 Copyright The Android Open Source Project, Apache License 2.0. Unmodified
 from https://github.com/androidx/media tag 1.8.0 (commit b7bbc6e).
-
---------------------------------------------------------------------------------
-
-Junrar (https://github.com/junrar/junrar), version 7.5.5, is based on the
-UnRAR source code by Alexander L. Roshal and is distributed under the UnRAR
-licence (not an open-source licence). The UnRAR sources "cannot be used to
-re-create the RAR compression algorithm, which is proprietary", and modified
-versions must state "in the documentation and source comments that the code
-may not be used to develop a RAR (WinRAR) compatible archiver". The full UnRAR
-licence is in licenses/UnRAR-junrar-7.5.5.txt and THIRD_PARTY_LICENSES.md
-(section 3.2).

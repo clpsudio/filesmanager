@@ -3,8 +3,8 @@
 > **Licence status: pending.** No licence has been granted for this repository
 > yet. Apache-2.0 is the *proposed* licence for CLP Studio's own code only. Its
 > text is in [`LICENSE.pending-review.md`](LICENSE.pending-review.md) and is
-> **not in force**. The app also contains third-party parts under other
-> licences, including one that is not open source (Junrar, UnRAR licence). See
+> **not in force**. The app also contains third-party parts under their own
+> open-source licences, including FFmpeg (LGPL-2.1-or-later). See
 > [Licensing](#licensing).
 
 **Files** is a file manager for Android phones, made by CLP Studio. It lets you
@@ -42,7 +42,7 @@ device.
 | Browse | Copy, move, rename, delete to the Bin, share, new folder, multi-select, sort, grid or list, SD cards, show hidden files. |
 | Search | By name and by date (for example `31/10/2026`, `Oct 2026`, `yesterday`), with date chips and type filters. |
 | Viewers | Photos, video (with gestures, subtitles and picture-in-picture), music (background playback, lock-screen controls, queue), PDF (including password-protected PDFs), text and code, Markdown, Word/Excel/PowerPoint previews, EPUB, APK details, and Photoshop/Illustrator/CorelDRAW/AutoCAD previews. |
-| Archives | Open ZIP, 7z and RAR (RAR4) files without extracting. Extract all or some files. Create ZIP files, with or without a password. RAR5 files are not supported. |
+| Archives | Open ZIP and 7z files (including password-protected ones) without extracting. Extract all or some files. Create ZIP files, with or without a password. Other archive types, such as RAR, tar and tar.gz, are not supported: Files says so and offers to open them with another app. |
 | Apps | APK files on your phone, your installed apps and system apps. Install an APK, uninstall an app, see app sizes and apps you have not used for a while. |
 | Bin | Deleted files are kept for 30 days, then removed automatically. Restore, delete forever or empty the Bin. |
 | Vault | Move private files into an encrypted vault, protected by a PIN or password (and optionally your fingerprint). |
@@ -88,7 +88,7 @@ Material 3.
 | `app/` | The whole app: screens (`ui/`), file and storage logic (`data/`), viewers (`viewer/`), playback (`playback/`), the Vault (`vault/`), the app lock (`security/`) and the Bin clean-up job (`work/`). |
 | `decoder-ffmpeg/` | An FFmpeg audio decoder for formats many phones can't play (AC-3, E-AC-3, DTS, TrueHD/MLP and others). It is built in this repository from AndroidX Media 1.8.0's code and FFmpeg 6.0 source, with 11 audio decoders only. The phone's own decoders are always tried first. |
 | Playback | AndroidX Media3 (ExoPlayer) for video and music, with a media session for the notification and lock-screen controls. |
-| Archives | Zip4j (ZIP, including AES passwords), Apache Commons Compress and XZ (7z, tar, gz) and Junrar (RAR4). |
+| Archives | Zip4j (ZIP, including AES passwords), Apache Commons Compress and XZ (7z, including AES passwords). There is no RAR library: see [Licensing](#licensing). |
 | PDF | Android's built-in `PdfRenderer` draws the pages. PdfBox-Android is used for password-protected PDFs and for adding a password. |
 | Thumbnails and images | Coil (photos, video frames, GIF, SVG). |
 | Settings and background jobs | Jetpack DataStore for settings, WorkManager for the Bin's daily clean-up. |
@@ -268,7 +268,7 @@ Extra checks (CI runs them too):
 |---|---|
 | `scripts/ci/check-no-prebuilt-native.sh` | No prebuilt native library (`.so`, `.a`, `.o` or similar) is committed, so FFmpeg is always built from source. |
 | `scripts/ci/check-apk-r8.py` | After shrinking (R8), the release APK still contains the decoder, archive, PDF and player code. |
-| `scripts/test-fixtures/make-fresh-archives.sh` | Rebuilds the test archives (RAR4/RAR5/ZIP/7z/tar.gz). |
+| `scripts/test-fixtures/make-fresh-archives.sh` | Rebuilds the test archives (ZIP/7z/tar.gz). |
 | `scripts/test-fixtures/make-dwg-fixtures.py` | Rebuilds the two small AutoCAD test files. |
 
 Screenshots for this README:
@@ -295,22 +295,25 @@ permission without a clear reason.
 
 ## Licensing
 
-> **Status: pending.** The licence decisions below are not final. This section
-> will be updated when they are made.
+> **Status: pending.** CLP Studio has not confirmed the licence for its own
+> code yet. This section will be updated when it does.
 
-The APK is made of parts with **different licences**. Not everything in it is
-open source, so the app as a whole must not be described as "open source" or
-as "Apache-2.0 licensed".
+The APK is made of parts with **different licences**. Each part keeps its own
+licence, so the app as a whole is not "Apache-2.0 licensed".
 
 | Part | Licence | Status |
 |---|---|---|
 | CLP Studio's own code (Copyright 2026 CLP Studio) | Apache License 2.0 (proposed) | **Pending.** Text in [`LICENSE.pending-review.md`](LICENSE.pending-review.md), not in force. Until it is confirmed, no licence is granted for this code. |
 | FFmpeg 6.0 (audio decoders inside `libffmpegJNI.so`) | LGPL-2.1-or-later (one file, musl's `av_sscanf`, is MIT) | Built without any GPL, "version3" or non-free parts. See below. |
-| Junrar 7.5.5 (opens RAR4 archives) | UnRAR licence | **Not an open-source licence.** **Pending:** CLP Studio may replace Junrar with an open-source RAR reader. See below. |
-| AndroidX, Media3 (incl. its FFmpeg decoder Java/JNI code), Kotlin, Compose, Coil, Zip4j, Commons Compress, PdfBox-Android and others | Mostly Apache-2.0, some MIT, BSD or 0BSD | Listed with versions in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). |
+| AndroidX, Media3 (incl. its FFmpeg decoder Java/JNI code), Kotlin, Compose, Coil, Zip4j, Commons Compress, PdfBox-Android, Guava and the other libraries | Apache-2.0 (195 modules), MIT (4, including Bouncy Castle), BSD-3-Clause (1), 0BSD (1) | All OSI-approved open-source licences. Listed with versions in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). |
+| Fonts and data files that PdfBox-Android bundles | SIL OFL 1.1, BSD-3-Clause, Unicode licence; Adobe's own notice for 14 font-metrics (`.afm`) files | The Adobe notice allows free use and distribution but is not an OSI licence. See section 3.2 of [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). |
 
 Every licence text and notice is also inside the app, under
 **Settings > Open-source licences**.
+
+Files does not include any RAR library, so it does not open RAR files. RAR
+support was removed in November 2026 because the RAR library the app used was
+not under an open-source licence.
 
 ### FFmpeg (LGPL-2.1-or-later)
 
@@ -325,20 +328,8 @@ If you distribute an APK, the LGPL requires you to:
   `libffmpegJNI.so`, which can be rebuilt and replaced as a whole. See
   [`RELINKING.md`](RELINKING.md) and `licenses/FFMPEG-RELINKING.txt`.
 
-### Junrar (UnRAR licence) — decision pending
-
-> This part may change. CLP Studio is deciding whether to keep Junrar or to
-> replace it with an open-source alternative (for example libarchive). Until
-> then, the current state is:
-
-- Junrar is used only to open RAR4 archives.
-- Its UnRAR licence allows free use and redistribution, but its code **may not
-  be used to re-create the RAR compression algorithm**, and that restriction
-  must be passed on.
-- The UnRAR licence is not an OSI-approved open-source licence, and it is not
-  compatible with the GPL.
-- Full text: `licenses/UnRAR-junrar-7.5.5.txt`, and section 3.2 of
-  [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+Patents on some audio formats are a separate question from these copyright
+licences.
 
 ### Names and logos
 
@@ -359,7 +350,6 @@ projects, including:
 - [Zip4j](https://github.com/srikanth-lingala/zip4j) (Apache-2.0)
 - [Apache Commons Compress](https://commons.apache.org/proper/commons-compress/) (Apache-2.0)
 - [XZ for Java](https://tukaani.org/xz/java.html) (0BSD)
-- [Junrar](https://github.com/junrar/junrar) (UnRAR licence)
 - [PdfBox-Android](https://github.com/TomRoush/PdfBox-Android) (Apache-2.0)
 - [Haze](https://github.com/chrisbanes/haze) (Apache-2.0)
 

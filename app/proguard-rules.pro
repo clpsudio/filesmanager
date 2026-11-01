@@ -26,7 +26,7 @@
 # Crash reports read class names from stack traces: keep line numbers readable.
 -keepattributes SourceFile,LineNumberTable
 
-# Archives (7z via commons-compress + xz, RAR4 via junrar). Optional codecs commons-compress can call are not bundled.
+# Archives (7z via commons-compress + xz). Optional codecs commons-compress can call are not bundled.
 -dontwarn org.apache.commons.compress.**
 -dontwarn com.github.luben.zstd.**
 -dontwarn org.brotli.dec.**
@@ -34,7 +34,5 @@
 -dontwarn org.osgi.**
 -dontwarn javax.annotation.**
 -keep class org.tukaani.xz.** { *; }
--keep class com.github.junrar.** { *; }
--dontwarn com.github.junrar.**
 # FFmpeg decoder (JNI): natives call back into these classes.
 -keep class androidx.media3.decoder.ffmpeg.** { *; }

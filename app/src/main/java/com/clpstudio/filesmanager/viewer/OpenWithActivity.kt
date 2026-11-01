@@ -214,7 +214,7 @@ class OpenWithActivity : ComponentActivity() {
             FileKind.ARCHIVE -> {
                 val local by produceState<File?>(null, f) {
                     value = if (f.mime == "application/zip" || com.clpstudio.filesmanager.data.Archives.canBrowse(f.name) ||
-                        f.mime == "application/x-7z-compressed" || f.mime == "application/vnd.rar" || f.mime == "application/x-rar-compressed"
+                        f.mime == "application/x-7z-compressed"
                     ) {
                         f.path?.let { File(it) } ?: runCatching { ExternalFiles.copyToCache(context, f.uri, f.name) }.getOrNull()
                     } else null

@@ -4,7 +4,7 @@
     scripts/ci/check-apk-r8.py <app-release.apk> --mapping <mapping.txt> [--dexdump <path>] [--readelf <path>]
 
 1. Classes kept under their original names by the keep rules (app/proguard-rules.pro and the
-   decoder module's consumer rules): the FFmpeg decoder classes, Junrar, XZ, Zip4j, PdfBox-Android.
+   decoder module's consumer rules): the FFmpeg decoder classes, XZ, Zip4j, PdfBox-Android.
 2. JNI: every Java_* function exported by lib/<abi>/libffmpegJNI.so (each ABI) has a native method of
    that name in that class in the dex, and the method the native code calls back
    (FfmpegAudioDecoder.growOutputBuffer) is there with its exact signature.
@@ -12,6 +12,7 @@
    is in the mapping and its new name is in the dex, or its methods were moved into another class
    (mapping lines naming "<class>.<method>") that is in the dex.
 4. Framework classes the app's PDF and player code calls (PdfRenderer, Media3) are referenced by the dex.
+5. Libraries that must NOT ship (Junrar / UnRAR, not an open-source licence): no class or type of theirs in the dex.
 Exits 1 and prints every miss.
 
 Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
@@ -24,8 +25,6 @@ KEPT = [  # original names, kept by keep rules
     "androidx.media3.decoder.ffmpeg.FfmpegAudioDecoder",
     "androidx.media3.decoder.ffmpeg.FfmpegLibrary",
     "androidx.media3.decoder.SimpleDecoderOutputBuffer",
-    "com.github.junrar.Archive",
-    "com.github.junrar.rarfile.FileHeader",
     "org.tukaani.xz.LZMA2InputStream",
     "net.lingala.zip4j.ZipFile",
     "com.tom_roush.pdfbox.pdmodel.PDDocument",
@@ -48,6 +47,11 @@ REFERENCED = [  # framework / library types the code must still reference
     "android.graphics.pdf.PdfRenderer",
     "android.graphics.pdf.PdfRenderer$Page",
     "androidx.media3.exoplayer.ExoPlayer",
+]
+FORBIDDEN = [  # package prefixes (as dex descriptors) and words that must not appear in any dex type
+    "Lcom/github/junrar/",
+    "junrar",
+    "unrar",
 ]
 CALLBACK = ("androidx.media3.decoder.ffmpeg.FfmpegAudioDecoder", "growOutputBuffer",
             "(Landroidx/media3/decoder/SimpleDecoderOutputBuffer;I)Ljava/nio/ByteBuffer;")
@@ -145,6 +149,9 @@ def main():
                 miss.append(f"class {cl}: not in mapping and no member kept (removed by R8)")
         for cl in REFERENCED:
             (ok if desc(cl) in types else miss).append(f"referenced {cl}")
+        for word in FORBIDDEN:
+            hits = sorted(t for t in types | set(classes) if word in t or word in t.lower())
+            (miss.append(f"forbidden {word!r} in dex: {', '.join(hits[:5])}") if hits else ok.append(f"no {word!r} in dex"))
     for line in ok:
         print("ok   " + line)
     for line in miss:

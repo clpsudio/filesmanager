@@ -105,7 +105,7 @@ abstract class LicenceAssetsTask : DefaultTask() {
         out.deleteRecursively()
         out.mkdirs()
         sources.files.sortedBy { it.name }.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
-        check(listOf("FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt", "FFMPEG-RELINKING.txt", "LGPL-2.1.txt", "MIT-musl-avsscanf.txt", "UnRAR-junrar-7.5.5.txt").all { out.resolve(it).isFile }) { "licence texts missing" }
+        check(listOf("FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt", "FFMPEG-RELINKING.txt", "LGPL-2.1.txt", "MIT-musl-avsscanf.txt").all { out.resolve(it).isFile }) { "licence texts missing" }
     }
 }
 
@@ -163,10 +163,11 @@ dependencies {
 
     // ZIP with passwords (AES-256 / ZipCrypto). Pure Java, no network code.
     implementation("net.lingala.zip4j:zip4j:2.11.5")
-    // RAR / 7z archives (pure Java, offline): commons-compress reads 7z, xz supplies its LZMA codecs, junrar reads RAR4.
+    // 7z archives (pure Java, offline): commons-compress reads 7z, xz supplies its LZMA codecs.
+    // No RAR library, on purpose: the RAR reader the app used (Junrar) is under the UnRAR licence, which is not an
+    // open-source licence. RAR files show the "this archive type isn't supported" message.
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.tukaani:xz:1.10")
-    implementation("com.github.junrar:junrar:7.5.5")
     // FFmpeg audio decoders for Media3 (offline native libs) — plays codecs the phone's own decoders can't.
     // Built in this repo from AndroidX Media 1.8.0 + FFmpeg 6.0 (LGPL-2.1+), see decoder-ffmpeg/UPSTREAM.md.
     implementation(project(":decoder-ffmpeg"))

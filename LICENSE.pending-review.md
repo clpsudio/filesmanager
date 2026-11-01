@@ -15,11 +15,12 @@ their own licences, notably:
 
 - FFmpeg (LGPL-2.1-or-later; one MIT file), built in `decoder-ffmpeg/` from
   AndroidX Media 1.8.0 (Apache-2.0) and FFmpeg commit `d388c347`; and
-- Junrar 7.5.5, which is distributed under the UnRAR licence (not an
-  open-source licence).
+- the other libraries listed in `THIRD_PARTY_LICENSES.md` (Apache-2.0, MIT,
+  BSD, 0BSD and others, each under its own licence).
 
-The APK as a whole is therefore not "entirely Apache-2.0" and should not be
-described as fully open source. See the "Licence (pending)" section of
+The APK as a whole is therefore not "entirely Apache-2.0". Until CLP Studio
+confirms its own licence, the project should not be described as fully open
+source. See the "Licence (pending)" section of
 `README.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ---

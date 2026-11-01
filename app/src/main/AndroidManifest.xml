@@ -108,8 +108,6 @@
                 <data android:mimeType="application/vnd.android.package-archive" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
-                <data android:mimeType="application/x-rar-compressed" />
-                <data android:mimeType="application/vnd.rar" />
                 <data android:mimeType="application/x-7z-compressed" />
                 <data android:mimeType="application/msword" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />

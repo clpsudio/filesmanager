@@ -150,7 +150,7 @@ jobs:
           # R8 kept the decoder/JNI, archive, PDF and player classes; every JNI export has its native method.
           python3 scripts/ci/check-apk-r8.py "$apk" --mapping app/build/outputs/mapping/release/mapping.txt --dexdump "$bt/dexdump"
           # The licence texts shown in Settings > Open-source licences.
-          for f in ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt UnRAR-junrar-7.5.5.txt NOTICE THIRD_PARTY_LICENSES.md; do
+          for f in ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt NOTICE THIRD_PARTY_LICENSES.md; do
             unzip -l "$apk" "assets/licenses/$f" > /dev/null || { echo "::error::assets/licenses/$f missing from the APK"; exit 1; }
           done
           "$bt/apksigner" verify --print-certs "$apk" | grep -E "DN|SHA-256|SHA-1"

@@ -4,27 +4,31 @@
 > proposed Apache-2.0 text is kept, not in force, in `LICENSE.pending-review.md`,
 > and it would apply only to CLP Studio's own code. The APK as a whole is not
 > under one licence and is not "entirely Apache-2.0": it contains components
-> under their own licences, including FFmpeg (LGPL-2.1-or-later, section 3.1)
-> and Junrar (UnRAR licence, section 3.2).
+> under their own licences, including FFmpeg (LGPL-2.1-or-later, section 3.1).
 
 Files (`com.clpstudio.filesmanager`) is built from CLP Studio's own source code plus the third-party
 components listed here. This file covers:
 
 1. the libraries declared in `app/build.gradle.kts` (direct dependencies),
 2. every library that ends up in the release APK (the resolved `releaseRuntimeClasspath`: 204 coordinates at `783e7a7`;
-   203 external coordinates plus the in-repository `:decoder-ffmpeg` module after the Jellyfin package was removed),
-3. the components with special conditions (FFmpeg, Junrar/UnRAR, PdfBox-Android resources, fonts),
+   203 external coordinates plus the in-repository `:decoder-ffmpeg` module after the Jellyfin package was removed;
+   since RAR was removed: 202, that is 201 external coordinates plus `:decoder-ffmpeg`),
+3. the components with special conditions (FFmpeg, PdfBox-Android resources, fonts),
 4. build-only and test-only components, and the third-party test fixtures in this repository.
 
 How this list was made (1 November 2026, repository state `783e7a7`): `./gradlew :app:dependencies
 --configuration releaseRuntimeClasspath`, then the licence of every resolved module was read from its
 published POM (or its parent POM), and checked against the upstream LICENSE/NOTICE files where the POM was
-missing, vague or unusual (Bouncy Castle, Junrar, PdfBox-Android, XZ, Haze, Zip4j, Coil). The
+missing, vague or unusual (Bouncy Castle, PdfBox-Android, XZ, Haze, Zip4j, Coil). The
 native FFmpeg library was inspected directly (see 3.1). When you change dependencies, regenerate this list.
 
 Update (1 November 2026, Option 1): the prebuilt Jellyfin package `org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1`
 was replaced by the in-repository module `:decoder-ffmpeg`, built from AndroidX Media 1.8.0 and FFmpeg
 `d388c347` (section 3.1). No Jellyfin code or package is used any more.
+
+Update (1 November 2026, RAR removed): RAR support was removed together with its library, the only one in
+the app whose licence was not OSI-approved, and with SLF4J API 1.7.36, which only that library pulled in.
+Files includes no RAR library; RAR files show "not supported".
 
 The licence texts referred to below are available at the linked URLs. The Apache License 2.0 text is also in
 this repository's `LICENSE.pending-review.md` file (kept for review; not in force as the project licence).
@@ -63,7 +67,6 @@ this repository's `LICENSE.pending-review.md` file (kept for review; not in forc
 | Zip4j `net.lingala.zip4j:zip4j` | 2.11.5 | Apache-2.0 | Srikanth Reddy Lingala | https://github.com/srikanth-lingala/zip4j |
 | Apache Commons Compress `org.apache.commons:commons-compress` | 1.28.0 | Apache-2.0 | The Apache Software Foundation | https://commons.apache.org/ |
 | XZ for Java `org.tukaani:xz` | 1.10 | 0BSD | The XZ for Java authors and contributors | https://github.com/tukaani-project/xz-java |
-| Junrar `com.github.junrar:junrar` | 7.5.5 | UnRAR licence (not OSI-approved; see section 3.2) | Alexander L. Roshal (UnRAR); junrar contributors | https://github.com/junrar/junrar |
 | FFmpeg decoder module `:decoder-ffmpeg` (in this repository) | AndroidX Media 1.8.0 + FFmpeg 6.0 (`d388c347`) | Apache-2.0 (AndroidX Media Java/JNI code) + LGPL-2.1-or-later (FFmpeg; one MIT file), see section 3.1 | The Android Open Source Project (decoder code); FFmpeg developers (native code); Rich Felker et al. (musl `av_sscanf`) | https://github.com/androidx/media/tree/1.8.0/libraries/decoder_ffmpeg, https://git.ffmpeg.org/ffmpeg.git |
 | PdfBox-Android `com.tom-roush:pdfbox-android` | 2.0.27.0 | Apache-2.0 | The Apache Software Foundation; Tom Roush (Android port) | https://github.com/TomRoush/PdfBox-Android |
 | Haze `dev.chrisbanes.haze:haze-android` | 1.6.10 | Apache-2.0 | Chris Banes | https://github.com/chrisbanes/haze |
@@ -73,15 +76,23 @@ this repository's `LICENSE.pending-review.md` file (kept for review; not in forc
 
 ## 2. Licence summary of everything in the release APK
 
-| Licence | Modules | Examples |
-|---|---|---|
-| Apache-2.0 | 195 | AndroidX, Jetpack Compose, Media3, Kotlin, kotlinx.coroutines, Coil, Haze, Zip4j, Apache Commons (Compress, IO, Codec, Lang), PdfBox-Android, Guava, Okio, AndroidSVG, Accompanist |
-| MIT | 2 | Checker Framework qualifiers (`checker-qual` 3.43.0), SLF4J API 1.7.36 |
-| MIT-style (Bouncy Castle Licence) | 3 | `bcprov`, `bcpkix`, `bcutil` (`-jdk15to18` 1.72), pulled in by PdfBox-Android |
-| BSD-3-Clause | 1 | `datastore-preferences-external-protobuf` 1.1.7 (repackaged Protocol Buffers) |
-| 0BSD | 1 | XZ for Java 1.10 |
-| UnRAR licence | 1 | Junrar 7.5.5 |
-| Apache-2.0 (Java/JNI glue) + LGPL-2.1-or-later (FFmpeg, one MIT file) | 1 | `:decoder-ffmpeg` (AndroidX Media 1.8.0 decoder_ffmpeg + FFmpeg 6.0), built in this repository |
+| Licence | Modules | OSI-approved | Examples |
+|---|---|---|---|
+| Apache-2.0 | 195 | Yes | AndroidX, Jetpack Compose, Media3, Kotlin, kotlinx.coroutines, Coil, Haze, Zip4j, Apache Commons (Compress, IO, Codec, Lang), PdfBox-Android, Guava, Okio, AndroidSVG, Accompanist |
+| MIT | 1 | Yes | Checker Framework qualifiers (`checker-qual` 3.43.0) |
+| MIT-style (Bouncy Castle Licence, the MIT text) | 3 | Yes (as MIT) | `bcprov`, `bcpkix`, `bcutil` (`-jdk15to18` 1.72), pulled in by PdfBox-Android |
+| BSD-3-Clause | 1 | Yes | `datastore-preferences-external-protobuf` 1.1.7 (repackaged Protocol Buffers) |
+| 0BSD | 1 | Yes | XZ for Java 1.10 |
+| Apache-2.0 (Java/JNI glue) + LGPL-2.1-or-later (FFmpeg, one MIT file) | 1 | Yes (LGPL is a weak copyleft licence: see section 3.1 for what it requires) | `:decoder-ffmpeg` (AndroidX Media 1.8.0 decoder_ffmpeg + FFmpeg 6.0), built in this repository |
+
+Every code library in the APK is under an OSI-approved licence. No GPL or AGPL code is included; the only
+copyleft component is FFmpeg (LGPL-2.1-or-later).
+
+Data files bundled by libraries (not code): PdfBox-Android puts fonts and data into the APK's `assets/`
+(section 3.2). Liberation Sans (SIL OFL 1.1), the Adobe CMaps and glyph lists (BSD-3-Clause) and the Unicode
+data files (Unicode licence, whose current versions are OSI-approved) are under OSI-approved licences. The 14 Adobe Font Metrics (`.afm`) files are
+under Adobe's own short permission notice (quoted in section 3.2), which allows free use, copying and
+distribution with or without changes but is **not an OSI-approved licence**.
 
 The full list is in section 5.
 
@@ -126,63 +137,7 @@ upstream sources; no Jellyfin file is used.
     in the APK; `RELINKING.md` and `scripts/ffmpeg/build-jni-standalone.sh` show how to rebuild it with a
     modified FFmpeg and replace it as a whole (summary in the app: `licenses/FFMPEG-RELINKING.txt`).
 
-### 3.2 Junrar 7.5.5 (UnRAR licence)
-
-Junrar is a Java port of the UnRAR source code. It is distributed under the UnRAR licence, which is not an
-OSI-approved open-source licence: it allows use in any software to handle RAR archives, but forbids using
-the code to re-create the RAR compression algorithm or to develop a RAR (WinRAR) compatible archiver. The
-licence is not compatible with the GNU GPL. Source: https://github.com/junrar/junrar (tag `v7.5.5`).
-Junrar is used unmodified (Maven `com.github.junrar:junrar:7.5.5`). Its restriction applies to anyone who
-reuses or modifies it: **the code may not be used to re-create the RAR compression algorithm, and modified
-copies must state, in their documentation and source comments, that the code may not be used to develop a
-RAR (WinRAR) compatible archiver.** The text is also in `licenses/UnRAR-junrar-7.5.5.txt` and in the app
-(Settings > Open-source licences).
-Its licence text, reproduced in full as required:
-
-```
- ******    *****   ******   UnRAR - free utility for RAR archives
- **   **  **   **  **   **  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- ******   *******  ******    License for use and distribution of
- **   **  **   **  **   **   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- **   **  **   **  **   **         FREE portable version
-                                   ~~~~~~~~~~~~~~~~~~~~~
-
-      The source code of UnRAR utility is freeware. This means:
-
-   1. All copyrights to RAR and the utility UnRAR are exclusively
-      owned by the author - Alexander Roshal.
-
-   2. The UnRAR sources may be used in any software to handle RAR
-      archives without limitations free of charge, but cannot be used
-      to re-create the RAR compression algorithm, which is proprietary.
-      Distribution of modified UnRAR sources in separate form or as a
-      part of other software is permitted, provided that it is clearly
-      stated in the documentation and source comments that the code may
-      not be used to develop a RAR (WinRAR) compatible archiver.
-
-   3. The UnRAR utility may be freely distributed. It is allowed
-      to distribute UnRAR inside of other software packages.
-
-   4. THE RAR ARCHIVER AND THE UnRAR UTILITY ARE DISTRIBUTED "AS IS".
-      NO WARRANTY OF ANY KIND IS EXPRESSED OR IMPLIED.  YOU USE AT 
-      YOUR OWN RISK. THE AUTHOR WILL NOT BE LIABLE FOR DATA LOSS, 
-      DAMAGES, LOSS OF PROFITS OR ANY OTHER KIND OF LOSS WHILE USING
-      OR MISUSING THIS SOFTWARE.
-
-   5. Installing and using the UnRAR utility signifies acceptance of
-      these terms and conditions of the license.
-
-   6. If you don't agree with terms of the license you must remove
-      UnRAR files from your storage devices and cease to use the
-      utility.
-
-      Thank you for your interest in RAR and UnRAR.
-
-
-                                            Alexander L. Roshal
-```
-
-### 3.3 PdfBox-Android 2.0.27.0 (Apache PDFBox) and its bundled resources
+### 3.2 PdfBox-Android 2.0.27.0 (Apache PDFBox) and its bundled resources
 
 Licence Apache-2.0. Source: https://github.com/TomRoush/PdfBox-Android. Its NOTICE:
 
@@ -237,7 +192,7 @@ The library puts these files into the APK's `assets/` folder, each under its own
 - PDFBox/FontBox original code (Copyright (c) 2002-2007, www.pdfbox.org, BSD-3-Clause) and PaDaF
   (Copyright 2010 Atos Worldline SAS, Apache-2.0).
 
-### 3.4 Bouncy Castle 1.72 (`bcprov`, `bcpkix`, `bcutil`, `-jdk15to18`)
+### 3.3 Bouncy Castle 1.72 (`bcprov`, `bcpkix`, `bcutil`, `-jdk15to18`)
 
 Pulled in by PdfBox-Android for PDF encryption. Their POMs name no licence; the upstream licence
 (https://github.com/bcgit/bc-java/blob/r1rv72/LICENSE.html) is:
@@ -262,7 +217,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 3.5 XZ for Java 1.10 (0BSD)
+### 3.4 XZ for Java 1.10 (0BSD)
 
 ```
 Copyright (C) The XZ for Java authors and contributors
@@ -280,14 +235,14 @@ NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### 3.6 Apache Commons (pulled in by Commons Compress 1.28.0)
+### 3.5 Apache Commons (pulled in by Commons Compress 1.28.0)
 
 Commons Compress 1.28.0, Commons IO 2.20.0, Commons Codec 1.19.0 and Commons Lang 3.18.0 are Apache-2.0
 and each ships a NOTICE file ("Copyright 2001/2002-2025 The Apache Software Foundation. This product
 includes software developed at The Apache Software Foundation (https://www.apache.org/)."). These notices
 are reproduced in this repository's `NOTICE` file.
 
-### 3.7 Fonts and icons inside other libraries
+### 3.6 Fonts and icons inside other libraries
 
 - `androidx.media3:media3-ui` 1.8.0 contains `roboto_medium_numbers.ttf` (Roboto 2.137, Copyright 2011
   Google Inc.), distributed by AndroidX Media under Apache-2.0.
@@ -295,10 +250,9 @@ are reproduced in this repository's `NOTICE` file.
 - The app's own launcher icon and logo are CLP Studio's (see `NOTICE`). The app bundles no other fonts,
   images or sounds.
 
-### 3.8 Other notices
+### 3.7 Other notices
 
 - Checker Framework qualifiers 3.43.0 (MIT), https://github.com/typetools/checker-framework, via Guava.
-- SLF4J API 1.7.36 (MIT), Copyright (c) 2004-2017 QOS.ch, https://github.com/qos-ch/slf4j, via Junrar.
 - `androidx.datastore:datastore-preferences-external-protobuf` 1.1.7 contains a repackaged copy of
   Protocol Buffers, Copyright Google Inc., BSD-3-Clause.
 
@@ -466,7 +420,6 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `androidx.work:work-runtime` | 2.10.3 | Apache-2.0 |
 | `androidx.work:work-runtime-ktx` | 2.10.3 | Apache-2.0 |
 | `com.caverock:androidsvg-aar` | 1.4 | Apache-2.0 |
-| `com.github.junrar:junrar` | 7.5.5 | UnRAR licence (not OSI-approved; see section 3.2) |
 | `com.google.accompanist:accompanist-drawablepainter` | 0.37.3 | Apache-2.0 |
 | `com.google.code.findbugs:jsr305` | 3.0.2 | Apache-2.0 |
 | `com.google.errorprone:error_prone_annotations` | 2.28.0 | Apache-2.0 |
@@ -534,5 +487,4 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `org.jetbrains.kotlinx:kotlinx-serialization-core` | 1.7.3 | Apache-2.0 (metadata only, no code) |
 | `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm` | 1.7.3 | Apache-2.0 |
 | `org.jspecify:jspecify` | 1.0.0 | Apache-2.0 |
-| `org.slf4j:slf4j-api` | 1.7.36 | MIT |
 | `org.tukaani:xz` | 1.10 | 0BSD |

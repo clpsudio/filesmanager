@@ -1,11 +1,5 @@
 package com.clpstudio.filesmanager.data
 
-import com.github.junrar.Archive
-import com.github.junrar.exception.CrcErrorException
-import com.github.junrar.exception.CorruptHeaderException
-import com.github.junrar.exception.InitDeciphererFailedException
-import com.github.junrar.exception.UnsupportedRarV5Exception
-import com.github.junrar.rarfile.FileHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -20,15 +14,19 @@ import kotlin.coroutines.coroutineContext
 
 /** The archive families the app can open inside itself. */
 enum class ArchiveFormat(val label: String) {
-    ZIP("ZIP"), SEVEN_Z("7z"), RAR("RAR"), RAR5("RAR5"), OTHER("Archive");
+    ZIP("ZIP"), SEVEN_Z("7z"), OTHER("Archive");
 
-    val browsable: Boolean get() = this == ZIP || this == SEVEN_Z || this == RAR
+    val browsable: Boolean get() = this == ZIP || this == SEVEN_Z
 }
 
-/** A RAR5 archive: no offline pure-Java reader exists for it, so the app says so clearly. */
-class Rar5NotSupportedException : IOException("RAR5 archives can't be opened in Files yet. RAR4 archives work.")
+/**
+ * An archive type Files has no reader for (RAR of any version, tar, tar.gz, ...). Thrown instead of handing the
+ * bytes to a reader that would misread them. RAR is left out on purpose (Nov 2026): the RAR reader the app used,
+ * Junrar, is under the UnRAR licence, which is not an open-source licence.
+ */
+class UnsupportedArchiveException : IOException("This kind of archive can't be opened in Files.")
 
-/** The archive's file list itself is locked (7z "encrypt file names", RAR "-hp"): it needs the password to list. */
+/** The archive's file list itself is locked (7z "encrypt file names"): it needs the password to list. */
 class ArchivePasswordRequiredException : IOException("Password required")
 
 /** What opening an archive without a password found. */
@@ -43,22 +41,25 @@ data class ArchiveProbe(
 )
 
 /**
- * One door for every archive the app browses: ZIP (zip4j, see [ArchiveOps]), 7z (Apache Commons Compress + XZ for
- * LZMA/LZMA2, AES-256 passwords) and RAR4 (junrar, passwords incl. locked names). RAR5 is detected and refused with
- * [Rar5NotSupportedException]. All offline, pure Java. Paths that would escape the target folder are skipped.
+ * One door for every archive the app browses: ZIP (zip4j, see [ArchiveOps]) and 7z (Apache Commons Compress + XZ for
+ * LZMA/LZMA2, AES-256 passwords). Everything else, RAR included (detected by its signature, so a renamed RAR is
+ * not fed to the ZIP reader), is refused with [UnsupportedArchiveException]. All offline, pure Java. Paths that
+ * would escape the target folder are skipped.
  */
 object Archives {
+    /** The one message for an archive type Files can't open (RAR, tar, tar.gz, ...), on the info screen and the archive screen. */
+    const val UNSUPPORTED_MESSAGE = "Files opens ZIP and 7z archives. This archive type isn't supported yet."
+
     private val SEVEN_Z_MAGIC = byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C)
     private val RAR_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07)
 
     fun formatOfName(name: String): ArchiveFormat = when (FileTypes.extension(name)) {
         "zip", "jar" -> ArchiveFormat.ZIP
         "7z" -> ArchiveFormat.SEVEN_Z
-        "rar" -> ArchiveFormat.RAR
         else -> ArchiveFormat.OTHER
     }
 
-    /** True when the app has its own browser for this file name (zip, jar, 7z, rar). */
+    /** True when the app has its own browser for this file name (zip, jar, 7z). */
     fun canBrowse(name: String): Boolean = formatOfName(name).browsable
 
     /** The real format from the first bytes (a renamed file still opens right), else from the name. */
@@ -71,8 +72,8 @@ object Archives {
     fun formatOfHead(head: ByteArray, n: Int): ArchiveFormat? = when {
         n >= 4 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte() && head[2].toInt() in 1..7 -> ArchiveFormat.ZIP
         n >= 6 && head.startsWith(SEVEN_Z_MAGIC) -> ArchiveFormat.SEVEN_Z
-        n >= 8 && head.startsWith(RAR_MAGIC) && head[6].toInt() == 1 && head[7].toInt() == 0 -> ArchiveFormat.RAR5
-        n >= 7 && head.startsWith(RAR_MAGIC) && head[6].toInt() == 0 -> ArchiveFormat.RAR
+        // RAR 1.5-4.x ("Rar!\x1A\x07\x00") and RAR5 ("Rar!\x1A\x07\x01\x00"): known, and not supported.
+        n >= 6 && head.startsWith(RAR_MAGIC) -> ArchiveFormat.OTHER
         else -> null
     }
 
@@ -101,28 +102,14 @@ object Archives {
         } catch (e: PasswordRequiredException) {
             ArchiveProbe(f, emptyList(), encrypted = true, listLocked = true)
         }
-        ArchiveFormat.RAR -> openRar(file, null).use { a ->
-            if (a.isEncrypted) ArchiveProbe(f, emptyList(), encrypted = true, listLocked = true)
-            else ArchiveProbe(f, a.fileHeaders.map { rarEntry(it) }, a.isPasswordProtected || a.fileHeaders.any { it.isEncrypted }, false)
-        }
-        ArchiveFormat.RAR5 -> throw Rar5NotSupportedException()
-        ArchiveFormat.OTHER -> throw IOException("This kind of archive can't be opened in Files.")
+        ArchiveFormat.OTHER -> throw UnsupportedArchiveException()
     }
 
     /** The full entry list (a locked list needs [password]; a wrong one throws [WrongPasswordException]). */
     fun list(file: File, password: CharArray?): List<ArchiveEntry> = when (formatOf(file)) {
         ArchiveFormat.ZIP -> ArchiveOps.open(file, password).use { ArchiveOps.entries(it) }
         ArchiveFormat.SEVEN_Z -> wrapPassword(password) { openSevenZ(file, password).use { z -> z.entries.map { sevenZEntry(it) } } }
-        ArchiveFormat.RAR -> wrapPassword(password) {
-            openRar(file, password).use { a ->
-                if (a.isEncrypted && a.fileHeaders.isEmpty()) {
-                    if (password == null || password.isEmpty()) throw ArchivePasswordRequiredException() else throw WrongPasswordException()
-                }
-                a.fileHeaders.map { rarEntry(it) }
-            }
-        }
-        ArchiveFormat.RAR5 -> throw Rar5NotSupportedException()
-        ArchiveFormat.OTHER -> throw IOException("This kind of archive can't be opened in Files.")
+        ArchiveFormat.OTHER -> throw UnsupportedArchiveException()
     }
 
     /** True when [password] opens the archive (or nothing in it is locked). Reads the smallest locked file to be sure. */
@@ -137,26 +124,13 @@ object Archives {
         } catch (e: Exception) {
             if (e is PasswordRequiredException || isWrongPassword(e)) false else throw e
         }
-        ArchiveFormat.RAR -> try {
-            openRar(file, password).use { a ->
-                if (a.isEncrypted && a.fileHeaders.isEmpty()) return false
-                val h = a.fileHeaders.filter { !it.isDirectory && it.isEncrypted }.minByOrNull { it.fullUnpackSize } ?: return true
-                a.extractFile(h, NullOut)
-                true
-            }
-        } catch (e: Exception) {
-            if (isWrongPassword(e)) false else throw e
-        }
-        ArchiveFormat.RAR5 -> throw Rar5NotSupportedException()
         ArchiveFormat.OTHER -> false
     }
 
     fun isWrongPassword(e: Throwable): Boolean {
         var t: Throwable? = e
         while (t != null) {
-            if (t is WrongPasswordException || t is CrcErrorException || t is CorruptHeaderException ||
-                t is InitDeciphererFailedException || t is org.tukaani.xz.CorruptedInputException
-            ) return true
+            if (t is WrongPasswordException || t is org.tukaani.xz.CorruptedInputException) return true
             if (ArchiveOps.isWrongPassword(t)) return true
             val m = t.message?.lowercase().orEmpty()
             if ("checksum" in m || "corrupt" in m || "bad 7z" in m) return true
@@ -176,9 +150,8 @@ object Archives {
     ): Int {
         return when (formatOf(file)) {
             ArchiveFormat.ZIP -> ArchiveOps.extract(file, password, target, paths, stripPrefix, onProgress)
-            ArchiveFormat.SEVEN_Z, ArchiveFormat.RAR -> withContext(Dispatchers.IO) { extractOther(file, password, target, paths, stripPrefix, onProgress) }
-            ArchiveFormat.RAR5 -> throw Rar5NotSupportedException()
-            ArchiveFormat.OTHER -> throw IOException("This kind of archive can't be opened in Files.")
+            ArchiveFormat.SEVEN_Z -> withContext(Dispatchers.IO) { extractOther(file, password, target, paths, stripPrefix, onProgress) }
+            ArchiveFormat.OTHER -> throw UnsupportedArchiveException()
         }
     }
 
@@ -246,28 +219,6 @@ object Archives {
                     onProgress(OpProgress(title, "", total, total, count, all.size))
                 }
             }
-            ArchiveFormat.RAR -> wrapPassword(password) {
-                openRar(file, password).use { a ->
-                    if (a.isEncrypted && a.fileHeaders.isEmpty()) throw if (password == null) ArchivePasswordRequiredException() else WrongPasswordException()
-                    val all = a.fileHeaders.filter { wanted(rarName(it), paths) }
-                    val total = all.filter { !it.isDirectory }.sumOf { it.fullUnpackSize.coerceAtLeast(0) }
-                    onProgress(OpProgress(title, totalBytes = total, totalItems = all.size))
-                    for (h in all) {
-                        coroutineContext.ensureActive()
-                        val out = outFile(root, rarName(h), stripPrefix) ?: continue
-                        if (h.isDirectory) { SafAccess.mkdirsAny(SafAccess.appContext(), out); continue }
-                        out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
-                        try {
-                            progressing(SafAccess.outputAny(SafAccess.appContext(), out).buffered(128 * 1024), total, all.size, out.name).use { o -> a.extractFile(h, o) }
-                        } catch (ex: Exception) {
-                            out.delete(); throw ex
-                        }
-                        h.mTime?.let { runCatching { out.setLastModified(it.time) } }
-                        count++
-                    }
-                    onProgress(OpProgress(title, "", total, total, count, all.size))
-                }
-            }
             else -> Unit
         }
         return count
@@ -286,17 +237,7 @@ object Archives {
                     } catch (ex: Exception) { out.delete(); throw ex }
                 }
             }
-            ArchiveFormat.RAR -> wrapPassword(password) {
-                openRar(file, password).use { a ->
-                    val h = a.fileHeaders.firstOrNull { rarName(it) == entry && !it.isDirectory } ?: throw IOException("Not found in the archive: $entry")
-                    out.parentFile?.let { SafAccess.mkdirsAny(SafAccess.appContext(), it) }
-                    try {
-                        SafAccess.outputAny(SafAccess.appContext(), out).use { o -> a.extractFile(h, o) }
-                    } catch (ex: Exception) { out.delete(); throw ex }
-                }
-            }
-            ArchiveFormat.RAR5 -> throw Rar5NotSupportedException()
-            ArchiveFormat.OTHER -> throw IOException("This kind of archive can't be opened in Files.")
+            ArchiveFormat.OTHER -> throw UnsupportedArchiveException()
         }
         out
     }
@@ -306,14 +247,14 @@ object Archives {
 
     /** The headline for an archive that couldn't be opened. */
     fun failureTitle(e: Throwable): String = when (e) {
-        is Rar5NotSupportedException -> "RAR5 not supported"
+        is UnsupportedArchiveException -> "Archive type not supported"
         is WrongPasswordException -> "Wrong password"
         else -> "Can't open this archive"
     }
 
     /** The message for an archive that couldn't be opened. */
     fun failureMessage(e: Throwable): String = when {
-        e is Rar5NotSupportedException -> "This archive uses the newer RAR5 format, which Files can't open yet. RAR4, ZIP and 7z archives work."
+        e is UnsupportedArchiveException -> UNSUPPORTED_MESSAGE
         e is WrongPasswordException -> "The password doesn't open this archive."
         e is OutOfMemoryError -> "Not enough memory to open this archive."
         else -> "It may be damaged or not a supported archive."
@@ -343,26 +284,11 @@ object Archives {
         }
     }
 
-    // --- RAR4 ---
-
-    private fun openRar(file: File, password: CharArray?): Archive = try {
-        Archive(file, password?.takeIf { it.isNotEmpty() }?.let { String(it) })
-    } catch (e: UnsupportedRarV5Exception) {
-        throw Rar5NotSupportedException()
-    }
-
-    private fun rarName(h: FileHeader) = h.fileName.orEmpty().replace('\\', '/').trimEnd('/')
-
-    private fun rarEntry(h: FileHeader): ArchiveEntry {
-        val name = rarName(h)
-        return ArchiveEntry(name, name.substringAfterLast('/'), h.isDirectory, if (h.isDirectory) 0 else h.fullUnpackSize, h.mTime?.time ?: 0L, h.isEncrypted)
-    }
-
     // --- helpers ---
 
     private inline fun <T> wrapPassword(password: CharArray?, block: () -> T): T = try {
         block()
-    } catch (e: Rar5NotSupportedException) {
+    } catch (e: UnsupportedArchiveException) {
         throw e
     } catch (e: ArchivePasswordRequiredException) {
         throw e
@@ -372,17 +298,11 @@ object Archives {
         throw e
     } catch (e: Exception) {
         if (password != null && password.isNotEmpty() && isWrongPassword(e)) throw WrongPasswordException()
-        if (password == null && e is InitDeciphererFailedException) throw ArchivePasswordRequiredException()
         throw e
     }
 
     private fun drain(input: InputStream) {
         val buf = ByteArray(64 * 1024)
         while (input.read(buf) >= 0) { /* reading to the end checks the CRC */ }
-    }
-
-    private object NullOut : OutputStream() {
-        override fun write(b: Int) {}
-        override fun write(b: ByteArray, off: Int, len: Int) {}
     }
 }

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Rebuilds the "fresh*" archive fixtures used by FeatureVerificationTest (app/src/test/resources/fmt/).
-# Needs: python3, RAR 6.x (rarlab.com; 6.x is the last version that can still write RAR4 with -ma4),
-# Info-ZIP zip 3.0, p7zip 16.02 (7z), GNU tar. Usage: scripts/test-fixtures/make-fresh-archives.sh <path/to/rar> <outdir>
+# Needs: python3, Info-ZIP zip 3.0, p7zip 16.02 (7z), GNU tar (all open source).
+# Usage: scripts/test-fixtures/make-fresh-archives.sh <outdir>
+# Files does not open RAR, so there are no RAR fixtures: the tests that check RAR is refused build the RAR
+# signature bytes themselves. The readme.txt text below still names RAR 6.24 only because the committed
+# ZIP/7z/tar.gz fixtures were made with that exact text and the tests check their SHA-256.
 #
 # Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
 set -euo pipefail
-RAR="$(realpath "$1")"; OUT="$(realpath "$2")"
+OUT="$(realpath "$1")"
 W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/src/Fresh/deep/er" "$W/src/Fresh/emptydir"
 cd "$W"
@@ -18,11 +21,7 @@ open('src/Fresh/deep/\u00fcn\u00efcode \u2713.txt','w').write("unicode name ok\n
 PY
 find src -exec touch -d '2026-11-01 12:00:00' {} +
 cd src
-rm -f "$OUT"/fresh_rar4.rar "$OUT"/fresh_rar4_solid.rar "$OUT"/fresh_rar4_password.rar "$OUT"/fresh_rar5.rar "$OUT"/fresh.zip "$OUT"/fresh_utf8.zip "$OUT"/fresh.7z "$OUT"/fresh.tar.gz
-"$RAR" a -idq -ma4 -m5 -r "$OUT/fresh_rar4.rar" Fresh
-"$RAR" a -idq -ma4 -m5 -s -r "$OUT/fresh_rar4_solid.rar" Fresh
-"$RAR" a -idq -ma4 -m3 -ptrip123 -r "$OUT/fresh_rar4_password.rar" Fresh
-"$RAR" a -idq -ma5 -r "$OUT/fresh_rar5.rar" Fresh
+rm -f "$OUT"/fresh.zip "$OUT"/fresh_utf8.zip "$OUT"/fresh.7z "$OUT"/fresh.tar.gz
 zip -qrX -9 "$OUT/fresh.zip" Fresh
 7z a -bd -mx9 "$OUT/fresh.7z" Fresh > /dev/null
 7z a -bd -tzip -mx9 "$OUT/fresh_utf8.zip" Fresh > /dev/null

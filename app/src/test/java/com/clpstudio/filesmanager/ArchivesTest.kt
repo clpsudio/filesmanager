@@ -2,7 +2,6 @@ package com.clpstudio.filesmanager
 
 import com.clpstudio.filesmanager.data.ArchiveFormat
 import com.clpstudio.filesmanager.data.Archives
-import com.clpstudio.filesmanager.data.Rar5NotSupportedException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,7 +12,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** 7z and RAR4 (open, list, extract, passwords) and the RAR5 refusal, on real archives made by 7-Zip and WinRAR. */
+/** 7z (open, list, extract, passwords) on real archives made by 7-Zip. RAR is refused: see RarNotSupportedTest. */
 class ArchivesTest {
     @get:Rule val tmp = TemporaryFolder()
 
@@ -34,17 +33,16 @@ class ArchivesTest {
 
     @Test fun formatsFromBytesAndNames() {
         assertEquals(ArchiveFormat.SEVEN_Z, Archives.formatOf(fixture("sample.7z")))
-        assertEquals(ArchiveFormat.RAR, Archives.formatOf(fixture("sample.rar")))
-        assertEquals(ArchiveFormat.RAR5, Archives.formatOf(fixture("sample_rar5.rar")))
         // A renamed file still opens by its real format.
         val renamed = fixture("sample.7z").copyTo(File(tmp.root, "renamed.zip"))
         assertEquals(ArchiveFormat.SEVEN_Z, Archives.formatOf(renamed))
-        assertTrue(Archives.canBrowse("a.7z") && Archives.canBrowse("a.RAR") && Archives.canBrowse("a.zip"))
+        assertTrue(Archives.canBrowse("a.7z") && Archives.canBrowse("a.zip"))
         assertFalse(Archives.canBrowse("a.tar.gz"))
+        assertFalse(Archives.canBrowse("a.RAR"))
     }
 
     @Test fun sevenZListsAndExtracts() = runBlocking {
-        for (name in listOf("sample.7z", "sample.rar")) {
+        for (name in listOf("sample.7z")) {
             val f = fixture(name)
             val p = Archives.probe(f)
             assertFalse(name, p.encrypted)
@@ -61,7 +59,7 @@ class ArchivesTest {
     }
 
     @Test fun lockedFilesNeedThePassword() = runBlocking {
-        for (name in listOf("locked_files.7z", "locked_files.rar")) {
+        for (name in listOf("locked_files.7z")) {
             val f = fixture(name)
             val p = Archives.probe(f)
             assertTrue(name, p.encrypted)
@@ -80,25 +78,13 @@ class ArchivesTest {
     }
 
     @Test fun lockedNamesListAfterPassword() {
-        for (name in listOf("locked_headers.7z", "locked_headers.rar")) {
+        for (name in listOf("locked_headers.7z")) {
             val f = fixture(name)
             val p = Archives.probe(f)
             assertTrue(name, p.listLocked)
             assertFalse(name, Archives.checkPassword(f, "nope".toCharArray()))
             val entries = Archives.list(f, pw)
             assertTrue(name, entries.any { it.path == "Trip/sub/data.bin" && it.size == 20000L })
-        }
-    }
-
-    @Test fun rar5IsRefusedClearly() = runBlocking {
-        val f = fixture("sample_rar5.rar")
-        val probe = runCatching { Archives.probe(f) }
-        assertTrue(probe.exceptionOrNull() is Rar5NotSupportedException || probe.getOrNull()?.format == ArchiveFormat.RAR5)
-        try {
-            Archives.extract(f, null, tmp.newFolder("r5"))
-            fail("RAR5 extracted")
-        } catch (e: Rar5NotSupportedException) {
-            assertEquals("RAR5 not supported", Archives.failureTitle(e))
         }
     }
 }

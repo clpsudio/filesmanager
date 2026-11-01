@@ -31,7 +31,13 @@ object FileTypes {
     val rawExt = setOf("dng", "cr2", "nef", "nrw", "arw", "rw2", "orf", "pef", "srw", "raf")
     val fontExt = setOf("ttf", "otf", "ttc", "otc")
     val apkExt = setOf("apk", "apks", "xapk", "apkm")
+    /**
+     * Archive file names, for the icon, the Archives category and the "not supported" screen. Being listed here does
+     * NOT mean Files opens it: [Archives.canBrowse] says that (ZIP, JAR and 7z only). RAR is kept here, with its
+     * split-volume parts .r00-.r99, so a RAR file still looks like an archive and gets the clear "not supported" message.
+     */
     val archiveExt = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "zst", "lz", "cab", "iso", "jar")
+    private val rarVolumeExt = Regex("r[0-9]{2}")
 
     /**
      * Extensions shown in the Documents category: PDF, Office / OpenDocument, e-books and the
@@ -42,7 +48,7 @@ object FileTypes {
 
     fun isDocument(name: String): Boolean = extension(name) in documentExt
     fun isApk(name: String): Boolean = extension(name) in apkExt
-    fun isArchive(name: String): Boolean = extension(name) in archiveExt
+    fun isArchive(name: String): Boolean = extension(name).let { it in archiveExt || rarVolumeExt.matches(it) }
 
     fun extension(name: String): String {
         val dot = name.lastIndexOf('.')
@@ -61,7 +67,7 @@ object FileTypes {
             in apkExt -> FileKind.APK
             in archiveExt -> FileKind.ARCHIVE
             in fontExt -> FileKind.FONT
-            else -> if (ext.isEmpty()) FileKind.OTHER else FileKind.OTHER
+            else -> if (rarVolumeExt.matches(ext)) FileKind.ARCHIVE else FileKind.OTHER
         }
     }
 

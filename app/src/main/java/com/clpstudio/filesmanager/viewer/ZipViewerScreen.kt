@@ -60,16 +60,16 @@ private sealed interface ZipLoad {
         val entries: List<ArchiveEntry>,
         val encrypted: Boolean,
         val format: ArchiveFormat = ArchiveFormat.ZIP,
-        /** The names themselves are locked (7z / RAR with encrypted names): nothing to list until the password. */
+        /** The names themselves are locked (7z with encrypted names): nothing to list until the password. */
         val listLocked: Boolean = false,
     ) : ZipLoad
     data class Failed(val message: String, val title: String = "Can't open this archive") : ZipLoad
 }
 
 /**
- * Browse a ZIP, 7z or RAR4 archive (normal or password-protected) without extracting; open any file
+ * Browse a ZIP or 7z archive (normal or password-protected) without extracting; open any file
  * inside; extract all or selected entries, here or to a folder of your choice, with progress.
- * RAR5 shows a clear "not supported" message.
+ * Any other archive (RAR, tar, ...) that reaches this screen shows the clear "not supported" message.
  */
 @Composable
 fun ZipViewerScreen(path: String, onBack: () -> Unit, openExtracted: (File) -> Unit) {

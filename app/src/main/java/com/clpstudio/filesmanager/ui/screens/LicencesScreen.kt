@@ -40,8 +40,8 @@ import kotlinx.coroutines.withContext
  * (assets/licenses/, copied at build time from the repository's NOTICE,
  * THIRD_PARTY_LICENSES.md and licenses/ folder, so the app and the repository never differ).
  *
- * Four sections keep the licences apart: CLP Studio's own code (Apache-2.0, decision pending),
- * FFmpeg (LGPL-2.1-or-later), Junrar (UnRAR licence) and the other third-party components.
+ * Three sections keep the licences apart: CLP Studio's own code (Apache-2.0, decision pending),
+ * FFmpeg (LGPL-2.1-or-later) and the other third-party components (Apache-2.0, MIT, BSD and 0BSD).
  */
 object OpenSourceLicences {
     const val DIR = "licenses"
@@ -51,14 +51,12 @@ object OpenSourceLicences {
 
     data class Section(val heading: String, val intro: String, val entries: List<Entry>, val status: String? = null)
 
-    const val NOT_OSI = "The UnRAR licence is not an OSI-approved open-source licence."
-
     val sections = listOf(
         Section(
             heading = "CLP Studio's own code",
             status = "Apache-2.0 · decision PENDING",
             intro = "Apache-2.0 is the proposed licence for the code written by CLP Studio. It is not in force yet, " +
-                "and it covers only CLP Studio's own code, not FFmpeg, Junrar or the other components below.",
+                "and it covers only CLP Studio's own code, not FFmpeg or the other components below.",
             entries = listOf(
                 Entry("About these licences", "Which licence covers which part of Files.", "ABOUT.txt"),
                 Entry(
@@ -66,7 +64,7 @@ object OpenSourceLicences {
                     "Full text of the licence proposed for CLP Studio's own code. Decision pending.",
                     "Apache-2.0.txt",
                     note = "Licence decision PENDING. If CLP Studio confirms it, this licence will apply only to " +
-                        "CLP Studio's own code. FFmpeg and Junrar keep their own licences.",
+                        "CLP Studio's own code. FFmpeg and the other components keep their own licences.",
                 ),
             ),
         ),
@@ -88,19 +86,6 @@ object OpenSourceLicences {
                 ),
                 Entry("GNU Lesser General Public License 2.1", "Full text of the licence FFmpeg is distributed under.", "LGPL-2.1.txt"),
                 Entry("av_sscanf (from musl libc)", "MIT licence notice for one FFmpeg file, libavutil/avsscanf.c.", "MIT-musl-avsscanf.txt"),
-            ),
-        ),
-        Section(
-            heading = "Junrar (UnRAR licence)",
-            intro = "Opens RAR archives. $NOT_OSI It may not be used to re-create the RAR compression algorithm.",
-            entries = listOf(
-                Entry(
-                    "UnRAR licence (verbatim)",
-                    "\"…cannot be used to re-create the RAR compression algorithm, which is proprietary.\"",
-                    "UnRAR-junrar-7.5.5.txt",
-                    note = "Junrar 7.5.5 is distributed under the UnRAR licence below, shown verbatim. " +
-                        "$NOT_OSI Junrar's code may not be used to develop a RAR (WinRAR) compatible archiver.",
-                ),
             ),
         ),
         Section(

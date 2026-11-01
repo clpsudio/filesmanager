@@ -5,7 +5,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.clpstudio.filesmanager.data.ArchiveFormat
 import com.clpstudio.filesmanager.data.Archives
 import com.clpstudio.filesmanager.data.PdfSecurity
-import com.clpstudio.filesmanager.data.Rar5NotSupportedException
 import com.clpstudio.filesmanager.viewer.PdfDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -25,7 +24,7 @@ import java.security.MessageDigest
 
 /**
  * Feature verification for the open-source-readiness build (Nov 2026): archives made fresh with the real
- * tools (RAR 6.24 with -ma4 / -ma5, Info-ZIP, p7zip 16.02, GNU tar) are opened through the app's own code,
+ * tools (Info-ZIP, p7zip 16.02, GNU tar) are opened through the app's own code,
  * and the bundled 2-page PDF goes through the app's PDF paths.
  *
  * Fixtures (app/src/test/resources/fmt/fresh*): the same tree "Fresh/" in every archive —
@@ -74,33 +73,8 @@ class FeatureVerificationTest {
         }
     }
 
-    @Test fun rar4FreshFromRar624() = listsAndExtracts("fresh_rar4.rar", ArchiveFormat.RAR)
-
-    /**
-     * Solid RAR4: listing and full extraction work. Opening ONE file out of a solid RAR (extractEntry) fails
-     * inside Junrar 7.5.5 (a solid archive must be decoded from its first file); that is the same in 1.0.23
-     * and is reported separately, not changed here.
-     */
-    @Test fun rar4SolidFromRar624() = listsAndExtracts("fresh_rar4_solid.rar", ArchiveFormat.RAR, singleEntry = false)
-
-    @Test fun rar4PasswordFromRar624() {
-        val f = fixture("fresh_rar4_password.rar")
-        assertTrue(Archives.probe(f).encrypted)
-        assertTrue(!Archives.checkPassword(f, "wrong".toCharArray()) && Archives.checkPassword(f, "trip123".toCharArray()))
-        listsAndExtracts("fresh_rar4_password.rar", ArchiveFormat.RAR, "trip123".toCharArray())
-    }
-
-    /** RAR5 (RAR 5.0+ default format) is detected and refused with a clear message: Junrar reads RAR4 only. */
-    @Test fun rar5FromRar624IsRefusedClearly() = runBlocking {
-        val f = fixture("fresh_rar5.rar")
-        assertEquals(ArchiveFormat.RAR5, Archives.formatOf(f))
-        try {
-            Archives.extract(f, null, tmp.newFolder("r5"))
-            fail("RAR5 extracted")
-        } catch (e: Rar5NotSupportedException) {
-            assertEquals("RAR5 not supported", Archives.failureTitle(e))
-        }
-    }
+    // RAR: not supported since Nov 2026 (Junrar removed, its UnRAR licence is not open source). The refusal of
+    // every RAR version is tested in RarNotSupportedTest, with RAR signatures built in the test (no RAR fixtures).
 
     @Test fun sevenZipFreshFromP7zip() = listsAndExtracts("fresh.7z", ArchiveFormat.SEVEN_Z)
 
@@ -125,7 +99,7 @@ class FeatureVerificationTest {
         assertEquals(expected.getValue("Fresh/deep/ünïcode ✓.txt"), sha256(odd))
     }
 
-    /** tar / tar.gz are not a feature of Files (spec: ZIP browse/zip/unzip; 7z and RAR4 were added): refused clearly, not crashed. */
+    /** tar / tar.gz are not a feature of Files (spec: ZIP browse/zip/unzip; 7z was added; RAR is not supported either): refused clearly, not crashed. */
     @Test fun tarGzIsNotSupportedAndSaysSo() {
         val f = fixture("fresh.tar.gz")
         assertEquals(ArchiveFormat.OTHER, Archives.formatOf(f))

@@ -53,14 +53,17 @@ licence that allows that:
 - Not accepted: GPL, AGPL, licences that restrict commercial use or field of
   use, and code with no licence.
 
-The two existing exceptions, FFmpeg (LGPL-2.1-or-later, built in
-`decoder-ffmpeg/`) and Junrar (UnRAR licence), are explained in
-`THIRD_PARTY_LICENSES.md`; they do not make other such libraries acceptable.
+The one existing exception, FFmpeg (LGPL-2.1-or-later, built in
+`decoder-ffmpeg/`), is explained in `THIRD_PARTY_LICENSES.md`; it does not make
+other such libraries acceptable. Libraries under a licence that is not
+OSI-approved are not accepted. That is why Files has no RAR support: the RAR
+reader it used (Junrar) is under the UnRAR licence, which is not an
+open-source licence, and it was removed. Please open an issue before adding
+any RAR library.
 Changes to `decoder-ffmpeg/` or `scripts/ffmpeg/` must keep FFmpeg free of GPL,
 version3 and non-free parts, keep the upstream AndroidX Media files unmodified
 (or record every change in `decoder-ffmpeg/UPSTREAM.md`), and update the pins,
-notices and `RELINKING.md` together. Contributions that touch Junrar must keep
-its UnRAR licence notice and its restriction.
+notices and `RELINKING.md` together.
 
 When you add, remove or upgrade a library, update
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) (name, version, licence,

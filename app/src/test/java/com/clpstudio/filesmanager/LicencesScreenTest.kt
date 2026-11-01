@@ -43,10 +43,10 @@ class LicencesScreenTest {
         }
     }
 
-    @Test fun fourSectionsKeepTheLicencesApart() {
+    @Test fun threeSectionsKeepTheLicencesApart() {
         val s = OpenSourceLicences.sections
         assertEquals(
-            listOf("CLP Studio's own code", "FFmpeg (LGPL-2.1-or-later)", "Junrar (UnRAR licence)", "Other third-party components"),
+            listOf("CLP Studio's own code", "FFmpeg (LGPL-2.1-or-later)", "Other third-party components"),
             s.map { it.heading },
         )
         // (a) Apache-2.0, clearly pending, own code only.
@@ -59,13 +59,23 @@ class LicencesScreenTest {
             s[1].entries.map { it.asset },
         )
         assertTrue(s[1].intro.contains("statically") && s[1].intro.contains("replaced as a whole"))
-        // (c) Junrar: verbatim UnRAR text plus the plain statement.
-        assertEquals(listOf("UnRAR-junrar-7.5.5.txt"), s[2].entries.map { it.asset })
-        assertTrue(s[2].intro.contains("not an OSI-approved open-source licence"))
-        assertTrue(s[2].entries[0].note!!.contains("not an OSI-approved open-source licence"))
         // The Apache text under "Other" is for the third-party libraries; the pending one is in (a).
-        assertTrue(s[3].intro.contains("AndroidX") && s[3].intro.contains("Media3") && s[3].intro.contains("Kotlin") && s[3].intro.contains("Coil"))
-        assertTrue(s[3].entries.map { it.asset }.containsAll(listOf("Apache-2.0.txt", "NOTICE", "THIRD_PARTY_LICENSES.md")))
+        assertTrue(s[2].intro.contains("AndroidX") && s[2].intro.contains("Media3") && s[2].intro.contains("Kotlin") && s[2].intro.contains("Coil"))
+        assertTrue(s[2].entries.map { it.asset }.containsAll(listOf("Apache-2.0.txt", "NOTICE", "THIRD_PARTY_LICENSES.md")))
+    }
+
+    /** Junrar (UnRAR licence, not open source) was removed in Nov 2026: no section, no text, no mention as a component. */
+    @Test fun noJunrarOrUnrarAnywhereOnTheScreen() {
+        val ui = OpenSourceLicences.sections.flatMap { s ->
+            listOf(s.heading, s.intro, s.status.orEmpty()) + s.entries.flatMap { listOf(it.title, it.summary, it.note.orEmpty(), it.asset) }
+        }
+        for (t in ui) assertFalse("screen text: '$t'", t.contains("junrar", true) || t.contains("unrar", true))
+        assertTrue(text("UnRAR-junrar-7.5.5.txt").startsWith("This text is missing"))
+        for (asset in listOf("ABOUT.txt", "NOTICE", "THIRD_PARTY_LICENSES.md")) {
+            val t = text(asset)
+            assertFalse("$asset names Junrar", t.contains("junrar", true))
+            assertFalse("$asset names UnRAR", t.contains("unrar", true))
+        }
     }
 
     @Test fun ffmpegNoticeSourceAndRelinking() {
@@ -86,12 +96,6 @@ class LicencesScreenTest {
         assertTrue(text("MIT-musl-avsscanf.txt").contains("Copyright (c) 2005-2014 Rich Felker, et al."))
     }
 
-    @Test fun unrarRestrictionIsKeptVerbatim() {
-        val t = flat(text("UnRAR-junrar-7.5.5.txt"))
-        assertTrue(t.contains("cannot be used to re-create the RAR compression algorithm, which is proprietary."))
-        assertTrue(t.contains("the code may not be used to develop a RAR (WinRAR) compatible archiver."))
-    }
-
     @Test fun noClaimThatTheWholeAppIsApacheOrFullyOpenSource() {
         val about = text("ABOUT.txt")
         assertTrue(about.contains("PENDING"))
@@ -100,18 +104,19 @@ class LicencesScreenTest {
             listOf(s.heading, s.intro, s.status.orEmpty()) + s.entries.flatMap { listOf(it.title, it.summary, it.note.orEmpty()) }
         }
         for (t in ui.map { flat(it).lowercase() }) {
-            assertFalse("screen text: '$t'", t.contains("fully open source") || t.contains("entirely apache") || t.contains("files is licensed under"))
+            assertFalse("screen text: '$t'", t.contains("fully open source") || t.contains("100% legal") || t.contains("entirely apache") || t.contains("files is licensed under"))
         }
         for (e in OpenSourceLicences.entries) {
             val t = flat(text(e.asset)).lowercase()
             assertFalse("${e.asset}: 'is fully open source'", t.contains("is fully open source"))
+            assertFalse("${e.asset}: '100% legal'", t.contains("100% legal"))
             assertFalse("${e.asset}: 'licensed under the apache license' for the whole app", t.contains("files is licensed under"))
         }
     }
 
     /** Reflowing for the phone changes only line-break whitespace: every other character stays, in order. */
     @Test fun reflowKeepsEveryTextVerbatimApartFromWhitespace() {
-        val licences = setOf("LGPL-2.1.txt", "Apache-2.0.txt", "UnRAR-junrar-7.5.5.txt", "MIT-musl-avsscanf.txt")
+        val licences = setOf("LGPL-2.1.txt", "Apache-2.0.txt", "MIT-musl-avsscanf.txt")
         for (asset in OpenSourceLicences.entries.map { it.asset }.toSet()) {
             val original = text(asset)
             val md = asset.endsWith(".md")
@@ -131,17 +136,16 @@ class LicencesScreenTest {
         fun lines(asset: String) = LicenceText.blocks(text(asset), asset.endsWith(".md")).flatMap { it.text.lines() }
         assertTrue(lines("LGPL-2.1.txt").any { it.contains("applies to any software library or other program which contains a notice placed") })
         assertTrue(lines("Apache-2.0.txt").any { it.contains("\"License\" shall mean the terms and conditions for use, reproduction, and distribution") })
-        assertTrue(lines("UnRAR-junrar-7.5.5.txt").any { it.contains("cannot be used to re-create the RAR compression algorithm") })
         assertTrue(lines("FFMPEG-NOTICE.txt").any { it.contains("Files plays some audio formats with FFmpeg's decoders. They are in the native library") })
         // Short lines (titles, list items, the LGPL's centred title) keep their own line.
         val lgpl = LicenceText.blocks(text("LGPL-2.1.txt"))
         assertTrue(lgpl.first().text.lines().first() == "GNU LESSER GENERAL PUBLIC LICENSE")
-        // The UnRAR ASCII-art banner keeps its layout (scrolls sideways).
-        val art = LicenceText.blocks(text("UnRAR-junrar-7.5.5.txt")).first()
+        // An aligned block (columns, ASCII art) keeps its layout (scrolls sideways).
+        val art = LicenceText.blocks("Name      Version   Licence\nzip4j     2.11.5    Apache-2.0\n").first()
         assertEquals(LicenceText.Kind.PRE, art.kind)
         // A list keeps one item per line.
         val about = LicenceText.blocks(text("ABOUT.txt"))
-        assertTrue(about.any { b -> b.text.lines().count { it.matches(Regex("^\\d\\. .*")) } == 4 })
+        assertTrue(about.any { b -> b.text.lines().count { it.matches(Regex("^\\d\\. .*")) } == 3 })
         assertEquals(LicenceText.Kind.HEADING, about.first().kind)
     }
 
@@ -168,7 +172,7 @@ class LicencesScreenTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage(File(shots, "files_licences_list.png").path)
         val list = compose.onNode(androidx.compose.ui.test.hasScrollAction())
-        list.performScrollToNode(hasText("Junrar (UnRAR licence)"))
+        list.performScrollToNode(hasText("GNU Lesser General Public License 2.1"))
         compose.waitForIdle()
         compose.onNodeWithText("GNU Lesser General Public License 2.1").performClick()
         compose.waitForIdle()
@@ -199,20 +203,14 @@ class LicencesScreenTest {
         compose.onRoot().captureRoboImage(File(shots, "files_licences_ffmpeg_source.png").path)
     }
 
-    @Test fun junrarScreen() {
-        val e = OpenSourceLicences.sections[2].entries[0]
-        compose.setContent { FilesTheme(ThemeMode.LIGHT, liquidGlass = false) { LicenceTextContent(e.title, text(e.asset), onBack = {}, note = e.note) } }
-        compose.onNodeWithText(e.note!!).assertExists()
-        compose.waitForIdle()
-        compose.onRoot().captureRoboImage(File(shots, "files_licences_junrar.png").path)
-    }
-
     /** README.md: same wording rule as the screen, licence marked pending, every preview it shows exists. */
     @Test fun readmeKeepsTheLicenceWordingAndItsPreviews() {
         val readme = File("../README.md").readText()
         val t = flat(readme).lowercase()
         assertFalse("README: 'fully open source'", t.contains("fully open source"))
         assertFalse("README: 'entirely apache'", t.contains("entirely apache"))
+        assertFalse("README: '100% legal'", t.contains("100% legal"))
+        assertFalse("README names Junrar", t.contains("junrar"))
         assertFalse("README: 'files is licensed under'", t.contains("files is licensed under"))
         assertTrue("README marks the licence as pending", t.contains("licence status: pending"))
         assertTrue("README: no INTERNET permission stated", readme.contains("There is no `INTERNET` permission"))

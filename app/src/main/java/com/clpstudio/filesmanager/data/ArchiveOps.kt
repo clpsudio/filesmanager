@@ -66,7 +66,7 @@ object ArchiveOps {
     /** Whether the selection bar inside [file] shows Delete at all: never for app packages. */
     fun showDeleteInside(file: File, entries: List<ArchiveEntry> = emptyList()): Boolean = !isAppPackage(file, entries)
 
-    /** Why entries can't be deleted inside [file] (null = they can): plain ZIPs only (7z/RAR can't be rewritten in place). */
+    /** Why entries can't be deleted inside [file] (null = they can): plain ZIPs only (7z can't be rewritten in place). */
     fun deleteInsideBlocker(file: File, format: ArchiveFormat, entries: List<ArchiveEntry> = emptyList()): String? = when {
         isAppPackage(file, entries) -> "Files inside an app package can't be deleted."
         format != ArchiveFormat.ZIP -> "Deleting inside ${format.label} archives isn't supported. Extract, delete, and compress again."
