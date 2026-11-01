@@ -3,10 +3,10 @@
 > **Licence: pending review.** No open-source licence has been granted for
 > this repository yet. Apache-2.0 is the *proposed* licence for CLP Studio's own
 > code; its text is kept in [`LICENSE.pending-review.md`](LICENSE.pending-review.md)
-> and is **not in force**. The licensing of two third-party components inside
-> the APK (the Jellyfin FFmpeg decoder and Junrar) is still being verified, and
-> no claim is made that the APK is licence-compatible. See
-> [Licence (pending)](#licence-pending).
+> and is **not in force**; it would cover only CLP Studio's own code. The APK
+> as a whole is not under a single licence and is not "entirely Apache-2.0": it
+> also contains FFmpeg (LGPL-2.1-or-later) and Junrar (UnRAR licence), among
+> others. See [Licence (pending)](#licence-pending).
 
 A native Android file manager by **CLP Studio** (`com.clpstudio.filesmanager`).
 Kotlin + Jetpack Compose + Material 3, Android 8.0+ (API 26), fully offline:
@@ -35,16 +35,32 @@ the app has **no INTERNET permission** (the CI build fails if one appears).
 
 ## Build
 
-Requirements: JDK 17 or newer (CI uses Temurin 21), the Android SDK with
-platform `android-36` (point `ANDROID_HOME` or `sdk.dir` in `local.properties`
-at it), and internet access for the first build (Gradle and the libraries are
-downloaded from Maven Central and Google's Maven repository).
+Requirements:
+
+- JDK 17 or newer (CI uses Temurin 21);
+- the Android SDK with platform `android-36`, **NDK `26.1.10909125` (r26b)** and
+  **CMake `3.22.1`** (`sdkmanager "platforms;android-36" "ndk;26.1.10909125" "cmake;3.22.1"`);
+  point `ANDROID_HOME` or `sdk.dir` in `local.properties` at it;
+- Linux or macOS with `bash`, `make`, `curl` and `tar` (the FFmpeg build is a
+  shell script; Windows is not supported for release builds, use WSL);
+- internet access for the first build (Gradle, the libraries, and the FFmpeg
+  source tarball).
 
 ```
 git clone https://github.com/clpsudio/filesmanager.git
 cd filesmanager
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+./gradlew :app:testDebugUnitTest :app:lintDebug :decoder-ffmpeg:lintDebug :app:assembleRelease
 ```
+
+Optional, Linux only: `scripts/ffmpeg/build-host-jni-for-tests.sh` builds a
+host copy of the decoder library so that
+`./gradlew :decoder-ffmpeg:testDebugUnitTest` decodes real AC-3, E-AC-3, DTS,
+MP3, AAC, FLAC, ALAC and G.711 packets through the Java/JNI/FFmpeg path (CI
+always runs it; without the host library those tests are skipped).
+
+The first build also downloads FFmpeg at the pinned commit, checks its sha256
+and builds its static libraries (about a minute on a fast machine; see
+[FFmpeg decoder](#ffmpeg-decoder) below). Later builds reuse them.
 
 The release APK is written to `app/build/outputs/apk/release/`. Without
 signing variables it is **unsigned** (`app-release-unsigned.apk`); sign it with
@@ -66,6 +82,34 @@ and signed by CLP Studio with the certificate
 `CN=CLP Studio Files, O=CLP Studio, C=IN`, SHA-256
 `febc1f7c94c20f90ba40ba1cb1d58c9c6209ee430b98a60a479852e99e8b353e`. Builds signed
 with any other key are not official CLP Studio builds.
+
+## FFmpeg decoder
+
+Audio formats the phone can't decode itself (AC-3, E-AC-3, DTS, TrueHD/MLP,
+and others) are played with FFmpeg through Media3's FFmpeg extension. It is
+built in this repository by the `:decoder-ffmpeg` module:
+
+- `decoder-ffmpeg/`: AndroidX Media 1.8.0's `decoder_ffmpeg` Java and JNI files,
+  unmodified (Apache-2.0); origins and hashes in `decoder-ffmpeg/UPSTREAM.md`.
+- `scripts/ffmpeg/versions.env`: every pin (FFmpeg commit and tarball sha256,
+  the 11 decoders, NDK, CMake).
+- `scripts/ffmpeg/build-ffmpeg.sh`: fetches and checks FFmpeg, then runs
+  upstream's unmodified `build_ffmpeg.sh`. Gradle runs it before the native
+  build; it skips the work when its inputs haven't changed.
+- `scripts/ffmpeg/make-corresponding-source.sh`: writes the FFmpeg
+  "corresponding source" bundle that must accompany distributed APKs (LGPL-2.1).
+- [`RELINKING.md`](RELINKING.md): how to rebuild `libffmpegJNI.so` with a
+  modified FFmpeg and put it into an APK.
+
+### Reproducibility
+
+With the pinned NDK and CMake, two clean builds give byte-identical
+`libffmpegJNI.so` files, also from different checkout paths: debug info is
+dropped at link time (so the GNU build-ID doesn't depend on paths) and the JNI
+glue is compiled with `-ffile-prefix-map`. The stripped libraries are also
+byte-identical to those in Jellyfin's `1.8.0+1` package (used up to Files
+1.0.23) apart from the 20-byte build-ID. `scripts/ffmpeg/build-jni-standalone.sh`
+reproduces the same bytes without Gradle.
 
 ## Code map
 
@@ -101,23 +145,29 @@ icon and application ID.
 
 ### Third-party components
 
-The app depends on third-party libraries that keep their own licences. They
+The app depends on third-party components that keep their own licences. They
 are listed, with versions, copyright holders, licences and source links, in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Most are Apache-2.0,
-MIT, BSD or 0BSD. Two need particular care when you **distribute an APK**:
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), and the app shows the
+licence texts and notices under **Settings > Open-source licences**. Most are
+Apache-2.0, MIT, BSD or 0BSD. Two need particular care when you **distribute an
+APK**:
 
-- **FFmpeg** (audio decoders) comes in through the Jellyfin Media3 FFmpeg
-  Decoder. FFmpeg in that build is LGPL-2.1-or-later (no GPL or non-free parts
-  enabled), and the decoder's own code is Apache-2.0, but Jellyfin publishes
-  the package under a GPL-3.0 label. **Under review:** how that label applies
-  to the APK has not been resolved. In any case an APK must meet the LGPL
-  terms for FFmpeg (notice, FFmpeg source for the exact version, replaceable
-  library).
+- **FFmpeg** (audio decoders, in `libffmpegJNI.so`) is LGPL-2.1-or-later
+  (configured without GPL, version3 or non-free parts; one file, musl's
+  `av_sscanf`, is MIT). Anyone distributing an APK must give the LGPL notice
+  and licence text, make the corresponding FFmpeg source available (the
+  `ffmpeg-corresponding-source` bundle), and allow the library to be replaced
+  ([`RELINKING.md`](RELINKING.md)). See `licenses/FFMPEG-NOTICE.txt`.
 - **Junrar** (RAR4 archives) is under the UnRAR licence, which is not an
   open-source licence: the code may not be used to re-create the RAR
-  compression algorithm or to build a RAR-compatible archiver. That licence is
-  not compatible with the GPL. **Under review:** whether it can be combined
-  with the FFmpeg decoder package as published by Jellyfin.
+  compression algorithm, and modified versions must state that the code may
+  not be used to develop a RAR (WinRAR) compatible archiver. The UnRAR licence
+  is not compatible with the GPL, so the app can't be relicensed under the GPL
+  while it includes Junrar. Full text: `licenses/UnRAR-junrar-7.5.5.txt`.
+
+Because of these components, the APK must not be described as "fully open
+source" or as "Apache-2.0 licensed" as a whole; Apache-2.0 (once confirmed)
+applies only to CLP Studio's own code.
 
 See `THIRD_PARTY_LICENSES.md`, sections 3.1 and 3.2, for the details.
 Two unit-test fixtures (`app/src/test/resources/fmt/real_*_prefix.dwg`) are

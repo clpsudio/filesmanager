@@ -53,9 +53,14 @@ licence that allows that:
 - Not accepted: GPL, AGPL, licences that restrict commercial use or field of
   use, and code with no licence.
 
-The two existing exceptions, the Jellyfin FFmpeg decoder (GPL-3.0 label,
-LGPL FFmpeg inside) and Junrar (UnRAR licence), are explained in
+The two existing exceptions, FFmpeg (LGPL-2.1-or-later, built in
+`decoder-ffmpeg/`) and Junrar (UnRAR licence), are explained in
 `THIRD_PARTY_LICENSES.md`; they do not make other such libraries acceptable.
+Changes to `decoder-ffmpeg/` or `scripts/ffmpeg/` must keep FFmpeg free of GPL,
+version3 and non-free parts, keep the upstream AndroidX Media files unmodified
+(or record every change in `decoder-ffmpeg/UPSTREAM.md`), and update the pins,
+notices and `RELINKING.md` together. Contributions that touch Junrar must keep
+its UnRAR licence notice and its restriction.
 
 When you add, remove or upgrade a library, update
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) (name, version, licence,

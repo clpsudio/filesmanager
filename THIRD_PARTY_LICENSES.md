@@ -1,25 +1,30 @@
 # Third-party licences and notices
 
-> **Licence decision pending.** This inventory is a working document. The
-> project licence has not been decided (the proposed Apache-2.0 text is kept,
-> not in force, in `LICENSE.pending-review.md`), and the licensing of the
-> Jellyfin FFmpeg decoder (section 3.1) and Junrar (section 3.2) inside the APK
-> is still under review. Nothing here claims that the APK is
-> licence-compatible.
+> **Licence decision pending.** The project licence has not been decided: the
+> proposed Apache-2.0 text is kept, not in force, in `LICENSE.pending-review.md`,
+> and it would apply only to CLP Studio's own code. The APK as a whole is not
+> under one licence and is not "entirely Apache-2.0": it contains components
+> under their own licences, including FFmpeg (LGPL-2.1-or-later, section 3.1)
+> and Junrar (UnRAR licence, section 3.2).
 
 Files (`com.clpstudio.filesmanager`) is built from CLP Studio's own source code plus the third-party
 components listed here. This file covers:
 
 1. the libraries declared in `app/build.gradle.kts` (direct dependencies),
-2. every library that ends up in the release APK (the resolved `releaseRuntimeClasspath`, 204 coordinates),
+2. every library that ends up in the release APK (the resolved `releaseRuntimeClasspath`: 204 coordinates at `783e7a7`;
+   203 external coordinates plus the in-repository `:decoder-ffmpeg` module after the Jellyfin package was removed),
 3. the components with special conditions (FFmpeg, Junrar/UnRAR, PdfBox-Android resources, fonts),
 4. build-only and test-only components, and the third-party test fixtures in this repository.
 
 How this list was made (1 November 2026, repository state `783e7a7`): `./gradlew :app:dependencies
 --configuration releaseRuntimeClasspath`, then the licence of every resolved module was read from its
 published POM (or its parent POM), and checked against the upstream LICENSE/NOTICE files where the POM was
-missing, vague or unusual (Bouncy Castle, Junrar, Jellyfin, PdfBox-Android, XZ, Haze, Zip4j, Coil). The
+missing, vague or unusual (Bouncy Castle, Junrar, PdfBox-Android, XZ, Haze, Zip4j, Coil). The
 native FFmpeg library was inspected directly (see 3.1). When you change dependencies, regenerate this list.
+
+Update (1 November 2026, Option 1): the prebuilt Jellyfin package `org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1`
+was replaced by the in-repository module `:decoder-ffmpeg`, built from AndroidX Media 1.8.0 and FFmpeg
+`d388c347` (section 3.1). No Jellyfin code or package is used any more.
 
 The licence texts referred to below are available at the linked URLs. The Apache License 2.0 text is also in
 this repository's `LICENSE.pending-review.md` file (kept for review; not in force as the project licence).
@@ -59,7 +64,7 @@ this repository's `LICENSE.pending-review.md` file (kept for review; not in forc
 | Apache Commons Compress `org.apache.commons:commons-compress` | 1.28.0 | Apache-2.0 | The Apache Software Foundation | https://commons.apache.org/ |
 | XZ for Java `org.tukaani:xz` | 1.10 | 0BSD | The XZ for Java authors and contributors | https://github.com/tukaani-project/xz-java |
 | Junrar `com.github.junrar:junrar` | 7.5.5 | UnRAR licence (not OSI-approved; see section 3.2) | Alexander L. Roshal (UnRAR); junrar contributors | https://github.com/junrar/junrar |
-| Jellyfin Media3 FFmpeg Decoder `org.jellyfin.media3:media3-ffmpeg-decoder` | 1.8.0+1 | GPL-3.0 declared by Jellyfin; contents Apache-2.0 + LGPL-2.1-or-later (see section 3.1) | The Android Open Source Project (decoder); FFmpeg developers (native code); Jellyfin Contributors (packaging) | https://github.com/jellyfin/jellyfin-androidx-media |
+| FFmpeg decoder module `:decoder-ffmpeg` (in this repository) | AndroidX Media 1.8.0 + FFmpeg 6.0 (`d388c347`) | Apache-2.0 (AndroidX Media Java/JNI code) + LGPL-2.1-or-later (FFmpeg; one MIT file), see section 3.1 | The Android Open Source Project (decoder code); FFmpeg developers (native code); Rich Felker et al. (musl `av_sscanf`) | https://github.com/androidx/media/tree/1.8.0/libraries/decoder_ffmpeg, https://git.ffmpeg.org/ffmpeg.git |
 | PdfBox-Android `com.tom-roush:pdfbox-android` | 2.0.27.0 | Apache-2.0 | The Apache Software Foundation; Tom Roush (Android port) | https://github.com/TomRoush/PdfBox-Android |
 | Haze `dev.chrisbanes.haze:haze-android` | 1.6.10 | Apache-2.0 | Chris Banes | https://github.com/chrisbanes/haze |
 | Kotlin standard library `org.jetbrains.kotlin:kotlin-stdlib` (added by the Kotlin plugin) | 2.2.20 | Apache-2.0 | JetBrains s.r.o. and Kotlin Programming Language contributors | https://github.com/JetBrains/kotlin |
@@ -76,41 +81,49 @@ this repository's `LICENSE.pending-review.md` file (kept for review; not in forc
 | BSD-3-Clause | 1 | `datastore-preferences-external-protobuf` 1.1.7 (repackaged Protocol Buffers) |
 | 0BSD | 1 | XZ for Java 1.10 |
 | UnRAR licence | 1 | Junrar 7.5.5 |
-| GPL-3.0 (declared) / Apache-2.0 + LGPL-2.1-or-later (contents) | 1 | Jellyfin Media3 FFmpeg Decoder 1.8.0+1 |
+| Apache-2.0 (Java/JNI glue) + LGPL-2.1-or-later (FFmpeg, one MIT file) | 1 | `:decoder-ffmpeg` (AndroidX Media 1.8.0 decoder_ffmpeg + FFmpeg 6.0), built in this repository |
 
 The full list is in section 5.
 
 ## 3. Components with special conditions
 
-### 3.1 Jellyfin Media3 FFmpeg Decoder 1.8.0+1 and FFmpeg
+### 3.1 FFmpeg decoder (`:decoder-ffmpeg`): AndroidX Media 1.8.0 + FFmpeg 6.0
 
-- Maven: `org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1`. Its POM declares **GNU General Public License
-  v3.0**; the Jellyfin repository (https://github.com/jellyfin/jellyfin-androidx-media, tag `v1.8.0+1`) is
-  licensed GPL-3.0.
-- What the AAR actually contains (verified by unpacking it):
-  - 7 Java classes in `androidx.media3.decoder.ffmpeg`, from the AndroidX Media project
-    (https://github.com/androidx/media, submodule commit `b7bbc6e2bc3e45ff3ed99884c114c50f03bba5c9`),
-    Copyright The Android Open Source Project, **Apache-2.0**;
-  - `libffmpegJNI.so` for arm64-v8a, armeabi-v7a, x86 and x86_64 (the app ships only the two ARM ones). Each
-    one is AndroidX Media's `ffmpeg_jni.cc` (Apache-2.0) statically linked with FFmpeg's libavcodec,
-    libavutil and libswresample.
-- FFmpeg version: release/6.0 branch, commit `d388c347d41e4eb516dec05910551c5461e65615`
-  (the binary reports libavcodec `Lavc60.3.100`); built with Android NDK r26b (clang 17.0.2), which matches
-  the compiler string in the binary.
-- FFmpeg configuration (from AndroidX Media's `build_ffmpeg.sh` at the commit above, called by Jellyfin's
-  `build.sh`): `--disable-everything --enable-swresample --disable-avformat --disable-avfilter
-  --disable-swscale --disable-postproc --disable-avdevice --disable-programs --enable-static` plus only these
-  decoders: `flac alac pcm_mulaw pcm_alaw mp3 aac ac3 eac3 dca mlp truehd`. **There is no `--enable-gpl`,
-  no `--enable-version3` and no `--enable-nonfree`**, and no external libraries are linked. FFmpeg built
-  this way is licensed under the **GNU Lesser General Public License, version 2.1 or later**
-  (https://github.com/FFmpeg/FFmpeg/blob/release/6.0/LICENSE.md). Copyright the FFmpeg developers.
-- FFmpeg source for this exact version: https://github.com/FFmpeg/FFmpeg/tree/d388c347d41e4eb516dec05910551c5461e65615
-  (official repository: https://git.ffmpeg.org/ffmpeg.git). Build scripts: Jellyfin `build.sh` at tag
-  `v1.8.0+1`, AndroidX Media `libraries/decoder_ffmpeg/src/main/jni/` at commit `b7bbc6e`.
-- Anyone who distributes an APK containing this library must meet the LGPL-2.1 terms for FFmpeg (licence
-  text and notice, the corresponding FFmpeg source or a written offer, and the ability to replace the
-  library). **Pending review:** Jellyfin labels the package GPL-3.0; how that label applies to the APK, and
-  whether it can be combined with Junrar (3.2), has not been resolved. See "Licence (pending)" in `README.md`.
+Built in this repository (module `decoder-ffmpeg/`, provenance in `decoder-ffmpeg/UPSTREAM.md`). It
+replaces the prebuilt `org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1`, which packaged the same two
+upstream sources; no Jellyfin file is used.
+
+- **Java classes and JNI glue**: `androidx.media3.decoder.ffmpeg` (6 Java files) and `ffmpeg_jni.cc`,
+  `CMakeLists.txt`, `build_ffmpeg.sh`, copied unmodified from AndroidX Media (https://github.com/androidx/media,
+  tag `1.8.0` = commit `b7bbc6e2bc3e45ff3ed99884c114c50f03bba5c9`, `libraries/decoder_ffmpeg/`).
+  Copyright The Android Open Source Project, **Apache-2.0** (text: `licenses/Apache-2.0.txt`).
+- **Native library** `libffmpegJNI.so` (arm64-v8a and armeabi-v7a only): `ffmpeg_jni.cc` statically linked with
+  FFmpeg's libavcodec, libavutil and libswresample.
+- **FFmpeg version**: release/6.0 branch, commit `d388c347d41e4eb516dec05910551c5461e65615` (`RELEASE` 6.0.2,
+  libavcodec 60.3.100). Tarball sha256 `f89916923b8b935d1f0aaf8b77d21cb0c507c270d66c00d0f256a62cc7ff22ec`
+  (pinned in `scripts/ffmpeg/versions.env`). Built with Android NDK r26b (`26.1.10909125`, clang 17.0.2).
+- **FFmpeg configuration**: AndroidX Media's unmodified `build_ffmpeg.sh` (`--disable-everything
+  --enable-swresample --disable-avformat --disable-avfilter --disable-swscale --disable-postproc
+  --disable-avdevice --disable-programs --enable-static --disable-shared ...`), API level 21, and only these
+  decoders: `flac alac pcm_mulaw pcm_alaw mp3 aac ac3 eac3 dca mlp truehd`. **No `--enable-gpl`, no
+  `--enable-version3`, no `--enable-nonfree`**, no external libraries. FFmpeg built this way is licensed under
+  the **GNU Lesser General Public License, version 2.1 or later** (FFmpeg's `LICENSE.md`). Copyright the
+  FFmpeg developers. Full licence text: `licenses/LGPL-2.1.txt` (FFmpeg's own `COPYING.LGPLv2.1`).
+- **One MIT file**: `libavutil/avsscanf.c` (`av_sscanf`) is derived from musl libc, Copyright (c) 2005-2014
+  Rich Felker, et al., MIT licence. Notice reproduced in full in `licenses/MIT-musl-avsscanf.txt`. All other
+  compiled FFmpeg files are LGPL-2.1-or-later (no GPL-only file is compiled; see the evidence report).
+- **The same binary as before**: the stripped `libffmpegJNI.so` built here is byte-identical to the one in
+  Jellyfin's 1.8.0+1 package (and in Files 1.0.23) for both ABIs, apart from the 20-byte GNU build-ID.
+- **LGPL-2.1 obligations and how this repository meets them** (wording to be confirmed by a lawyer):
+  - notice and licence text: `NOTICE`, `licenses/FFMPEG-NOTICE.txt`, `licenses/LGPL-2.1.txt`, shown in the
+    app under Settings > Open-source licences;
+  - corresponding source: `scripts/ffmpeg/make-corresponding-source.sh` writes the bundle (FFmpeg source
+    tarball, build scripts and configure options, decoder module source, JNI object files, relinking steps);
+    CI attaches it to every build as `ffmpeg-corresponding-source`, and it is to be attached to every
+    published release; `licenses/FFMPEG-NOTICE.txt` also contains a written offer;
+  - relinking: FFmpeg is linked statically into `libffmpegJNI.so`, which is itself a separate shared library
+    in the APK; `RELINKING.md` and `scripts/ffmpeg/build-jni-standalone.sh` show how to rebuild it with a
+    modified FFmpeg and replace it.
 
 ### 3.2 Junrar 7.5.5 (UnRAR licence)
 
@@ -118,6 +131,11 @@ Junrar is a Java port of the UnRAR source code. It is distributed under the UnRA
 OSI-approved open-source licence: it allows use in any software to handle RAR archives, but forbids using
 the code to re-create the RAR compression algorithm or to develop a RAR (WinRAR) compatible archiver. The
 licence is not compatible with the GNU GPL. Source: https://github.com/junrar/junrar (tag `v7.5.5`).
+Junrar is used unmodified (Maven `com.github.junrar:junrar:7.5.5`). Its restriction applies to anyone who
+reuses or modifies it: **the code may not be used to re-create the RAR compression algorithm, and modified
+copies must state, in their documentation and source comments, that the code may not be used to develop a
+RAR (WinRAR) compatible archiver.** The text is also in `licenses/UnRAR-junrar-7.5.5.txt` and in the app
+(Settings > Open-source licences).
 Its licence text, reproduced in full as required:
 
 ```
@@ -483,7 +501,6 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `org.bouncycastle:bcprov-jdk15to18` | 1.72 | MIT (Bouncy Castle Licence) |
 | `org.bouncycastle:bcutil-jdk15to18` | 1.72 | MIT (Bouncy Castle Licence) |
 | `org.checkerframework:checker-qual` | 3.43.0 | MIT |
-| `org.jellyfin.media3:media3-ffmpeg-decoder` | 1.8.0+1 | GPL-3.0 declared by Jellyfin; contents Apache-2.0 + LGPL-2.1-or-later (see section 3.1) |
 | `org.jetbrains:annotations` | 23.0.0 | Apache-2.0 |
 | `org.jetbrains.androidx.lifecycle:lifecycle-common` | 2.8.4 | Apache-2.0 (metadata only, no code) |
 | `org.jetbrains.androidx.lifecycle:lifecycle-runtime` | 2.8.4 | Apache-2.0 (metadata only, no code) |

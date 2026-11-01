@@ -1,0 +1,77 @@
+FFmpeg in Files (CLP Studio)
+============================
+
+Files plays some audio formats with FFmpeg's decoders. They are in the native
+library libffmpegJNI.so inside the APK (lib/arm64-v8a/ and lib/armeabi-v7a/).
+
+What the library contains
+-------------------------
+- FFmpeg (https://ffmpeg.org): libavcodec, libavutil and libswresample,
+  linked statically into libffmpegJNI.so. Copyright (c) the FFmpeg developers.
+  Version: release/6.0 branch, commit d388c347d41e4eb516dec05910551c5461e65615
+  (RELEASE file 6.0.2, libavcodec 60.3.100).
+  Licence: GNU Lesser General Public License, version 2.1 or (at your option)
+  any later version. Full text: "GNU Lesser General Public License 2.1" in
+  this list (licenses/LGPL-2.1.txt in the source repository).
+  FFmpeg was configured without --enable-gpl, --enable-version3 and
+  --enable-nonfree. Only these 11 audio decoders are enabled: flac, alac,
+  pcm_mulaw, pcm_alaw, mp3, aac, ac3, eac3, dca, mlp, truehd. No video
+  decoding, no libavformat, libavfilter, libswscale, libpostproc or
+  libavdevice, and no external libraries.
+- One FFmpeg file, libavutil/avsscanf.c (av_sscanf), comes from musl libc and
+  is under the MIT licence: see "av_sscanf (from musl libc)" in this list.
+- The JNI glue (ffmpeg_jni.cc) and the Java classes in
+  androidx.media3.decoder.ffmpeg come unmodified from AndroidX Media 1.8.0
+  (https://github.com/androidx/media, commit
+  b7bbc6e2bc3e45ff3ed99884c114c50f03bba5c9), Copyright The Android Open
+  Source Project, Apache License 2.0.
+
+FFmpeg is distributed WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser
+General Public License for more details.
+
+Where to get the source code
+----------------------------
+The complete corresponding source of libffmpegJNI.so is published in these
+places:
+
+1. Source repository: https://github.com/clpsudio/filesmanager
+   - decoder-ffmpeg/   the JNI glue, Java classes and CMake files
+   - scripts/ffmpeg/   the scripts that download FFmpeg at the commit above
+                       (tarball sha256
+                       f89916923b8b935d1f0aaf8b77d21cb0c507c270d66c00d0f256a62cc7ff22ec)
+                       and build it with the exact configure options
+   - RELINKING.md      how to rebuild or replace the library
+2. Every build made by the project's GitHub Actions workflows carries the
+   artifact "ffmpeg-corresponding-source": the FFmpeg source tarball itself,
+   the build scripts and configure options, the decoder module source, the
+   compiled JNI object files and the relinking instructions.
+3. Each published release of Files has the same bundle attached next to the
+   APK, as ffmpeg-corresponding-source-<version>.tar.gz.
+
+Written offer: for at least three years after CLP Studio last distributes a
+given version of Files, CLP Studio will give anyone who asks a complete
+machine-readable copy of the corresponding FFmpeg source and build files for
+that version, on a medium customarily used for software interchange, for no
+more than the cost of physically performing the distribution. Ask through the
+contact on https://github.com/clpsudio, naming the Files version.
+
+Using a modified FFmpeg (relinking)
+-----------------------------------
+You may modify FFmpeg and use your modified version with Files.
+libffmpegJNI.so is a separate shared library in the APK, loaded by the app at
+run time; you can rebuild it from the sources above with your changes and put
+it in place of the original:
+
+1. Build FFmpeg's static libraries (scripts/ffmpeg/build-ffmpeg.sh, or your
+   own modified build of the same libraries).
+2. Link a new libffmpegJNI.so (scripts/ffmpeg/build-jni-standalone.sh, which
+   needs only CMake and the Android NDK; the object file of the JNI glue is
+   also in the source bundle if you prefer to link by hand).
+3. Either build the whole app from the repository, or replace
+   lib/<abi>/libffmpegJNI.so in the APK, align it and sign it with your own
+   key. Step-by-step commands: RELINKING.md.
+
+Android only installs signed APKs, so a modified APK has your signature, not
+CLP Studio's: uninstall the official app first (its data on the phone is
+removed). This is an Android rule, not a restriction added by CLP Studio.

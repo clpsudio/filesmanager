@@ -13,6 +13,12 @@
 #
 # The app is fully offline: the build fails if the final APK asks for the
 # INTERNET permission (or any network permission).
+#
+# FFmpeg (LGPL-2.1-or-later) is built from source in decoder-ffmpeg/ (pinned in
+# scripts/ffmpeg/versions.env). Every APK artifact is accompanied by the
+# "ffmpeg-corresponding-source" artifact (FFmpeg source tarball, build scripts,
+# decoder module source and relink kit), which must also be attached to any
+# published release next to the APK.
 name: Android APK
 
 on:
@@ -34,7 +40,7 @@ jobs:
     # (pull requests are checked by ci.yml instead).
     if: ${{ github.repository == 'clpsudio/filesmanager' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     env:
       APP_VERSION_CODE: ${{ github.run_number }}
       APP_VERSION_NAME: 1.0.${{ github.run_number }}
@@ -50,6 +56,36 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Install the pinned NDK and CMake
+        shell: bash
+        run: |
+          source scripts/ffmpeg/versions.env
+          sdkm="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkm" --licenses > /dev/null || true
+          "$sdkm" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+          grep -q "Pkg.Revision = $NDK_VERSION" "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      # FFmpeg's static libraries depend only on the pinned commit, the configure
+      # script and decoder list, and the NDK, all of which are in these files.
+      - name: Cache FFmpeg build
+        uses: actions/cache@v4
+        with:
+          path: |
+            decoder-ffmpeg/src/main/jni/ffmpeg
+            build/ffmpeg-download
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/versions.env', 'scripts/ffmpeg/fetch-ffmpeg.sh', 'scripts/ffmpeg/build-ffmpeg.sh', 'decoder-ffmpeg/src/main/jni/build_ffmpeg.sh') }}
+
+      - name: Build FFmpeg (sha256-checked source, pinned NDK)
+        shell: bash
+        run: scripts/ffmpeg/build-ffmpeg.sh "$ANDROID_NDK_HOME"
+
+      # A Linux build of the same decoder sources, so the JVM tests can run the real
+      # Java -> JNI -> FFmpeg decoding path (never packaged; the APK has only ARM code).
+      - name: Build the host decoder library for JVM tests
+        shell: bash
+        run: scripts/ffmpeg/build-host-jni-for-tests.sh
+
       - name: Version of this APK
         shell: bash
         run: |
@@ -59,7 +95,7 @@ jobs:
       - name: Unit tests and lint
         run: |
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest :decoder-ffmpeg:testDebugUnitTest -Pclp.requireHostFfmpeg=true :app:lintDebug :decoder-ffmpeg:lintDebug --no-daemon --stacktrace
 
       - name: Prepare the signing key
         shell: bash
@@ -89,18 +125,34 @@ jobs:
         shell: bash
         run: |
           apk=app/build/outputs/apk/release/app-release.apk
-          bt="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          bt="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           "$bt/aapt2" dump permissions "$apk" | tee permissions.txt
           if grep -E "android.permission.(INTERNET|ACCESS_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_NETWORK_STATE)" permissions.txt; then
             echo "::error::The APK asks for a network permission. Files must work fully offline."
             exit 1
           fi
-          "$bt/aapt2" dump badging "$apk" | head -1
+          "$bt/aapt2" dump badging "$apk" | grep -E "^(package|minSdkVersion|targetSdkVersion|native-code)"
+          # Native code: exactly the two ARM ABIs, each with the FFmpeg decoder library.
+          unzip -l "$apk" | awk '{print $4}' | grep '^lib/' | sort | tee native-libs.txt
+          grep -qx 'lib/arm64-v8a/libffmpegJNI.so' native-libs.txt
+          grep -qx 'lib/armeabi-v7a/libffmpegJNI.so' native-libs.txt
+          if grep -vE '^lib/(arm64-v8a|armeabi-v7a)/' native-libs.txt; then
+            echo "::error::Unexpected native ABI in the APK."
+            exit 1
+          fi
+          # The licence texts shown in Settings > Open-source licences.
+          for f in FFMPEG-NOTICE.txt LGPL-2.1.txt MIT-musl-avsscanf.txt UnRAR-junrar-7.5.5.txt NOTICE THIRD_PARTY_LICENSES.md; do
+            unzip -l "$apk" "assets/licenses/$f" > /dev/null || { echo "::error::assets/licenses/$f missing from the APK"; exit 1; }
+          done
           "$bt/apksigner" verify --print-certs "$apk" | grep -E "DN|SHA-256|SHA-1"
           mkdir -p dist
           cp "$apk" "dist/files-$APP_VERSION_NAME.apk"
           # The (pending) licence text and third-party notices travel with every distributed APK.
-          cp LICENSE.pending-review.md NOTICE THIRD_PARTY_LICENSES.md dist/
+          cp LICENSE.pending-review.md NOTICE THIRD_PARTY_LICENSES.md RELINKING.md dist/
+
+      - name: FFmpeg corresponding source bundle
+        shell: bash
+        run: scripts/ffmpeg/make-corresponding-source.sh "$APP_VERSION_NAME" dist/source
 
       - name: Upload release APK
         uses: actions/upload-artifact@v7
@@ -111,5 +163,14 @@ jobs:
             dist/LICENSE.pending-review.md
             dist/NOTICE
             dist/THIRD_PARTY_LICENSES.md
+            dist/RELINKING.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload FFmpeg corresponding source
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-corresponding-source
+          path: dist/source/*.tar.gz
           if-no-files-found: error
           retention-days: 90

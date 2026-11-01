@@ -17,6 +17,7 @@ object Routes {
     fun vaultView(id: String) = "vault_view?id=${Uri.encode(id)}"
     const val DIAGNOSTICS = "diagnostics"
     const val CRASH_REPORTS = "crash_reports"
+    const val LICENCES = "licences"
     const val SLIDESHOW = "slideshow"
     const val FAVORITES = "favorites"
     const val STORAGE = "storage"

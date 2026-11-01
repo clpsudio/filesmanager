@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.SdCard
@@ -73,7 +74,7 @@ import com.clpstudio.filesmanager.ui.glass.glassPanel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onLogs: () -> Unit = {}, onCrashReports: () -> Unit = {}, onFolderFilters: () -> Unit = {}, onAppLock: () -> Unit = {}, onVaultSettings: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> Unit = {}, onLogs: () -> Unit = {}, onCrashReports: () -> Unit = {}, onLicences: () -> Unit = {}, onFolderFilters: () -> Unit = {}, onAppLock: () -> Unit = {}, onVaultSettings: () -> Unit = {}) {
     val settings by Graph.settings.collectAsState()
     val scope = rememberCoroutineScope()
     SettingsContent(
@@ -97,6 +98,7 @@ fun SettingsScreen(onBack: () -> Unit, onBin: () -> Unit, onDiagnostics: () -> U
         onDiagnostics = onDiagnostics,
         onLogs = onLogs,
         onCrashReports = onCrashReports,
+        onLicences = onLicences,
         onBackgroundPlay = { scope.launch { Graph.settingsRepo.setBackgroundPlay(it) } },
         onAutoPip = { scope.launch { Graph.settingsRepo.setAutoPip(it) } },
         onHiddenInSearch = { scope.launch { Graph.settingsRepo.setHiddenInSearch(it) } },
@@ -129,6 +131,7 @@ fun SettingsContent(
     onDiagnostics: () -> Unit = {},
     onLogs: () -> Unit = {},
     onCrashReports: () -> Unit = {},
+    onLicences: () -> Unit = {},
     onBackgroundPlay: (Boolean) -> Unit = {},
     onAutoPip: (Boolean) -> Unit = {},
     onHiddenInSearch: (Boolean) -> Unit = {},
@@ -312,6 +315,17 @@ fun SettingsContent(
                         Column(Modifier.weight(1f)) {
                             Text("Crash reports", style = MaterialTheme.typography.titleSmall)
                             Text("Saved if Files ever closes unexpectedly. View, share with us, or clear.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.clickable(onClick = onLicences)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RowIcon(Icons.Filled.Gavel)
+                        Column(Modifier.weight(1f)) {
+                            Text("Open-source licences", style = MaterialTheme.typography.titleSmall)
+                            Text("Licences and notices of the components in Files, including FFmpeg (LGPL) and where to get its source.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

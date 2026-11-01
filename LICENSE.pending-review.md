@@ -7,16 +7,20 @@ The text below is the Apache License, Version 2.0. It is the licence CLP Studio
 unchanged, for review, but it is **not in force** until CLP Studio confirms the
 licensing decision and this file is renamed back to `LICENSE`.
 
-The decision is pending because the licensing of two third-party components
-that ship inside the app's APK is still being verified:
+The decision stays pending until the integration, documentation and release
+checks of the FFmpeg decoder replacement are complete and CLP Studio approves
+it. If confirmed, this licence applies **only to CLP Studio's own code**. It
+does not apply to the third-party components in the app's APK, which keep
+their own licences, notably:
 
-- the Jellyfin Media3 FFmpeg Decoder (`org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1`),
-  which Jellyfin publishes with a GPL-3.0 licence label; and
-- Junrar 7.5.5, which is distributed under the UnRAR licence.
+- FFmpeg (LGPL-2.1-or-later; one MIT file), built in `decoder-ffmpeg/` from
+  AndroidX Media 1.8.0 (Apache-2.0) and FFmpeg commit `d388c347`; and
+- Junrar 7.5.5, which is distributed under the UnRAR licence (not an
+  open-source licence).
 
-Nothing in this repository should be read as a claim that the APK, or the
-project as a whole, is licence-compatible. See the "Licence (pending)" section
-of `README.md` and `THIRD_PARTY_LICENSES.md`.
+The APK as a whole is therefore not "entirely Apache-2.0" and should not be
+described as fully open source. See the "Licence (pending)" section of
+`README.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ---
 

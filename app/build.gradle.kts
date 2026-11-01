@@ -14,6 +14,10 @@ val releaseKeystore: String? = System.getenv("ANDROID_KEYSTORE_PATH")
 android {
     namespace = "com.clpstudio.filesmanager"
     compileSdk = 36
+    // The pinned NDK of :decoder-ffmpeg (scripts/ffmpeg/versions.env). The app module uses it only to
+    // strip native libraries when packaging, so the APK doesn't depend on which NDKs a machine has.
+    ndkVersion = rootProject.file("scripts/ffmpeg/versions.env").readLines()
+        .first { it.startsWith("NDK_VERSION=") }.substringAfter('=').trim()
 
     defaultConfig {
         applicationId = "com.clpstudio.filesmanager"
@@ -84,6 +88,37 @@ android {
     }
 }
 
+// Licence texts and notices shown in Settings > Open-source licences (assets/licenses/).
+// Copied at build time from the repository root, so the APK always carries exactly the
+// texts in the repository: NOTICE, THIRD_PARTY_LICENSES.md and every file in licenses/.
+abstract class LicenceAssetsTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val sources: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile.resolve("licenses")
+        out.deleteRecursively()
+        out.mkdirs()
+        sources.files.sortedBy { it.name }.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
+        check(out.resolve("FFMPEG-NOTICE.txt").isFile && out.resolve("LGPL-2.1.txt").isFile) { "licence texts missing" }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val task = tasks.register<LicenceAssetsTask>("${variant.name}LicenceAssets") {
+            sources.from(rootProject.file("NOTICE"), rootProject.file("THIRD_PARTY_LICENSES.md"))
+            sources.from(rootProject.fileTree("licenses"))
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(task, LicenceAssetsTask::outputDir)
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -133,7 +168,8 @@ dependencies {
     implementation("org.tukaani:xz:1.10")
     implementation("com.github.junrar:junrar:7.5.5")
     // FFmpeg audio decoders for Media3 (offline native libs) — plays codecs the phone's own decoders can't.
-    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1")
+    // Built in this repo from AndroidX Media 1.8.0 + FFmpeg 6.0 (LGPL-2.1+), see decoder-ffmpeg/UPSTREAM.md.
+    implementation(project(":decoder-ffmpeg"))
 
     // PDF passwords (open / add / remove, AES-256). Offline; no network permission.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
