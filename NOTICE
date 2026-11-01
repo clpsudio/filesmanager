@@ -1,9 +1,12 @@
 Files
 Copyright 2026 CLP Studio
 
-This product includes software developed by CLP Studio
-(https://github.com/clpsudio/filesmanager), licensed under the Apache License,
-Version 2.0 (see LICENSE).
+LICENCE DECISION PENDING. This product includes software developed by CLP
+Studio (https://github.com/clpsudio/filesmanager). The proposed licence for
+that code is the Apache License, Version 2.0 (text kept, not in force, in
+LICENSE.pending-review.md); no licence has been granted yet. No claim is made
+that the APK as a whole is licence-compatible: the licensing of the Jellyfin
+FFmpeg decoder and of Junrar is still under review.
 
 The app also uses third-party components that keep their own licences. Their
 names, versions, licences and sources are listed in THIRD_PARTY_LICENSES.md.

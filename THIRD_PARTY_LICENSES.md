@@ -1,5 +1,12 @@
 # Third-party licences and notices
 
+> **Licence decision pending.** This inventory is a working document. The
+> project licence has not been decided (the proposed Apache-2.0 text is kept,
+> not in force, in `LICENSE.pending-review.md`), and the licensing of the
+> Jellyfin FFmpeg decoder (section 3.1) and Junrar (section 3.2) inside the APK
+> is still under review. Nothing here claims that the APK is
+> licence-compatible.
+
 Files (`com.clpstudio.filesmanager`) is built from CLP Studio's own source code plus the third-party
 components listed here. This file covers:
 
@@ -15,7 +22,7 @@ missing, vague or unusual (Bouncy Castle, Junrar, Jellyfin, PdfBox-Android, XZ, 
 native FFmpeg library was inspected directly (see 3.1). When you change dependencies, regenerate this list.
 
 The licence texts referred to below are available at the linked URLs. The Apache License 2.0 text is also in
-this repository's `LICENSE` file.
+this repository's `LICENSE.pending-review.md` file (kept for review; not in force as the project licence).
 
 ## 1. Direct dependencies
 
@@ -102,8 +109,8 @@ The full list is in section 5.
   `v1.8.0+1`, AndroidX Media `libraries/decoder_ffmpeg/src/main/jni/` at commit `b7bbc6e`.
 - Anyone who distributes an APK containing this library must meet the LGPL-2.1 terms for FFmpeg (licence
   text and notice, the corresponding FFmpeg source or a written offer, and the ability to replace the
-  library) and, because Jellyfin labels the package GPL-3.0, should read section "Licence of the project
-  and of release APKs" in `README.md`.
+  library). **Pending review:** Jellyfin labels the package GPL-3.0; how that label applies to the APK, and
+  whether it can be combined with Junrar (3.2), has not been resolved. See "Licence (pending)" in `README.md`.
 
 ### 3.2 Junrar 7.5.5 (UnRAR licence)
 

@@ -1,3 +1,26 @@
+# LICENCE DECISION PENDING: NOT IN FORCE
+
+**Status (1 November 2026): pending review. No licence has been granted yet.**
+
+The text below is the Apache License, Version 2.0. It is the licence CLP Studio
+*proposes* for its own source code in this repository. It has been kept here,
+unchanged, for review, but it is **not in force** until CLP Studio confirms the
+licensing decision and this file is renamed back to `LICENSE`.
+
+The decision is pending because the licensing of two third-party components
+that ship inside the app's APK is still being verified:
+
+- the Jellyfin Media3 FFmpeg Decoder (`org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1`),
+  which Jellyfin publishes with a GPL-3.0 licence label; and
+- Junrar 7.5.5, which is distributed under the UnRAR licence.
+
+Nothing in this repository should be read as a claim that the APK, or the
+project as a whole, is licence-compatible. See the "Licence (pending)" section
+of `README.md` and `THIRD_PARTY_LICENSES.md`.
+
+---
+
+```text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -199,3 +222,4 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```

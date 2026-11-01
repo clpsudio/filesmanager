@@ -1,5 +1,13 @@
 # Files
 
+> **Licence: pending review.** No open-source licence has been granted for
+> this repository yet. Apache-2.0 is the *proposed* licence for CLP Studio's own
+> code; its text is kept in [`LICENSE.pending-review.md`](LICENSE.pending-review.md)
+> and is **not in force**. The licensing of two third-party components inside
+> the APK (the Jellyfin FFmpeg decoder and Junrar) is still being verified, and
+> no claim is made that the APK is licence-compatible. See
+> [Licence (pending)](#licence-pending).
+
 A native Android file manager by **CLP Studio** (`com.clpstudio.filesmanager`).
 Kotlin + Jetpack Compose + Material 3, Android 8.0+ (API 26), fully offline:
 the app has **no INTERNET permission** (the CI build fails if one appears).
@@ -68,20 +76,26 @@ with any other key are not official CLP Studio builds.
 - `Graph.kt` the single place for shared services; phase 2 adds the vault
   (Keystore/StrongBox), app lock and archive tools there.
 
-## Licence
+## Licence (pending)
 
-Files' own source code is Copyright 2026 CLP Studio and is licensed under the
-[Apache License, Version 2.0](LICENSE). You may use, modify and redistribute
-it, including commercially, under the terms of that licence.
+**Decision pending.** CLP Studio has not yet granted a licence for this
+repository. The proposed licence for Files' own source code (Copyright 2026
+CLP Studio) is the Apache License, Version 2.0; its unchanged text is kept for
+review in [`LICENSE.pending-review.md`](LICENSE.pending-review.md) and is not
+in force. Until the decision is confirmed, nothing in this repository grants
+permission to use, modify or redistribute the code, and nothing here claims
+that the release APK, which also contains third-party components, is
+licence-compatible.
 
-When you redistribute the code or an app built from it (Apache-2.0, section 4):
+If Apache-2.0 is confirmed, redistributing the code or an app built from it
+will require (Apache-2.0, section 4):
 
-- include a copy of [`LICENSE`](LICENSE);
-- keep the [`NOTICE`](NOTICE) file (or its text) with your distribution;
-- keep the existing copyright, patent, trademark and attribution notices;
-- mark files you changed as changed.
+- a copy of the licence;
+- the [`NOTICE`](NOTICE) file (or its text);
+- the existing copyright, patent, trademark and attribution notices;
+- marking files you changed as changed.
 
-The Apache licence does not grant rights to the CLP Studio name or logo
+The Apache licence would not grant rights to the CLP Studio name or logo
 (section 6). A fork published as a separate app should use its own name,
 icon and application ID.
 
@@ -95,12 +109,15 @@ MIT, BSD or 0BSD. Two need particular care when you **distribute an APK**:
 - **FFmpeg** (audio decoders) comes in through the Jellyfin Media3 FFmpeg
   Decoder. FFmpeg in that build is LGPL-2.1-or-later (no GPL or non-free parts
   enabled), and the decoder's own code is Apache-2.0, but Jellyfin publishes
-  the package under a GPL-3.0 label. An APK must meet the LGPL terms for FFmpeg
-  (notice, FFmpeg source for the exact version, replaceable library).
+  the package under a GPL-3.0 label. **Under review:** how that label applies
+  to the APK has not been resolved. In any case an APK must meet the LGPL
+  terms for FFmpeg (notice, FFmpeg source for the exact version, replaceable
+  library).
 - **Junrar** (RAR4 archives) is under the UnRAR licence, which is not an
   open-source licence: the code may not be used to re-create the RAR
   compression algorithm or to build a RAR-compatible archiver. That licence is
-  not compatible with the GPL.
+  not compatible with the GPL. **Under review:** whether it can be combined
+  with the FFmpeg decoder package as published by Jellyfin.
 
 See `THIRD_PARTY_LICENSES.md`, sections 3.1 and 3.2, for the details.
 Two unit-test fixtures (`app/src/test/resources/fmt/real_*_prefix.dwg`) are
@@ -111,7 +128,8 @@ tests and are not part of the app.
 
 Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first: it
 covers building, tests, the offline rule, which dependency licences can be
-accepted, and how contributions are licensed (Apache-2.0).
+accepted, and how contributions will be licensed once the licence is
+confirmed (proposed: Apache-2.0).
 
 ## Security
 

@@ -41,7 +41,8 @@ Robolectric and Roborazzi for UI). The pull-request workflow
 
 ## Dependencies and licences
 
-Files is licensed under Apache-2.0, so every new dependency must have a
+The proposed licence for Files is Apache-2.0 (decision pending; see the
+"Licence (pending)" section of the README), so every new dependency must have a
 licence that allows that:
 
 - Accepted: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Zlib,
@@ -65,10 +66,13 @@ came from in the pull request.
 
 ## Licensing of contributions
 
-By submitting a pull request you confirm that you have the right to submit the
-work, and you agree that it is licensed under the Apache License, Version 2.0,
-as described in section 5 of the [`LICENSE`](LICENSE). Contributors keep the
-copyright in their own contributions.
+**Pending:** the project licence has not been confirmed yet (see the
+"Licence (pending)" section of the README). Once it is, contributions will be
+licensed under it; the proposed licence is the Apache License, Version 2.0,
+whose section 5 covers contributions (text kept for review in
+[`LICENSE.pending-review.md`](LICENSE.pending-review.md)). By submitting a pull
+request you confirm that you have the right to submit the work. Contributors
+keep the copyright in their own contributions.
 
 ## Pull requests
 
