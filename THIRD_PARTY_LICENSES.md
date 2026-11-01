@@ -283,7 +283,9 @@ Test fixtures in `app/src/test/resources/` that did not originate with CLP Studi
 ## 5. Full inventory of the release runtime classpath
 
 Resolved versions of `releaseRuntimeClasspath` (direct and transitive). "Metadata only" entries are Kotlin
-Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact listed next to them.
+Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact listed next to them; the
+`-android`/`-jvm` artifacts themselves carry the code (corrected 1 November 2026: earlier versions of this list
+wrongly marked the `-android` artifacts and Guava as metadata only; their licences were and are Apache-2.0).
 
 | Module | Version | Licence |
 |---|---|---|
@@ -302,41 +304,41 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `androidx.collection:collection-ktx` | 1.5.0 | Apache-2.0 |
 | `androidx.compose:compose-bom` | 2025.08.00 | Apache-2.0 (metadata only, no code) |
 | `androidx.compose.animation:animation` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.animation:animation-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.animation:animation-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.animation:animation-core` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.animation:animation-core-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.animation:animation-core-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.foundation:foundation` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.foundation:foundation-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.foundation:foundation-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.foundation:foundation-layout` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.foundation:foundation-layout-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.foundation:foundation-layout-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.material:material-icons-core` | 1.7.8 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.material:material-icons-core-android` | 1.7.8 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.material:material-icons-core-android` | 1.7.8 | Apache-2.0 |
 | `androidx.compose.material:material-icons-extended` | 1.7.8 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.material:material-icons-extended-android` | 1.7.8 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.material:material-icons-extended-android` | 1.7.8 | Apache-2.0 |
 | `androidx.compose.material:material-ripple` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.material:material-ripple-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.material:material-ripple-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.material3:material3` | 1.3.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.material3:material3-android` | 1.3.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.material3:material3-android` | 1.3.2 | Apache-2.0 |
 | `androidx.compose.runtime:runtime` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.runtime:runtime-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.runtime:runtime-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.runtime:runtime-annotation` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.runtime:runtime-annotation-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.runtime:runtime-annotation-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.runtime:runtime-saveable` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.runtime:runtime-saveable-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.runtime:runtime-saveable-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui-geometry` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-geometry-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-geometry-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui-graphics` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-graphics-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-graphics-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui-text` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-text-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-text-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui-tooling-preview` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-tooling-preview-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-tooling-preview-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui-unit` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-unit-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-unit-android` | 1.9.0 | Apache-2.0 |
 | `androidx.compose.ui:ui-util` | 1.9.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.compose.ui:ui-util-android` | 1.9.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.compose.ui:ui-util-android` | 1.9.0 | Apache-2.0 |
 | `androidx.concurrent:concurrent-futures` | 1.1.0 | Apache-2.0 |
 | `androidx.concurrent:concurrent-futures-ktx` | 1.1.0 | Apache-2.0 |
 | `androidx.core:core` | 1.16.0 | Apache-2.0 |
@@ -346,15 +348,15 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `androidx.customview:customview` | 1.0.0 | Apache-2.0 |
 | `androidx.customview:customview-poolingcontainer` | 1.0.0 | Apache-2.0 |
 | `androidx.datastore:datastore` | 1.1.7 | Apache-2.0 (metadata only, no code) |
-| `androidx.datastore:datastore-android` | 1.1.7 | Apache-2.0 (metadata only, no code) |
+| `androidx.datastore:datastore-android` | 1.1.7 | Apache-2.0 |
 | `androidx.datastore:datastore-core` | 1.1.7 | Apache-2.0 (metadata only, no code) |
-| `androidx.datastore:datastore-core-android` | 1.1.7 | Apache-2.0 (metadata only, no code) |
+| `androidx.datastore:datastore-core-android` | 1.1.7 | Apache-2.0 |
 | `androidx.datastore:datastore-core-okio` | 1.1.7 | Apache-2.0 (metadata only, no code) |
 | `androidx.datastore:datastore-core-okio-jvm` | 1.1.7 | Apache-2.0 |
 | `androidx.datastore:datastore-preferences` | 1.1.7 | Apache-2.0 (metadata only, no code) |
-| `androidx.datastore:datastore-preferences-android` | 1.1.7 | Apache-2.0 (metadata only, no code) |
+| `androidx.datastore:datastore-preferences-android` | 1.1.7 | Apache-2.0 |
 | `androidx.datastore:datastore-preferences-core` | 1.1.7 | Apache-2.0 (metadata only, no code) |
-| `androidx.datastore:datastore-preferences-core-android` | 1.1.7 | Apache-2.0 (metadata only, no code) |
+| `androidx.datastore:datastore-preferences-core-android` | 1.1.7 | Apache-2.0 |
 | `androidx.datastore:datastore-preferences-external-protobuf` | 1.1.7 | BSD-3-Clause |
 | `androidx.datastore:datastore-preferences-proto` | 1.1.7 | Apache-2.0 |
 | `androidx.emoji2:emoji2` | 1.4.0 | Apache-2.0 |
@@ -369,19 +371,19 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `androidx.lifecycle:lifecycle-livedata-core-ktx` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-process` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-runtime` | 2.9.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.lifecycle:lifecycle-runtime-android` | 2.9.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.lifecycle:lifecycle-runtime-android` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-runtime-compose` | 2.9.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.lifecycle:lifecycle-runtime-compose-android` | 2.9.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.lifecycle:lifecycle-runtime-compose-android` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-runtime-ktx` | 2.9.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.lifecycle:lifecycle-runtime-ktx-android` | 2.9.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.lifecycle:lifecycle-runtime-ktx-android` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-service` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-viewmodel` | 2.9.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.lifecycle:lifecycle-viewmodel-android` | 2.9.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.lifecycle:lifecycle-viewmodel-android` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-viewmodel-compose` | 2.9.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.lifecycle:lifecycle-viewmodel-compose-android` | 2.9.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.lifecycle:lifecycle-viewmodel-compose-android` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-viewmodel-ktx` | 2.9.2 | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-viewmodel-savedstate` | 2.9.2 | Apache-2.0 (metadata only, no code) |
-| `androidx.lifecycle:lifecycle-viewmodel-savedstate-android` | 2.9.2 | Apache-2.0 (metadata only, no code) |
+| `androidx.lifecycle:lifecycle-viewmodel-savedstate-android` | 2.9.2 | Apache-2.0 |
 | `androidx.media:media` | 1.7.0 | Apache-2.0 |
 | `androidx.media3:media3-common` | 1.8.0 | Apache-2.0 |
 | `androidx.media3:media3-container` | 1.8.0 | Apache-2.0 |
@@ -393,26 +395,26 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `androidx.media3:media3-session` | 1.8.0 | Apache-2.0 |
 | `androidx.media3:media3-ui` | 1.8.0 | Apache-2.0 |
 | `androidx.navigation:navigation-common` | 2.9.3 | Apache-2.0 (metadata only, no code) |
-| `androidx.navigation:navigation-common-android` | 2.9.3 | Apache-2.0 (metadata only, no code) |
+| `androidx.navigation:navigation-common-android` | 2.9.3 | Apache-2.0 |
 | `androidx.navigation:navigation-compose` | 2.9.3 | Apache-2.0 (metadata only, no code) |
-| `androidx.navigation:navigation-compose-android` | 2.9.3 | Apache-2.0 (metadata only, no code) |
+| `androidx.navigation:navigation-compose-android` | 2.9.3 | Apache-2.0 |
 | `androidx.navigation:navigation-runtime` | 2.9.3 | Apache-2.0 (metadata only, no code) |
-| `androidx.navigation:navigation-runtime-android` | 2.9.3 | Apache-2.0 (metadata only, no code) |
+| `androidx.navigation:navigation-runtime-android` | 2.9.3 | Apache-2.0 |
 | `androidx.profileinstaller:profileinstaller` | 1.4.1 | Apache-2.0 |
 | `androidx.recyclerview:recyclerview` | 1.3.0 | Apache-2.0 |
 | `androidx.room:room-common` | 2.6.1 | Apache-2.0 |
 | `androidx.room:room-ktx` | 2.6.1 | Apache-2.0 |
 | `androidx.room:room-runtime` | 2.6.1 | Apache-2.0 |
 | `androidx.savedstate:savedstate` | 1.3.1 | Apache-2.0 (metadata only, no code) |
-| `androidx.savedstate:savedstate-android` | 1.3.1 | Apache-2.0 (metadata only, no code) |
+| `androidx.savedstate:savedstate-android` | 1.3.1 | Apache-2.0 |
 | `androidx.savedstate:savedstate-compose` | 1.3.1 | Apache-2.0 (metadata only, no code) |
-| `androidx.savedstate:savedstate-compose-android` | 1.3.1 | Apache-2.0 (metadata only, no code) |
+| `androidx.savedstate:savedstate-compose-android` | 1.3.1 | Apache-2.0 |
 | `androidx.savedstate:savedstate-ktx` | 1.3.1 | Apache-2.0 |
 | `androidx.sqlite:sqlite` | 2.4.0 | Apache-2.0 |
 | `androidx.sqlite:sqlite-framework` | 2.4.0 | Apache-2.0 |
 | `androidx.startup:startup-runtime` | 1.1.1 | Apache-2.0 |
 | `androidx.tracing:tracing` | 1.3.0 | Apache-2.0 (metadata only, no code) |
-| `androidx.tracing:tracing-android` | 1.3.0 | Apache-2.0 (metadata only, no code) |
+| `androidx.tracing:tracing-android` | 1.3.0 | Apache-2.0 |
 | `androidx.tracing:tracing-ktx` | 1.3.0 | Apache-2.0 |
 | `androidx.vectordrawable:vectordrawable` | 1.2.0 | Apache-2.0 |
 | `androidx.vectordrawable:vectordrawable-animated` | 1.2.0 | Apache-2.0 |
@@ -424,7 +426,7 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `com.google.code.findbugs:jsr305` | 3.0.2 | Apache-2.0 |
 | `com.google.errorprone:error_prone_annotations` | 2.28.0 | Apache-2.0 |
 | `com.google.guava:failureaccess` | 1.0.2 | Apache-2.0 |
-| `com.google.guava:guava` | 33.3.1-android | Apache-2.0 (metadata only, no code) |
+| `com.google.guava:guava` | 33.3.1-android | Apache-2.0 |
 | `com.google.guava:listenablefuture` | 9999.0-empty-to-avoid-conflict-with-guava | Apache-2.0 |
 | `com.google.j2objc:j2objc-annotations` | 3.0.0 | Apache-2.0 |
 | `com.squareup.okio:okio` | 3.15.0 | Apache-2.0 (metadata only, no code) |
@@ -432,18 +434,18 @@ Multiplatform or BOM coordinates that resolve to the `-android`/`-jvm` artifact 
 | `com.tom-roush:pdfbox-android` | 2.0.27.0 | Apache-2.0 |
 | `commons-codec:commons-codec` | 1.19.0 | Apache-2.0 |
 | `commons-io:commons-io` | 2.20.0 | Apache-2.0 |
-| `dev.chrisbanes.haze:haze-android` | 1.6.10 | Apache-2.0 (metadata only, no code) |
+| `dev.chrisbanes.haze:haze-android` | 1.6.10 | Apache-2.0 |
 | `io.coil-kt.coil3:coil` | 3.3.0 | Apache-2.0 (metadata only, no code) |
-| `io.coil-kt.coil3:coil-android` | 3.3.0 | Apache-2.0 (metadata only, no code) |
+| `io.coil-kt.coil3:coil-android` | 3.3.0 | Apache-2.0 |
 | `io.coil-kt.coil3:coil-compose` | 3.3.0 | Apache-2.0 (metadata only, no code) |
-| `io.coil-kt.coil3:coil-compose-android` | 3.3.0 | Apache-2.0 (metadata only, no code) |
+| `io.coil-kt.coil3:coil-compose-android` | 3.3.0 | Apache-2.0 |
 | `io.coil-kt.coil3:coil-compose-core` | 3.3.0 | Apache-2.0 (metadata only, no code) |
-| `io.coil-kt.coil3:coil-compose-core-android` | 3.3.0 | Apache-2.0 (metadata only, no code) |
+| `io.coil-kt.coil3:coil-compose-core-android` | 3.3.0 | Apache-2.0 |
 | `io.coil-kt.coil3:coil-core` | 3.3.0 | Apache-2.0 (metadata only, no code) |
-| `io.coil-kt.coil3:coil-core-android` | 3.3.0 | Apache-2.0 (metadata only, no code) |
+| `io.coil-kt.coil3:coil-core-android` | 3.3.0 | Apache-2.0 |
 | `io.coil-kt.coil3:coil-gif` | 3.3.0 | Apache-2.0 |
 | `io.coil-kt.coil3:coil-svg` | 3.3.0 | Apache-2.0 (metadata only, no code) |
-| `io.coil-kt.coil3:coil-svg-android` | 3.3.0 | Apache-2.0 (metadata only, no code) |
+| `io.coil-kt.coil3:coil-svg-android` | 3.3.0 | Apache-2.0 |
 | `io.coil-kt.coil3:coil-video` | 3.3.0 | Apache-2.0 |
 | `net.lingala.zip4j:zip4j` | 2.11.5 | Apache-2.0 |
 | `org.apache.commons:commons-compress` | 1.28.0 | Apache-2.0 |
