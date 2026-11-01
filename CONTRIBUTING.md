@@ -1,0 +1,82 @@
+# Contributing to Files
+
+Thanks for helping improve Files. This guide explains how to propose a change.
+
+## Before you start
+
+- For bugs, open an issue with your Android version, phone model, the app
+  version (Settings) and the steps to reproduce. Settings > Logs can copy a
+  log; check it for private file names before you paste it into a public issue.
+- For new features or larger changes, open an issue first so the approach can
+  be agreed before you spend time on it.
+- Security problems are never reported in public issues; see
+  [`SECURITY.md`](SECURITY.md).
+
+## Building and testing
+
+See the Build section of [`README.md`](README.md). Before opening a pull
+request, run:
+
+```
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+```
+
+All unit tests must pass and lint must report no errors. Add or update unit
+tests for the behaviour you change (tests live in `app/src/test/`, with
+Robolectric and Roborazzi for UI). The pull-request workflow
+(`.github/workflows/ci.yml`) runs the same checks without any signing keys.
+
+## Project rules
+
+- **Fully offline.** The app has no `INTERNET` permission and the build fails
+  if one appears in the APK. Do not add network code, analytics, ads, crash
+  reporters that upload data, or libraries that need network access.
+- **No secrets in the repository.** Never commit keystores, passwords, API keys
+  or `local.properties`.
+- **Permissions.** Do not add a new Android permission without explaining in
+  the pull request why the feature needs it.
+- **Code style.** Kotlin with the official code style
+  (`kotlin.code.style=official`), Jetpack Compose and Material 3. Keep changes
+  focused; do not reformat unrelated code.
+
+## Dependencies and licences
+
+Files is licensed under Apache-2.0, so every new dependency must have a
+licence that allows that:
+
+- Accepted: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Zlib,
+  public domain / Unlicense.
+- Needs discussion first (open an issue): LGPL, MPL, EPL and any other
+  weak-copyleft licence, or any library that bundles native code, fonts or
+  data files.
+- Not accepted: GPL, AGPL, licences that restrict commercial use or field of
+  use, and code with no licence.
+
+The two existing exceptions, the Jellyfin FFmpeg decoder (GPL-3.0 label,
+LGPL FFmpeg inside) and Junrar (UnRAR licence), are explained in
+`THIRD_PARTY_LICENSES.md`; they do not make other such libraries acceptable.
+
+When you add, remove or upgrade a library, update
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) (name, version, licence,
+copyright holder, source link) and, if the library has a NOTICE file, the
+[`NOTICE`](NOTICE) file. Do not copy code, icons, images, fonts, sounds or
+test files from other projects unless their licence allows it; say where they
+came from in the pull request.
+
+## Licensing of contributions
+
+By submitting a pull request you confirm that you have the right to submit the
+work, and you agree that it is licensed under the Apache License, Version 2.0,
+as described in section 5 of the [`LICENSE`](LICENSE). Contributors keep the
+copyright in their own contributions.
+
+## Pull requests
+
+1. Fork the repository and create a branch from `main`.
+2. Make your change with tests, and keep commits focused with clear messages.
+3. Run the checks above.
+4. Open a pull request that explains what changed and why, and how you tested
+   it (include screenshots for visible changes).
+
+A maintainer will review the pull request and may ask for changes. Merged
+changes reach users in the next build made by CLP Studio.

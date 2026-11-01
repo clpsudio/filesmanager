@@ -1,0 +1,75 @@
+Files
+Copyright 2026 CLP Studio
+
+This product includes software developed by CLP Studio
+(https://github.com/clpsudio/filesmanager), licensed under the Apache License,
+Version 2.0 (see LICENSE).
+
+The app also uses third-party components that keep their own licences. Their
+names, versions, licences and sources are listed in THIRD_PARTY_LICENSES.md.
+The notices below are reproduced because the licences of components included
+in the app's APK require them.
+
+--------------------------------------------------------------------------------
+
+Apache Commons Compress
+Copyright 2002-2025 The Apache Software Foundation
+
+Apache Commons IO
+Copyright 2002-2025 The Apache Software Foundation
+
+Apache Commons Codec
+Copyright 2002-2025 The Apache Software Foundation
+
+Apache Commons Lang
+Copyright 2001-2025 The Apache Software Foundation
+
+These products include software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache PDFBox (PdfBox-Android port by Tom Roush)
+Copyright 2014 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+Based on source code originally developed in the PDFBox and
+FontBox projects.
+
+Copyright (c) 2002-2007, www.pdfbox.org
+
+Based on source code originally developed in the PaDaF project.
+Copyright (c) 2010 Atos Worldline SAS
+
+Includes the Adobe Glyph List
+Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated.
+
+Includes the Zapf Dingbats Glyph List
+Copyright 2002, 2010 Adobe Systems Incorporated.
+
+Includes the Script Property (Scripts-10.0.0.txt)
+Copyright 2017 Unicode, Inc.
+
+Includes the Liberation Sans font, Digitized data copyright (c) 2010 Google
+Corporation, Copyright (c) 2012 Red Hat, Inc., licensed under the SIL Open
+Font License, Version 1.1.
+
+--------------------------------------------------------------------------------
+
+FFmpeg
+This software uses code of FFmpeg (https://ffmpeg.org) licensed under the
+GNU Lesser General Public License, version 2.1 or later
+(https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html). The FFmpeg version
+used and where to get its source code are listed in THIRD_PARTY_LICENSES.md
+(section 3.1). FFmpeg is included through the Jellyfin Media3 FFmpeg Decoder
+(https://github.com/jellyfin/jellyfin-androidx-media), which Jellyfin
+publishes under the GNU General Public License, version 3.
+
+--------------------------------------------------------------------------------
+
+Junrar (https://github.com/junrar/junrar) is based on the UnRAR source code by
+Alexander L. Roshal. The UnRAR code may not be used to re-create the RAR
+compression algorithm or to develop a RAR (WinRAR) compatible archiver. The
+full UnRAR licence is in THIRD_PARTY_LICENSES.md (section 3.2).

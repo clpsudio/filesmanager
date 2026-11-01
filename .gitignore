@@ -10,3 +10,24 @@ captures/
 *.apk
 *.aab
 .kotlin/
+
+# Signing material and local secrets (never commit these)
+*.p12
+*.pfx
+*.pem
+*.key
+*.keystore.base64
+keystore.properties
+signing.properties
+.env
+.env.*
+
+# Other local and build files
+.cxx/
+.externalNativeBuild/
+*.hprof
+app/release/
+.vscode/
+
+# Test fixtures are allowed to be APKs
+!app/src/test/resources/**/*.apk

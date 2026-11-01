@@ -30,6 +30,9 @@ concurrency:
 jobs:
   apk:
     name: Build signed APK
+    # Only the CLP Studio repository holds the signing secrets; forks skip this job
+    # (pull requests are checked by ci.yml instead).
+    if: ${{ github.repository == 'clpsudio/filesmanager' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -96,11 +99,17 @@ jobs:
           "$bt/apksigner" verify --print-certs "$apk" | grep -E "DN|SHA-256|SHA-1"
           mkdir -p dist
           cp "$apk" "dist/files-$APP_VERSION_NAME.apk"
+          # The licence and third-party notices travel with every distributed APK.
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.md dist/
 
       - name: Upload release APK
         uses: actions/upload-artifact@v7
         with:
           name: files-release-apk
-          path: dist/files-*.apk
+          path: |
+            dist/files-*.apk
+            dist/LICENSE
+            dist/NOTICE
+            dist/THIRD_PARTY_LICENSES.md
           if-no-files-found: error
           retention-days: 90
