@@ -14,10 +14,11 @@ What the library contains
   any later version. Full text: "GNU Lesser General Public License 2.1" in
   this list (licenses/LGPL-2.1.txt in the source repository).
   FFmpeg was configured without --enable-gpl, --enable-version3 and
-  --enable-nonfree. Only these 11 audio decoders are enabled: flac, alac,
-  pcm_mulaw, pcm_alaw, mp3, aac, ac3, eac3, dca, mlp, truehd. No video
-  decoding, no libavformat, libavfilter, libswscale, libpostproc or
-  libavdevice, and no external libraries.
+  --enable-nonfree. Only these 6 audio decoders are enabled: flac, alac,
+  pcm_mulaw, pcm_alaw, mp3, ac3. No AAC, E-AC-3, DTS or TrueHD/MLP decoder
+  is included (those formats are played by the phone's own decoders when it
+  has them). No video decoding, no libavformat, libavfilter, libswscale,
+  libpostproc or libavdevice, and no external libraries.
 - One FFmpeg file, libavutil/avsscanf.c (av_sscanf), comes from musl libc and
   is under the MIT licence: see "av_sscanf (from musl libc)" in this list.
 - The JNI glue (ffmpeg_jni.cc) and the Java classes in

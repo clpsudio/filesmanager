@@ -9,7 +9,7 @@
 # Both ways end with the same tree check (FFMPEG_TREE_SHA256).
 # Env: FFMPEG_DOWNLOAD_DIR (default build/ffmpeg-download), FFMPEG_TARBALL (use this local file).
 #
-# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

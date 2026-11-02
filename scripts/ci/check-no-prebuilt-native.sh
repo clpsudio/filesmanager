@@ -16,7 +16,7 @@
 #
 # Needs: bash, git, od, unzip.
 #
-# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"

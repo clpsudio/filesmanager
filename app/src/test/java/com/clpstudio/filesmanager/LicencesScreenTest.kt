@@ -49,19 +49,41 @@ class LicencesScreenTest {
             listOf("CLP Studio's own code", "FFmpeg (LGPL-2.1-or-later)", "Other third-party components"),
             s.map { it.heading },
         )
-        // (a) Apache-2.0, clearly pending, own code only.
-        assertTrue(s[0].status!!.contains("Apache-2.0") && s[0].status!!.contains("PENDING"))
+        // (a) Apache-2.0 (final), own code only, copyright CLP Studio, name and logo not licensed.
+        assertEquals("Apache-2.0", s[0].status)
         assertTrue(s[0].intro.contains("only CLP Studio's own code"))
-        assertTrue(s[0].entries.any { it.asset == "Apache-2.0.txt" && it.title.contains("PENDING") && it.note!!.contains("PENDING") })
+        assertTrue(s[0].intro.contains("The Files name and logo are CLP Studio's; Apache-2.0 covers the code."))
+        assertTrue(s[0].entries.any { it.asset == "LICENSE" && it.title == "Apache License 2.0" && it.note!!.contains("Copyright 2026 CLP Studio") })
+        // (b) FFmpeg: the six bundled decoders; the patent-encumbered formats are left to the phone.
+        assertTrue(s[1].intro.contains("AAC, E-AC-3, DTS and TrueHD audio are played by your phone's built-in decoders when available"))
         // (b) FFmpeg: notice, source availability + build configuration, relinking, LGPL text, musl MIT notice.
         assertEquals(
             listOf("FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt", "FFMPEG-RELINKING.txt", "LGPL-2.1.txt", "MIT-musl-avsscanf.txt"),
             s[1].entries.map { it.asset },
         )
         assertTrue(s[1].intro.contains("statically") && s[1].intro.contains("replaced as a whole"))
-        // The Apache text under "Other" is for the third-party libraries; the pending one is in (a).
+        // The Apache text under "Other" is for the third-party libraries; CLP Studio's LICENSE is in (a).
         assertTrue(s[2].intro.contains("AndroidX") && s[2].intro.contains("Media3") && s[2].intro.contains("Kotlin") && s[2].intro.contains("Coil"))
         assertTrue(s[2].entries.map { it.asset }.containsAll(listOf("Apache-2.0.txt", "NOTICE", "THIRD_PARTY_LICENSES.md")))
+    }
+
+    /** The project LICENSE is the unchanged Apache License 2.0 text, and nothing on the screen or in a text is "pending". */
+    @Test fun licenceIsFinalAndUnchangedApache() {
+        assertEquals(text("Apache-2.0.txt"), text("LICENSE"))
+        assertTrue(text("LICENSE").contains("Apache License") && text("LICENSE").contains("Version 2.0, January 2004"))
+        assertEquals(File("../LICENSE").readText(), text("LICENSE"))
+        assertTrue(text("NOTICE").contains("Copyright 2026 CLP Studio"))
+        assertTrue(flat(text("NOTICE")).contains("The Files name and logo are CLP Studio's; Apache-2.0 covers the code."))
+        val ui = OpenSourceLicences.sections.flatMap { s ->
+            listOf(s.heading, s.intro, s.status.orEmpty()) + s.entries.flatMap { listOf(it.title, it.summary, it.note.orEmpty()) }
+        }
+        for (t in ui) assertFalse("screen text: '$t'", t.contains("pending", true) || t.contains("proposed", true))
+        for (asset in listOf("ABOUT.txt", "NOTICE", "THIRD_PARTY_LICENSES.md", "FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt")) {
+            val t = flat(text(asset))
+            assertFalse("$asset says pending", t.contains("pending", true))
+            assertFalse("$asset points to the old file", t.contains("LICENSE.pending-review"))
+            assertFalse("$asset says not in force", t.contains("not in force", true))
+        }
     }
 
     /** Junrar (UnRAR licence, not open source) was removed in Nov 2026: no section, no text, no mention as a component. */
@@ -80,14 +102,20 @@ class LicencesScreenTest {
 
     @Test fun ffmpegNoticeSourceAndRelinking() {
         val notice = text("FFMPEG-NOTICE.txt")
-        listOf("d388c347d41e4eb516dec05910551c5461e65615", "Lesser General Public License, version 2.1", "flac, alac,", "truehd",
+        listOf("d388c347d41e4eb516dec05910551c5461e65615", "Lesser General Public License, version 2.1", "flac, alac,",
+            "pcm_mulaw, pcm_alaw, mp3, ac3", "6 audio decoders", "No AAC, E-AC-3, DTS or TrueHD/MLP decoder",
             "linked statically into libffmpegJNI.so", "WITHOUT ANY WARRANTY")
             .forEach { assertTrue("FFmpeg notice mentions '$it'", flat(notice).contains(it, ignoreCase = true)) }
         val source = flat(text("FFMPEG-SOURCE.txt"))
         listOf("corresponding source", "https://github.com/clpsudio/filesmanager", "ffmpeg-corresponding-source",
             "f89916923b8b935d1f0aaf8b77d21cb0c507c270d66c00d0f256a62cc7ff22ec", "Written offer", "26.1.10909125",
-            "--disable-everything", "--enable-decoder=truehd", "--enable-decoder=flac", "Not used: --enable-gpl, --enable-version3, --enable-nonfree")
+            "--disable-everything", "--enable-decoder=ac3", "--enable-decoder=flac", "Not used: --enable-gpl, --enable-version3, --enable-nonfree")
             .forEach { assertTrue("source text mentions '$it'", source.contains(it, ignoreCase = true)) }
+        for (removed in listOf("aac", "eac3", "dca", "mlp", "truehd")) {
+            assertFalse("source text enables $removed", source.contains("--enable-decoder=$removed "))
+            assertFalse("source text enables $removed", source.endsWith("--enable-decoder=$removed"))
+        }
+        assertFalse(flat(notice).contains("11 audio decoders"))
         val relink = flat(text("FFMPEG-RELINKING.txt"))
         listOf("linked statically into one shared library, libffmpegJNI.so", "replacing libffmpegJNI.so as a whole", "RELINKING.md",
             "relink kit", "relink-kit/<abi>/ffmpeg_jni.cc.o", "link-command.txt", "build-jni-standalone.sh")
@@ -98,7 +126,7 @@ class LicencesScreenTest {
 
     @Test fun noClaimThatTheWholeAppIsApacheOrFullyOpenSource() {
         val about = text("ABOUT.txt")
-        assertTrue(about.contains("PENDING"))
+        assertTrue(about.contains("Apache License 2.0"))
         assertTrue(about.contains("NOT distributed under a") || about.contains("not distributed under a"))
         val ui = OpenSourceLicences.sections.flatMap { s ->
             listOf(s.heading, s.intro, s.status.orEmpty()) + s.entries.flatMap { listOf(it.title, it.summary, it.note.orEmpty()) }
@@ -116,7 +144,7 @@ class LicencesScreenTest {
 
     /** Reflowing for the phone changes only line-break whitespace: every other character stays, in order. */
     @Test fun reflowKeepsEveryTextVerbatimApartFromWhitespace() {
-        val licences = setOf("LGPL-2.1.txt", "Apache-2.0.txt", "MIT-musl-avsscanf.txt")
+        val licences = setOf("LGPL-2.1.txt", "Apache-2.0.txt", "LICENSE", "MIT-musl-avsscanf.txt")
         for (asset in OpenSourceLicences.entries.map { it.asset }.toSet()) {
             val original = text(asset)
             val md = asset.endsWith(".md")
@@ -167,7 +195,7 @@ class LicencesScreenTest {
         var opened: OpenSourceLicences.Entry? = null
         compose.setContent { FilesTheme(ThemeMode.LIGHT, liquidGlass = false) { LicencesListContent(onBack = {}, onOpen = { opened = it }) } }
         compose.onNodeWithText("CLP Studio's own code").assertExists()
-        compose.onNodeWithText("Apache-2.0 · decision PENDING").assertExists()
+        compose.onNodeWithText("Apache-2.0").assertExists()
         compose.onNodeWithText("FFmpeg (LGPL-2.1-or-later)").assertExists()
         compose.waitForIdle()
         compose.onRoot().captureRoboImage(File(shots, "files_licences_list.png").path)
@@ -203,7 +231,7 @@ class LicencesScreenTest {
         compose.onRoot().captureRoboImage(File(shots, "files_licences_ffmpeg_source.png").path)
     }
 
-    /** README.md: same wording rule as the screen, licence marked pending, every preview it shows exists. */
+    /** README.md: same wording rule as the screen, final licence wording, codec note, every preview it shows exists. */
     @Test fun readmeKeepsTheLicenceWordingAndItsPreviews() {
         val readme = File("../README.md").readText()
         val t = flat(readme).lowercase()
@@ -212,7 +240,14 @@ class LicencesScreenTest {
         assertFalse("README: '100% legal'", t.contains("100% legal"))
         assertFalse("README names Junrar", t.contains("junrar"))
         assertFalse("README: 'files is licensed under'", t.contains("files is licensed under"))
-        assertTrue("README marks the licence as pending", t.contains("licence status: pending"))
+        assertFalse("README still says pending", t.contains("pending"))
+        assertFalse("README points to the old licence file", t.contains("license.pending-review"))
+        assertTrue("README: open source statement", t.contains("files is open source."))
+        assertTrue("README: Apache for CLP Studio's code", t.contains("clp studio's own code is licensed under the"))
+        assertTrue("README: logo carve-out", t.contains("the files name and logo are clp studio's; apache-2.0 covers the code."))
+        assertTrue("README: codec note", t.contains("aac, e-ac-3, dts and truehd audio are played by your phone's built-in decoders when available; files does not bundle decoders for them."))
+        assertTrue("README: Adobe AFM notice", t.contains("adobe afm font metrics"))
+        assertTrue("README links LICENSE", readme.contains("](LICENSE)"))
         assertTrue("README: no INTERNET permission stated", readme.contains("There is no `INTERNET` permission"))
         val pics = Regex("docs/screenshots/[A-Za-z0-9._-]+\\.png").findAll(readme).map { it.value }.toList()
         assertTrue("README shows previews", pics.size >= 6)

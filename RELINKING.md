@@ -9,7 +9,7 @@ rebuild it with a modified FFmpeg is published:
 | What | Where |
 |---|---|
 | FFmpeg source, commit `d388c347` | downloaded by `scripts/ffmpeg/fetch-ffmpeg.sh` (pinned sha256), and included as a tarball in the `ffmpeg-corresponding-source` bundle |
-| FFmpeg configure options | `decoder-ffmpeg/src/main/jni/build_ffmpeg.sh` (AndroidX Media, unmodified), called by `scripts/ffmpeg/build-ffmpeg.sh` with API 21 and the 11 decoders in `scripts/ffmpeg/versions.env` |
+| FFmpeg configure options | `decoder-ffmpeg/src/main/jni/build_ffmpeg.sh` (AndroidX Media, unmodified), called by `scripts/ffmpeg/build-ffmpeg.sh` with API 21 and the 6 decoders in `scripts/ffmpeg/versions.env` |
 | JNI glue source | `decoder-ffmpeg/src/main/jni/ffmpeg_jni.cc` |
 | JNI glue object files | `relink-kit/<abi>/ffmpeg_jni.cc.o` in the bundle, with the exact link command (`relink-kit/<abi>/link-command.txt`) |
 | CMake files | `decoder-ffmpeg/src/main/cpp/CMakeLists.txt` (wrapper) and `decoder-ffmpeg/src/main/jni/CMakeLists.txt` (upstream) |

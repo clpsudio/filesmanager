@@ -1,10 +1,11 @@
 # Third-party licences and notices
 
-> **Licence decision pending.** The project licence has not been decided: the
-> proposed Apache-2.0 text is kept, not in force, in `LICENSE.pending-review.md`,
-> and it would apply only to CLP Studio's own code. The APK as a whole is not
-> under one licence and is not "entirely Apache-2.0": it contains components
-> under their own licences, including FFmpeg (LGPL-2.1-or-later, section 3.1).
+> CLP Studio's own code in this repository is licensed under the Apache License,
+> Version 2.0 (`LICENSE`; copyright line in `NOTICE`). That licence covers only
+> CLP Studio's own code. The APK as a whole is not under one licence and is not
+> "entirely Apache-2.0": it contains components under their own licences,
+> including FFmpeg (LGPL-2.1-or-later, section 3.1). The Files name and logo
+> are CLP Studio's; Apache-2.0 covers the code (see `NOTICE`).
 
 Files (`com.clpstudio.filesmanager`) is built from CLP Studio's own source code plus the third-party
 components listed here. This file covers:
@@ -30,8 +31,12 @@ Update (1 November 2026, RAR removed): RAR support was removed together with its
 the app whose licence was not OSI-approved, and with SLF4J API 1.7.36, which only that library pulled in.
 Files includes no RAR library; RAR files show "not supported".
 
+Update (2 November 2026, codecs): the FFmpeg build now has 6 audio decoders (`flac alac pcm_mulaw pcm_alaw
+mp3 ac3`). The AAC, E-AC-3, DTS and TrueHD/MLP decoders were removed from the build; AAC, E-AC-3, DTS and
+TrueHD audio are played by the phone's built-in decoders when available. Licences are unchanged.
+
 The licence texts referred to below are available at the linked URLs. The Apache License 2.0 text is also in
-this repository's `LICENSE.pending-review.md` file (kept for review; not in force as the project licence).
+this repository's `LICENSE` file (the licence of CLP Studio's own code) and in `licenses/Apache-2.0.txt`.
 
 ## 1. Direct dependencies
 
@@ -116,15 +121,16 @@ upstream sources; no Jellyfin file is used.
 - **FFmpeg configuration**: AndroidX Media's unmodified `build_ffmpeg.sh` (`--disable-everything
   --enable-swresample --disable-avformat --disable-avfilter --disable-swscale --disable-postproc
   --disable-avdevice --disable-programs --enable-static --disable-shared ...`), API level 21, and only these
-  decoders: `flac alac pcm_mulaw pcm_alaw mp3 aac ac3 eac3 dca mlp truehd`. **No `--enable-gpl`, no
+  decoders: `flac alac pcm_mulaw pcm_alaw mp3 ac3` (no AAC, E-AC-3, DTS or TrueHD/MLP decoder). **No `--enable-gpl`, no
   `--enable-version3`, no `--enable-nonfree`**, no external libraries. FFmpeg built this way is licensed under
   the **GNU Lesser General Public License, version 2.1 or later** (FFmpeg's `LICENSE.md`). Copyright the
   FFmpeg developers. Full licence text: `licenses/LGPL-2.1.txt` (FFmpeg's own `COPYING.LGPLv2.1`).
 - **One MIT file**: `libavutil/avsscanf.c` (`av_sscanf`) is derived from musl libc, Copyright (c) 2005-2014
   Rich Felker, et al., MIT licence. Notice reproduced in full in `licenses/MIT-musl-avsscanf.txt`. All other
   compiled FFmpeg files are LGPL-2.1-or-later (no GPL-only file is compiled; see the evidence report).
-- **The same binary as before**: the stripped `libffmpegJNI.so` built here is byte-identical to the one in
-  Jellyfin's 1.8.0+1 package (and in Files 1.0.23) for both ABIs, apart from the 20-byte GNU build-ID.
+- **Reproducible build**: two clean builds of the pinned sources give a byte-identical stripped
+  `libffmpegJNI.so` for both ABIs. With the earlier 11-decoder list it was byte-identical to Jellyfin's 1.8.0+1
+  package (and Files 1.0.23) apart from the 20-byte GNU build-ID; with 6 decoders it is smaller and differs.
 - **LGPL-2.1 obligations and how this repository meets them** (wording to be confirmed by a lawyer):
   - notice and licence text: `NOTICE`, `licenses/FFMPEG-NOTICE.txt`, `licenses/LGPL-2.1.txt`, shown in the
     app under Settings > Open-source licences;

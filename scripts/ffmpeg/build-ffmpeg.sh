@@ -13,7 +13,7 @@
 # The build is skipped when a stamp shows the same inputs were already built.
 # Host: Linux or macOS (x86_64 or arm64 with Rosetta), with bash, make, curl and tar.
 #
-# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -67,7 +67,8 @@ fi
 
 rm -rf "$LIBS"
 echo "Building FFmpeg $FFMPEG_COMMIT with NDK $ndk_rev, decoders: $FFMPEG_DECODERS"
-# Unmodified AndroidX Media script: same configure options as Jellyfin's 1.8.0+1 build.
+# Unmodified AndroidX Media script: same configure options as Jellyfin's 1.8.0+1 build,
+# except the decoder list (6 decoders, see versions.env).
 # It also builds x86/x86_64 libraries; those are not linked or shipped
 # (decoder-ffmpeg and app build only armeabi-v7a and arm64-v8a).
 # shellcheck disable=SC2086

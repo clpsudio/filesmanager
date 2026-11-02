@@ -6,7 +6,7 @@
 # signature bytes themselves. The readme.txt text below still names RAR 6.24 only because the committed
 # ZIP/7z/tar.gz fixtures were made with that exact text and the tests check their SHA-256.
 #
-# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 set -euo pipefail
 OUT="$(realpath "$1")"
 W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT

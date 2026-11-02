@@ -1,10 +1,8 @@
 # Files
 
-> **Licence status: pending.** No licence has been granted for this repository
-> yet. Apache-2.0 is the *proposed* licence for CLP Studio's own code only. Its
-> text is in [`LICENSE.pending-review.md`](LICENSE.pending-review.md) and is
-> **not in force**. The app also contains third-party parts under their own
-> open-source licences, including FFmpeg (LGPL-2.1-or-later). See
+> **Files is open source.** CLP Studio's own code is licensed under the
+> [Apache License 2.0](LICENSE). The app also contains third-party parts under
+> their own licences, including FFmpeg (LGPL-2.1-or-later). See
 > [Licensing](#licensing).
 
 **Files** is a file manager for Android phones, made by CLP Studio. It lets you
@@ -86,8 +84,13 @@ Material 3.
 | Part | What it does |
 |---|---|
 | `app/` | The whole app: screens (`ui/`), file and storage logic (`data/`), viewers (`viewer/`), playback (`playback/`), the Vault (`vault/`), the app lock (`security/`) and the Bin clean-up job (`work/`). |
-| `decoder-ffmpeg/` | An FFmpeg audio decoder for formats many phones can't play (AC-3, E-AC-3, DTS, TrueHD/MLP and others). It is built in this repository from AndroidX Media 1.8.0's code and FFmpeg 6.0 source, with 11 audio decoders only. The phone's own decoders are always tried first. |
+| `decoder-ffmpeg/` | An FFmpeg audio decoder for formats some phones can't play. It is built in this repository from AndroidX Media 1.8.0's code and FFmpeg 6.0 source, with 6 audio decoders only: FLAC, ALAC, G.711 µ-law and A-law, MP3 and AC-3. The phone's own decoders are always tried first. |
 | Playback | AndroidX Media3 (ExoPlayer) for video and music, with a media session for the notification and lock-screen controls. |
+
+AAC, E-AC-3, DTS and TrueHD audio are played by your phone's built-in decoders
+when available; Files does not bundle decoders for them. On a phone without a
+built-in decoder for one of these formats, a video with that audio plays with
+no sound.
 | Archives | Zip4j (ZIP, including AES passwords), Apache Commons Compress and XZ (7z, including AES passwords). There is no RAR library: see [Licensing](#licensing). |
 | PDF | Android's built-in `PdfRenderer` draws the pages. PdfBox-Android is used for password-protected PDFs and for adding a password. |
 | Thumbnails and images | Coil (photos, video frames, GIF, SVG). |
@@ -268,6 +271,7 @@ Extra checks (CI runs them too):
 |---|---|
 | `scripts/ci/check-no-prebuilt-native.sh` | No prebuilt native library (`.so`, `.a`, `.o` or similar) is committed, so FFmpeg is always built from source. |
 | `scripts/ci/check-apk-r8.py` | After shrinking (R8), the release APK still contains the decoder, archive, PDF and player code. |
+| `scripts/ci/check-ffmpeg-decoders.py` | Each `libffmpegJNI.so` in the APK has exactly the 6 FFmpeg decoders in `scripts/ffmpeg/versions.env`, and no AAC, E-AC-3, DTS, MLP or TrueHD decoder. |
 | `scripts/test-fixtures/make-fresh-archives.sh` | Rebuilds the test archives (ZIP/7z/tar.gz). |
 | `scripts/test-fixtures/make-dwg-fixtures.py` | Rebuilds the two small AutoCAD test files. |
 
@@ -295,18 +299,16 @@ permission without a clear reason.
 
 ## Licensing
 
-> **Status: pending.** CLP Studio has not confirmed the licence for its own
-> code yet. This section will be updated when it does.
-
-The APK is made of parts with **different licences**. Each part keeps its own
+Files is open source. CLP Studio's own code is licensed under the Apache
+License 2.0. The APK is made of parts with **different licences**. Each part keeps its own
 licence, so the app as a whole is not "Apache-2.0 licensed".
 
 | Part | Licence | Status |
 |---|---|---|
-| CLP Studio's own code (Copyright 2026 CLP Studio) | Apache License 2.0 (proposed) | **Pending.** Text in [`LICENSE.pending-review.md`](LICENSE.pending-review.md), not in force. Until it is confirmed, no licence is granted for this code. |
-| FFmpeg 6.0 (audio decoders inside `libffmpegJNI.so`) | LGPL-2.1-or-later (one file, musl's `av_sscanf`, is MIT) | Built without any GPL, "version3" or non-free parts. See below. |
+| CLP Studio's own code (Copyright 2026 CLP Studio) | Apache License 2.0 | Text in [`LICENSE`](LICENSE); copyright line in [`NOTICE`](NOTICE). |
+| FFmpeg 6.0 (6 audio decoders inside `libffmpegJNI.so`) | LGPL-2.1-or-later (one file, musl's `av_sscanf`, is MIT) | Built without any GPL, "version3" or non-free parts. See below. |
 | AndroidX, Media3 (incl. its FFmpeg decoder Java/JNI code), Kotlin, Compose, Coil, Zip4j, Commons Compress, PdfBox-Android, Guava and the other libraries | Apache-2.0 (195 modules), MIT (4, including Bouncy Castle), BSD-3-Clause (1), 0BSD (1) | All OSI-approved open-source licences. Listed with versions in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). |
-| Fonts and data files that PdfBox-Android bundles | SIL OFL 1.1, BSD-3-Clause, Unicode licence; Adobe's own notice for 14 font-metrics (`.afm`) files | The Adobe notice allows free use and distribution but is not an OSI licence. See section 3.2 of [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). |
+| Fonts and data files that PdfBox-Android bundles | SIL OFL 1.1, BSD-3-Clause, Unicode licence; Adobe AFM font metrics (14 `.afm` files) under Adobe's permissive notice | Data, not code. Adobe's notice allows free use, copying and distribution; it is not an OSI licence. See section 3.2 of [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). |
 
 Every licence text and notice is also inside the app, under
 **Settings > Open-source licences**.
@@ -329,16 +331,19 @@ If you distribute an APK, the LGPL requires you to:
   [`RELINKING.md`](RELINKING.md) and `licenses/FFMPEG-RELINKING.txt`.
 
 Patents on some audio formats are a separate question from these copyright
-licences.
+licences. For that reason Files' FFmpeg build has no AAC, E-AC-3, DTS or
+TrueHD decoder; those formats are left to the phone's built-in decoders.
 
 ### Names and logos
 
-The proposed Apache-2.0 licence would not give any rights to the CLP Studio
-name, the Files name as used by CLP Studio, or the logo and icon.
+The Files name and logo are CLP Studio's; Apache-2.0 covers the code. The
+Apache License does not give any rights to the CLP Studio name, the Files name
+as used by CLP Studio, or the logo and icon (section 6 of the licence).
 
 ## Credits
 
-Files is made by **CLP Studio**. It is built on the work of many open-source
+Files is made by **CLP Studio**. The Files name, logo and app icon are CLP
+Studio's. It is built on the work of many open-source
 projects, including:
 
 - [Android Jetpack / AndroidX](https://developer.android.com/jetpack), Jetpack

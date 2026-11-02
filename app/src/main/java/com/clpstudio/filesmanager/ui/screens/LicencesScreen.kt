@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
  * (assets/licenses/, copied at build time from the repository's NOTICE,
  * THIRD_PARTY_LICENSES.md and licenses/ folder, so the app and the repository never differ).
  *
- * Three sections keep the licences apart: CLP Studio's own code (Apache-2.0, decision pending),
+ * Three sections keep the licences apart: CLP Studio's own code (Apache-2.0),
  * FFmpeg (LGPL-2.1-or-later) and the other third-party components (Apache-2.0, MIT, BSD and 0BSD).
  */
 object OpenSourceLicences {
@@ -54,26 +54,30 @@ object OpenSourceLicences {
     val sections = listOf(
         Section(
             heading = "CLP Studio's own code",
-            status = "Apache-2.0 · decision PENDING",
-            intro = "Apache-2.0 is the proposed licence for the code written by CLP Studio. It is not in force yet, " +
-                "and it covers only CLP Studio's own code, not FFmpeg or the other components below.",
+            status = "Apache-2.0",
+            intro = "The code written by CLP Studio is licensed under the Apache License 2.0. It covers only " +
+                "CLP Studio's own code, not FFmpeg or the other components below. The Files name and logo are " +
+                "CLP Studio's; Apache-2.0 covers the code.",
             entries = listOf(
                 Entry("About these licences", "Which licence covers which part of Files.", "ABOUT.txt"),
                 Entry(
-                    "Apache License 2.0 (proposed, PENDING)",
-                    "Full text of the licence proposed for CLP Studio's own code. Decision pending.",
-                    "Apache-2.0.txt",
-                    note = "Licence decision PENDING. If CLP Studio confirms it, this licence will apply only to " +
-                        "CLP Studio's own code. FFmpeg and the other components keep their own licences.",
+                    "Apache License 2.0",
+                    "Full text of the licence of CLP Studio's own code. Copyright 2026 CLP Studio.",
+                    "LICENSE",
+                    note = "Copyright 2026 CLP Studio. This licence applies only to CLP Studio's own code. " +
+                        "The Files name and logo are CLP Studio's and are not licensed by it. FFmpeg and the " +
+                        "other components keep their own licences.",
                 ),
             ),
         ),
         Section(
             heading = "FFmpeg (LGPL-2.1-or-later)",
-            intro = "The audio decoders. FFmpeg is linked statically into libffmpegJNI.so, which can be " +
-                "replaced as a whole. Its source code and exact build configuration are published.",
+            intro = "Six audio decoders: FLAC, ALAC, G.711 (A-law, µ-law), MP3 and AC-3. FFmpeg is linked " +
+                "statically into libffmpegJNI.so, which can be replaced as a whole. Its source code and exact " +
+                "build configuration are published. AAC, E-AC-3, DTS and TrueHD audio are played by your " +
+                "phone's built-in decoders when available; Files does not bundle decoders for them.",
             entries = listOf(
-                Entry("FFmpeg notice", "What is included: version, licence, the 11 audio decoders.", "FFMPEG-NOTICE.txt"),
+                Entry("FFmpeg notice", "What is included: version, licence, the 6 audio decoders.", "FFMPEG-NOTICE.txt"),
                 Entry(
                     "Source code and build configuration",
                     "Where the corresponding source and the exact configure options are published. Written offer.",

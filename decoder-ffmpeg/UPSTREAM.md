@@ -49,8 +49,10 @@ same minSdk (21).
   (both pinned in `scripts/ffmpeg/versions.env`), and unpacks it to
   `src/main/jni/ffmpeg/` (git-ignored).
 - Built by upstream's unmodified `src/main/jni/build_ffmpeg.sh`, called by
-  `scripts/ffmpeg/build-ffmpeg.sh` with Android API 21 and these 11 decoders:
-  `flac alac pcm_mulaw pcm_alaw mp3 aac ac3 eac3 dca mlp truehd`. No
+  `scripts/ffmpeg/build-ffmpeg.sh` with Android API 21 and these 6 decoders:
+  `flac alac pcm_mulaw pcm_alaw mp3 ac3`. The AAC, E-AC-3, DTS (`dca`) and
+  TrueHD/MLP decoders are deliberately not built; the app leaves those formats
+  to the phone's own (MediaCodec) decoders. No
   `--enable-gpl`, `--enable-version3` or `--enable-nonfree`; libavformat,
   libavfilter, libswscale, libpostproc and libavdevice are disabled.
 - Linked: libavcodec, libavutil and libswresample, statically, into
@@ -59,7 +61,7 @@ same minSdk (21).
   `licenses/MIT-musl-avsscanf.txt`).
 - How to rebuild or replace it: `RELINKING.md` in the repository root.
 
-## 3. What CLP Studio added (Apache-2.0, licence decision pending)
+## 3. What CLP Studio added (Apache-2.0)
 
 - `build.gradle.kts`, `src/main/cpp/CMakeLists.txt` (a wrapper that includes
   upstream's `src/main/jni/CMakeLists.txt` and adds reproducibility flags only),

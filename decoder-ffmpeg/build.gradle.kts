@@ -1,11 +1,13 @@
 // FFmpeg audio decoder for Media3, built in this repository from upstream sources:
 //   - Java/JNI: AndroidX Media 1.8.0 (commit b7bbc6e), libraries/decoder_ffmpeg, Apache-2.0, unmodified
-//   - native:   FFmpeg 6.0 commit d388c347, LGPL-2.1-or-later, 11 audio decoders
-// It replaces org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1, which packaged the same sources.
+//   - native:   FFmpeg 6.0 commit d388c347, LGPL-2.1-or-later, 6 audio decoders
+//               (flac alac pcm_mulaw pcm_alaw mp3 ac3; no AAC, E-AC-3, DTS or TrueHD)
+// It replaces org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1, which packaged the same sources
+// (with 11 decoders).
 // The package and class names (androidx.media3.decoder.ffmpeg.*) are unchanged, so the
 // app's player code is unchanged. Provenance: UPSTREAM.md. Pins: scripts/ffmpeg/versions.env.
 //
-// Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+// Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 
 plugins {
     id("com.android.library")

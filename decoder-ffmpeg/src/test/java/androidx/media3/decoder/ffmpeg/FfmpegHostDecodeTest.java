@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+ * Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
  */
 package androidx.media3.decoder.ffmpeg;
 
@@ -28,24 +28,32 @@ import org.junit.Test;
 
 /**
  * Exercises the real decoding path - the unmodified AndroidX Media Java classes, the JNI glue and
- * FFmpeg at the pinned commit with the app's 11 decoders - on the build machine.
+ * FFmpeg at the pinned commit with the app's 6 decoders - on the build machine.
  *
  * <p>The Android (ARM) libffmpegJNI.so can't run here, so this loads a host build of the same
  * sources made by scripts/ffmpeg/build-host-jni-for-tests.sh. Without it the tests are skipped,
  * unless -Pclp.requireHostFfmpeg=true (CI) makes a missing library a failure.
  *
  * <p>Fixtures (src/test/resources/fixtures): the first 4 packets of a 0.5 s, 1 kHz test tone that
- * CLP Studio encoded with FFmpeg 5.1's own encoders, one file per codec (AAC without its ADTS
- * headers, with an AudioSpecificConfig; ALAC with its magic cookie).
+ * CLP Studio encoded with FFmpeg 5.1's own encoders, one file per codec (ALAC with its magic
+ * cookie).
+ *
+ * <p>AAC, E-AC-3, DTS and TrueHD/MLP are deliberately not built (codec patents). For those formats
+ * the library must say it can't decode them, so FfmpegAudioRenderer reports
+ * FORMAT_UNSUPPORTED_SUBTYPE and the player uses the phone's own (MediaCodec) decoder.
  */
 public final class FfmpegHostDecodeTest {
 
-  private static final String[] DECODERS = {
-    "flac", "alac", "pcm_mulaw", "pcm_alaw", "mp3", "aac", "ac3", "eac3", "dca", "mlp", "truehd"
-  };
+  private static final String[] DECODERS = {"flac", "alac", "pcm_mulaw", "pcm_alaw", "mp3", "ac3"};
+
+  /** Removed from the build: left to the phone's own decoders. */
+  private static final String[] REMOVED_DECODERS = {"aac", "eac3", "dca", "mlp", "truehd"};
 
   @BeforeClass
   public static void loadHostLibrary() {
+    // Media3's Log needs android.util.Log.getStackTraceString, which is a stub here (returns null);
+    // FfmpegLibrary.supportsFormat logs a warning for formats it has no decoder for.
+    androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF);
     String dir = System.getProperty("clp.ffmpeg.hostLibDir", "");
     boolean present = new File(dir, "libffmpegJNI.so").isFile();
     if (Boolean.getBoolean("clp.ffmpeg.requireHost") && !present) {
@@ -61,50 +69,63 @@ public final class FfmpegHostDecodeTest {
   }
 
   @Test
-  public void exactlyTheElevenAudioDecodersAreBuiltIn() throws Exception {
+  public void exactlyTheSixAudioDecodersAreBuiltIn() throws Exception {
     Method has = FfmpegLibrary.class.getDeclaredMethod("ffmpegHasDecoder", String.class);
     has.setAccessible(true);
     assertTrue(FfmpegLibrary.isAvailable());
     for (String name : DECODERS) {
       assertTrue("decoder " + name, (Boolean) has.invoke(null, name));
     }
+    for (String name : REMOVED_DECODERS) {
+      assertFalse("decoder " + name + " must not be built", (Boolean) has.invoke(null, name));
+    }
     // --disable-everything: nothing else, in particular no video decoders.
-    for (String name : new String[] {"vorbis", "opus", "amrnb", "h264", "hevc", "mp2", "wmav2"}) {
+    for (String name : new String[] {"vorbis", "opus", "amrnb", "h264", "hevc", "mp2", "wmav2", "aac_latm", "aac_fixed"}) {
       assertFalse("decoder " + name + " must not be built", (Boolean) has.invoke(null, name));
     }
   }
 
   @Test
-  public void supportsTheAppsAudioFormats() {
+  public void supportsTheBundledAudioFormats() {
     String[] mimes = {
-      MimeTypes.AUDIO_AC3, MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC, MimeTypes.AUDIO_DTS,
-      MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_TRUEHD, MimeTypes.AUDIO_MPEG, MimeTypes.AUDIO_AAC,
-      MimeTypes.AUDIO_FLAC, MimeTypes.AUDIO_ALAC, MimeTypes.AUDIO_ALAW, MimeTypes.AUDIO_MLAW
+      MimeTypes.AUDIO_AC3, MimeTypes.AUDIO_MPEG, MimeTypes.AUDIO_FLAC, MimeTypes.AUDIO_ALAC,
+      MimeTypes.AUDIO_ALAW, MimeTypes.AUDIO_MLAW
     };
     for (String mime : mimes) {
       assertTrue(mime, FfmpegLibrary.supportsFormat(mime));
     }
   }
 
-  @Test public void decodesAc3() throws Exception { decode("ac3", MimeTypes.AUDIO_AC3, 48000, 2); }
-  @Test public void decodesEac3() throws Exception { decode("eac3", MimeTypes.AUDIO_E_AC3, 48000, 2); }
-  @Test public void decodesDts() throws Exception { decode("dca", MimeTypes.AUDIO_DTS, 48000, 2); }
   /**
-   * TrueHD: only decoder creation is checked. Test streams made by FFmpeg's experimental TrueHD
-   * encoder are rejected by FFmpeg 6.0's decoder in this setup ("invalid output channel"), and no
-   * redistributable Dolby TrueHD sample is used here. The library is byte-identical to the one
-   * shipped up to Files 1.0.23, so TrueHD behaviour is unchanged.
+   * The FFmpeg renderer must not claim the removed formats: FfmpegAudioRenderer.supportsFormatInternal
+   * returns FORMAT_UNSUPPORTED_SUBTYPE when FfmpegLibrary.supportsFormat is false, so ExoPlayer picks
+   * the phone's MediaCodec renderer for them (or none, if the phone has no decoder).
    */
   @Test
-  public void createsTrueHdDecoder() throws Exception {
-    Format format =
-        new Format.Builder().setSampleMimeType(MimeTypes.AUDIO_TRUEHD).setSampleRate(48000).setChannelCount(6).build();
-    FfmpegAudioDecoder decoder = new FfmpegAudioDecoder(format, 2, 2, 32 * 1024, false);
-    assertEquals("ffmpegLavc60.3.100-truehd", decoder.getName());
-    decoder.release();
+  public void doesNotClaimTheFormatsLeftToThePhone() {
+    String[] mimes = {
+      MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC, MimeTypes.AUDIO_DTS,
+      MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_TRUEHD
+    };
+    for (String mime : mimes) {
+      assertFalse(mime + " must be left to the phone's decoders", FfmpegLibrary.supportsFormat(mime));
+    }
   }
+
+  @Test
+  public void creatingADecoderForARemovedFormatFails() {
+    Format format =
+        new Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setSampleRate(44100).setChannelCount(2).build();
+    try {
+      new FfmpegAudioDecoder(format, 2, 2, 32 * 1024, false).release();
+      fail("an AAC decoder must not be available");
+    } catch (FfmpegDecoderException | RuntimeException expected) {
+      // FfmpegAudioDecoder throws when FFmpeg has no decoder for the codec.
+    }
+  }
+
+  @Test public void decodesAc3() throws Exception { decode("ac3", MimeTypes.AUDIO_AC3, 48000, 2); }
   @Test public void decodesMp3() throws Exception { decode("mp3", MimeTypes.AUDIO_MPEG, 44100, 2); }
-  @Test public void decodesAac() throws Exception { decode("aac", MimeTypes.AUDIO_AAC, 44100, 2); }
   @Test public void decodesFlac() throws Exception { decode("flac", MimeTypes.AUDIO_FLAC, 44100, 2); }
   @Test public void decodesAlac() throws Exception { decode("alac", MimeTypes.AUDIO_ALAC, 44100, 2); }
   @Test public void decodesALaw() throws Exception { decode("pcm_alaw", MimeTypes.AUDIO_ALAW, 8000, 1); }

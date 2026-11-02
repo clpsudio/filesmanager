@@ -9,7 +9,7 @@
 # or your own modified build placed in decoder-ffmpeg/src/main/jni/ffmpeg/android-libs/<abi>/).
 # Needs CMake >= 3.21 and Ninja on PATH (the Android SDK's cmake/3.22.1/bin has both).
 #
-# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

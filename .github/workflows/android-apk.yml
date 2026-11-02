@@ -147,17 +147,19 @@ jobs:
             echo "::error::Unexpected native ABI in the APK."
             exit 1
           fi
+          # Exactly the 6 bundled FFmpeg decoders in each ABI's library; AAC, E-AC-3, DTS, MLP and TrueHD absent.
+          python3 scripts/ci/check-ffmpeg-decoders.py "$apk"
           # R8 kept the decoder/JNI, archive, PDF and player classes; every JNI export has its native method.
           python3 scripts/ci/check-apk-r8.py "$apk" --mapping app/build/outputs/mapping/release/mapping.txt --dexdump "$bt/dexdump"
           # The licence texts shown in Settings > Open-source licences.
-          for f in ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt NOTICE THIRD_PARTY_LICENSES.md; do
+          for f in LICENSE ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt NOTICE THIRD_PARTY_LICENSES.md; do
             unzip -l "$apk" "assets/licenses/$f" > /dev/null || { echo "::error::assets/licenses/$f missing from the APK"; exit 1; }
           done
           "$bt/apksigner" verify --print-certs "$apk" | grep -E "DN|SHA-256|SHA-1"
           mkdir -p dist
           cp "$apk" "dist/files-$APP_VERSION_NAME.apk"
-          # The (pending) licence text and third-party notices travel with every distributed APK.
-          cp LICENSE.pending-review.md NOTICE THIRD_PARTY_LICENSES.md RELINKING.md dist/
+          # The licence text and third-party notices travel with every distributed APK.
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.md RELINKING.md dist/
 
       - name: FFmpeg corresponding source bundle
         shell: bash
@@ -169,7 +171,7 @@ jobs:
           name: files-release-apk
           path: |
             dist/files-*.apk
-            dist/LICENSE.pending-review.md
+            dist/LICENSE
             dist/NOTICE
             dist/THIRD_PARTY_LICENSES.md
             dist/RELINKING.md

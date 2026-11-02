@@ -41,9 +41,9 @@ Robolectric and Roborazzi for UI). The pull-request workflow
 
 ## Dependencies and licences
 
-The proposed licence for Files is Apache-2.0 (decision pending; see the
-"Licence (pending)" section of the README), so every new dependency must have a
-licence that allows that:
+CLP Studio's code in Files is licensed under Apache-2.0 (see `LICENSE` and the
+"Licence" section of the README), so every new dependency must have a licence
+that allows that:
 
 - Accepted: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Zlib,
   public domain / Unlicense.
@@ -61,7 +61,8 @@ reader it used (Junrar) is under the UnRAR licence, which is not an
 open-source licence, and it was removed. Please open an issue before adding
 any RAR library.
 Changes to `decoder-ffmpeg/` or `scripts/ffmpeg/` must keep FFmpeg free of GPL,
-version3 and non-free parts, keep the upstream AndroidX Media files unmodified
+version3 and non-free parts, must not add the AAC, E-AC-3, DTS or TrueHD/MLP
+decoders back (those formats are left to the phone's own decoders), keep the upstream AndroidX Media files unmodified
 (or record every change in `decoder-ffmpeg/UPSTREAM.md`), and update the pins,
 notices and `RELINKING.md` together.
 
@@ -74,13 +75,11 @@ came from in the pull request.
 
 ## Licensing of contributions
 
-**Pending:** the project licence has not been confirmed yet (see the
-"Licence (pending)" section of the README). Once it is, contributions will be
-licensed under it; the proposed licence is the Apache License, Version 2.0,
-whose section 5 covers contributions (text kept for review in
-[`LICENSE.pending-review.md`](LICENSE.pending-review.md)). By submitting a pull
+Contributions are licensed under the Apache License, Version 2.0
+([`LICENSE`](LICENSE)); its section 5 covers contributions. By submitting a pull
 request you confirm that you have the right to submit the work. Contributors
-keep the copyright in their own contributions.
+keep the copyright in their own contributions. The Files name and logo are CLP
+Studio's; Apache-2.0 covers the code.
 
 ## Pull requests
 

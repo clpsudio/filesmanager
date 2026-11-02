@@ -5,11 +5,19 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import android.media.MediaFormat
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.Metadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.metadata.MetadataOutput
 import androidx.media3.exoplayer.text.TextOutput
@@ -33,6 +41,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.MediaCodecInfoBuilder
+import org.robolectric.shadows.ShadowMediaCodecList
 import java.io.File
 
 /** Design previews, the 7z browser and the FFmpeg renderer wiring, rendered: --tests '*FormatsRenderTest*' */
@@ -95,15 +105,57 @@ class FormatsRenderTest {
         shot("files_p2_archive_7z", "Trip")
     }
 
-    @Test fun ffmpegAudioRendererIsInstalledAfterThePhoneDecoders() {
-        val ctx = ApplicationProvider.getApplicationContext<Application>()
-        val renderers = MediaRenderers.factory(ctx).createRenderers(
+    private fun createRenderers(): Array<Renderer> = MediaRenderers.factory(ApplicationProvider.getApplicationContext<Application>())
+        .createRenderers(
             Handler(Looper.getMainLooper()),
             object : VideoRendererEventListener {},
             object : AudioRendererEventListener {},
             object : TextOutput { override fun onCues(cueGroup: CueGroup) {} },
             object : MetadataOutput { override fun onMetadata(metadata: Metadata) {} },
         )
+
+    /**
+     * AAC, E-AC-3, DTS and TrueHD are not in the bundled FFmpeg build: they must go to the phone's own decoders.
+     * MODE stays ON (not PREFER), so MediaCodec renderers come first; the FFmpeg renderer must not claim these
+     * formats. (The real native library's answer for them is checked in decoder-ffmpeg's FfmpegHostDecodeTest.)
+     */
+    @Test fun aacEac3DtsTrueHdArePlayedByThePhoneDecodersNotFfmpeg() {
+        assertEquals(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON, MediaRenderers.MODE)
+        val platformMimes = mapOf(
+            MimeTypes.AUDIO_AAC to "c2.android.aac.decoder",
+            MimeTypes.AUDIO_E_AC3 to "c2.vendor.eac3.decoder",
+            MimeTypes.AUDIO_DTS to "c2.vendor.dts.decoder",
+            MimeTypes.AUDIO_TRUEHD to "c2.vendor.truehd.decoder",
+        )
+        ShadowMediaCodecList.reset()
+        platformMimes.forEach { (mime, name) ->
+            ShadowMediaCodecList.addCodec(
+                MediaCodecInfoBuilder.newBuilder().setName(name).setIsEncoder(false).setCapabilities(
+                    MediaCodecInfoBuilder.CodecCapabilitiesBuilder.newBuilder()
+                        .setMediaFormat(MediaFormat.createAudioFormat(mime, 48000, 2)).build(),
+                ).build(),
+            )
+        }
+        MediaCodecUtil.clearDecoderInfoCache()
+        try {
+            val renderers = createRenderers()
+            val platform = renderers.first { it is MediaCodecAudioRenderer }
+            val ffmpeg = renderers.first { it is FfmpegAudioRenderer }
+            platformMimes.keys.forEach { mime ->
+                val format = Format.Builder().setSampleMimeType(mime).setSampleRate(48000).setChannelCount(2).build()
+                assertEquals("$mime: phone decoder handles it", C.FORMAT_HANDLED,
+                    RendererCapabilities.getFormatSupport(platform.capabilities.supportsFormat(format)))
+                assertTrue("$mime: FFmpeg renderer must not claim it",
+                    RendererCapabilities.getFormatSupport(ffmpeg.capabilities.supportsFormat(format)) != C.FORMAT_HANDLED)
+            }
+        } finally {
+            ShadowMediaCodecList.reset()
+            MediaCodecUtil.clearDecoderInfoCache()
+        }
+    }
+
+    @Test fun ffmpegAudioRendererIsInstalledAfterThePhoneDecoders() {
+        val renderers = createRenderers()
         val ffmpeg = renderers.indexOfFirst { it is FfmpegAudioRenderer }
         val platform = renderers.indexOfFirst { it is MediaCodecAudioRenderer }
         assertTrue("FFmpeg audio renderer present: ${renderers.map { it.javaClass.simpleName }}", ffmpeg >= 0)

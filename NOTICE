@@ -1,14 +1,18 @@
 Files
 Copyright 2026 CLP Studio
 
-LICENCE DECISION PENDING. This product includes software developed by CLP
-Studio (https://github.com/clpsudio/filesmanager). The proposed licence for
-that code is the Apache License, Version 2.0 (text kept, not in force, in
-LICENSE.pending-review.md); no licence has been granted yet, and it would
-cover only CLP Studio's own code. The APK as a whole is not distributed under
-a single licence and is not "entirely Apache-2.0": it also contains FFmpeg
+This product includes software developed by CLP Studio
+(https://github.com/clpsudio/filesmanager). CLP Studio's own code is licensed
+under the Apache License, Version 2.0 (see LICENSE). That licence covers only
+CLP Studio's own code. The APK as a whole is not distributed under a single
+licence and is not "entirely Apache-2.0": it also contains FFmpeg
 (LGPL-2.1-or-later) and the other components below, each under its own
 licence. Files includes no RAR library.
+
+The Files name and logo are CLP Studio's; Apache-2.0 covers the code. The
+Apache License does not grant permission to use CLP Studio's trade names,
+trademarks or logo (Apache License 2.0, section 6), except as needed to
+describe the origin of the work and reproduce this NOTICE file.
 
 The app also uses third-party components that keep their own licences. Their
 names, versions, licences and sources are listed in THIRD_PARTY_LICENSES.md.
@@ -54,6 +58,10 @@ Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated.
 Includes the Zapf Dingbats Glyph List
 Copyright 2002, 2010 Adobe Systems Incorporated.
 
+Includes the Adobe Font Metrics (AFM) files for the 14 PDF core fonts,
+Copyright Adobe Systems Incorporated, used under Adobe's permission notice
+(reproduced in THIRD_PARTY_LICENSES.md).
+
 Includes the Script Property (Scripts-10.0.0.txt)
 Copyright 2017 Unicode, Inc.
 
@@ -67,8 +75,9 @@ FFmpeg
 This software uses code of FFmpeg (https://ffmpeg.org) licensed under the
 GNU Lesser General Public License, version 2.1 or later. Copyright (c) the
 FFmpeg developers. Version: commit d388c347d41e4eb516dec05910551c5461e65615
-(release/6.0), configured without GPL, version3 or non-free parts, with 11
-audio decoders, linked statically into lib/<abi>/libffmpegJNI.so. Licence
+(release/6.0), configured without GPL, version3 or non-free parts, with 6
+audio decoders (flac, alac, pcm_mulaw, pcm_alaw, mp3, ac3), linked statically
+into lib/<abi>/libffmpegJNI.so. Licence
 text: licenses/LGPL-2.1.txt. Where to get the corresponding source code and
 how to rebuild or replace the library: licenses/FFMPEG-NOTICE.txt,
 licenses/FFMPEG-SOURCE.txt (source, exact build configuration, written offer),

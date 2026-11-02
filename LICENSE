@@ -1,31 +1,4 @@
-# LICENCE DECISION PENDING: NOT IN FORCE
 
-**Status (1 November 2026): pending review. No licence has been granted yet.**
-
-The text below is the Apache License, Version 2.0. It is the licence CLP Studio
-*proposes* for its own source code in this repository. It has been kept here,
-unchanged, for review, but it is **not in force** until CLP Studio confirms the
-licensing decision and this file is renamed back to `LICENSE`.
-
-The decision stays pending until the integration, documentation and release
-checks of the FFmpeg decoder replacement are complete and CLP Studio approves
-it. If confirmed, this licence applies **only to CLP Studio's own code**. It
-does not apply to the third-party components in the app's APK, which keep
-their own licences, notably:
-
-- FFmpeg (LGPL-2.1-or-later; one MIT file), built in `decoder-ffmpeg/` from
-  AndroidX Media 1.8.0 (Apache-2.0) and FFmpeg commit `d388c347`; and
-- the other libraries listed in `THIRD_PARTY_LICENSES.md` (Apache-2.0, MIT,
-  BSD, 0BSD and others, each under its own licence).
-
-The APK as a whole is therefore not "entirely Apache-2.0". Until CLP Studio
-confirms its own licence, the project should not be described as fully open
-source. See the "Licence (pending)" section of
-`README.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md`.
-
----
-
-```text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -227,4 +200,3 @@ source. See the "Licence (pending)" section of
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```

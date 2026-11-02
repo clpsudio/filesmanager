@@ -7,11 +7,11 @@ single licence, and it is not "entirely Apache-2.0".
 
 This screen has three sections:
 
-1. CLP Studio's own code: the licence decision is PENDING. The proposed
-   licence is the Apache License 2.0; it would apply only to code written by
-   CLP Studio, and only once CLP Studio confirms it.
-2. FFmpeg (LGPL-2.1-or-later): the audio decoders, with one MIT file
-   (av_sscanf, from musl libc). That section says where the source code and
+1. CLP Studio's own code: Apache License 2.0 (Copyright 2026 CLP Studio).
+   It applies only to code written by CLP Studio. The Files name and logo
+   are CLP Studio's; Apache-2.0 covers the code.
+2. FFmpeg (LGPL-2.1-or-later): six audio decoders (FLAC, ALAC, G.711 A-law
+   and mu-law, MP3, AC-3), with one MIT file (av_sscanf, from musl libc). That section says where the source code and
    the exact build configuration are published and how to replace FFmpeg.
 3. Other third-party components: AndroidX, Media3 (including its FFmpeg
    decoder Java and JNI code), Kotlin, Coil, Commons Compress, PdfBox-Android,
@@ -21,5 +21,6 @@ This screen has three sections:
 
 Files does not include any RAR library and does not open RAR archives.
 
-Patents on audio codecs (for example AAC, AC-3/E-AC-3 and DTS) are a separate
-matter from these copyright licences.
+AAC, E-AC-3, DTS and TrueHD audio are played by your phone's built-in
+decoders when available; Files does not bundle decoders for them. Patents on
+audio codecs are a separate matter from these copyright licences.

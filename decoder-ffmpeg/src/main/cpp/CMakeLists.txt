@@ -2,7 +2,7 @@
 # unmodified next to this file. It only adds flags that make libffmpegJNI.so
 # reproducible; they don't change the generated code.
 #
-# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+# Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 
 # Same minimum as the upstream file (see decoder-ffmpeg/build.gradle.kts for the pinned 3.22.1).
 cmake_minimum_required(VERSION 3.21.0 FATAL_ERROR)

@@ -15,7 +15,7 @@
 5. Libraries that must NOT ship (Junrar / UnRAR, not an open-source licence): no class or type of theirs in the dex.
 Exits 1 and prints every miss.
 
-Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0 (licence decision pending).
+Copyright 2026 CLP Studio. Licensed under the Apache License, Version 2.0.
 """
 import argparse, re, struct, subprocess, sys, tempfile, zipfile
 from pathlib import Path

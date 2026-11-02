@@ -90,7 +90,7 @@ android {
 
 // Licence texts and notices shown in Settings > Open-source licences (assets/licenses/).
 // Copied at build time from the repository root, so the APK always carries exactly the
-// texts in the repository: NOTICE, THIRD_PARTY_LICENSES.md and every file in licenses/.
+// texts in the repository: LICENSE, NOTICE, THIRD_PARTY_LICENSES.md and every file in licenses/.
 abstract class LicenceAssetsTask : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
@@ -105,14 +105,14 @@ abstract class LicenceAssetsTask : DefaultTask() {
         out.deleteRecursively()
         out.mkdirs()
         sources.files.sortedBy { it.name }.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
-        check(listOf("FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt", "FFMPEG-RELINKING.txt", "LGPL-2.1.txt", "MIT-musl-avsscanf.txt").all { out.resolve(it).isFile }) { "licence texts missing" }
+        check(listOf("LICENSE", "NOTICE", "FFMPEG-NOTICE.txt", "FFMPEG-SOURCE.txt", "FFMPEG-RELINKING.txt", "LGPL-2.1.txt", "MIT-musl-avsscanf.txt").all { out.resolve(it).isFile }) { "licence texts missing" }
     }
 }
 
 androidComponents {
     onVariants { variant ->
         val task = tasks.register<LicenceAssetsTask>("${variant.name}LicenceAssets") {
-            sources.from(rootProject.file("NOTICE"), rootProject.file("THIRD_PARTY_LICENSES.md"))
+            sources.from(rootProject.file("LICENSE"), rootProject.file("NOTICE"), rootProject.file("THIRD_PARTY_LICENSES.md"))
             sources.from(rootProject.fileTree("licenses"))
         }
         variant.sources.assets?.addGeneratedSourceDirectory(task, LicenceAssetsTask::outputDir)
@@ -168,7 +168,8 @@ dependencies {
     // open-source licence. RAR files show the "this archive type isn't supported" message.
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.tukaani:xz:1.10")
-    // FFmpeg audio decoders for Media3 (offline native libs) — plays codecs the phone's own decoders can't.
+    // FFmpeg audio decoders for Media3 (offline native libs) — FLAC, ALAC, G.711, MP3 and AC-3 when the phone's own
+    // decoders can't play them. AAC, E-AC-3, DTS and TrueHD are left to the phone's decoders (not bundled).
     // Built in this repo from AndroidX Media 1.8.0 + FFmpeg 6.0 (LGPL-2.1+), see decoder-ffmpeg/UPSTREAM.md.
     implementation(project(":decoder-ffmpeg"))
 

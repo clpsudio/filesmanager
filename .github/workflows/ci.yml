@@ -4,7 +4,7 @@
 # built only by android-apk.yml on main (CLP Studio's repository only).
 #
 # Artifacts (unsigned, for checking only):
-#   files-unsigned-apk            the unsigned APK + LICENSE.pending-review.md, NOTICE, THIRD_PARTY_LICENSES.md
+#   files-unsigned-apk            the unsigned APK + LICENSE, NOTICE, THIRD_PARTY_LICENSES.md
 #   ffmpeg-corresponding-source   FFmpeg source tarball, build scripts, decoder module source, relink kit
 name: CI
 
@@ -98,15 +98,17 @@ jobs:
             echo "::error::Unexpected native ABI in the APK."
             exit 1
           fi
+          # Exactly the 6 bundled FFmpeg decoders in each ABI's library; AAC, E-AC-3, DTS, MLP and TrueHD absent.
+          python3 scripts/ci/check-ffmpeg-decoders.py "$apk"
           # R8 kept the decoder/JNI, archive, PDF and player classes; every JNI export has its native method.
           python3 scripts/ci/check-apk-r8.py "$apk" --mapping app/build/outputs/mapping/release/mapping.txt --dexdump "$bt/dexdump"
           # The licence texts shown in Settings > Open-source licences.
-          for f in ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt NOTICE THIRD_PARTY_LICENSES.md; do
+          for f in LICENSE ABOUT.txt Apache-2.0.txt FFMPEG-NOTICE.txt FFMPEG-SOURCE.txt FFMPEG-RELINKING.txt LGPL-2.1.txt MIT-musl-avsscanf.txt NOTICE THIRD_PARTY_LICENSES.md; do
             unzip -l "$apk" "assets/licenses/$f" > /dev/null || { echo "::error::assets/licenses/$f missing from the APK"; exit 1; }
           done
           mkdir -p dist
           cp "$apk" dist/files-unsigned.apk
-          cp LICENSE.pending-review.md NOTICE THIRD_PARTY_LICENSES.md RELINKING.md dist/
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.md RELINKING.md dist/
 
       - name: FFmpeg corresponding source bundle
         shell: bash
@@ -118,7 +120,7 @@ jobs:
           name: files-unsigned-apk
           path: |
             dist/files-unsigned.apk
-            dist/LICENSE.pending-review.md
+            dist/LICENSE
             dist/NOTICE
             dist/THIRD_PARTY_LICENSES.md
             dist/RELINKING.md
