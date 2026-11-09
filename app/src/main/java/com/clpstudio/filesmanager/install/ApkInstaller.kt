@@ -7,10 +7,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * Tapping an APK opens the system "Do you want to install this app?" prompt directly.
@@ -69,6 +77,8 @@ object ApkInstaller {
 class InstallApkActivity : ComponentActivity() {
     private var askedPermission = false
     private var started = false
+    private lateinit var statusLine: TextView
+    private lateinit var progressBar: ProgressBar
 
     private val unknownSources = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (ApkInstaller.canInstall(this)) startInstall()
@@ -77,6 +87,7 @@ class InstallApkActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        buildProgressView()
         if (savedInstanceState != null) {
             started = savedInstanceState.getBoolean("started")
             askedPermission = savedInstanceState.getBoolean("asked")
@@ -88,6 +99,7 @@ class InstallApkActivity : ComponentActivity() {
             startInstall()
         } else {
             askedPermission = true
+            showStatus("Allow \"Install unknown apps\" for Files first")
             Toast.makeText(this, "Allow \"Install unknown apps\" for Files, then go back", Toast.LENGTH_LONG).show()
             try {
                 unknownSources.launch(ApkInstaller.unknownSourcesIntent(this))
@@ -117,13 +129,17 @@ class InstallApkActivity : ComponentActivity() {
                 val obbNote = withContext(Dispatchers.IO) { copyObb(uri) }
                 val result = withContext(Dispatchers.IO) { runCatching { commitBundle(uri, parts.toList()) } }
                 result.onFailure { done("Not installed: " + (it.message ?: "the bundle couldn't be read")) }
+                result.onSuccess { showStatus("Installing…") }
                 obbNote?.let { Toast.makeText(applicationContext, it, Toast.LENGTH_LONG).show() }
             }
             return
         }
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { commitSession(uri) } }
+            val result = withContext(Dispatchers.IO) {
+                runCatching { commitSession(uri) { percent -> runOnUiThread { showStatus("Preparing…", percent) } } }
+            }
             result.onFailure { fallbackInstall(uri) }
+            result.onSuccess { showStatus("Installing…") }
         }
     }
 
@@ -185,7 +201,7 @@ class InstallApkActivity : ComponentActivity() {
 
     /** Streams the APK into a new install session and commits it; the result comes back to [onNewIntent]. */
     @SuppressLint("RequestInstallPackagesPolicy")
-    private fun commitSession(uri: Uri) {
+    private fun commitSession(uri: Uri, onPercent: (Int) -> Unit) {
         val installer = packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         val length = runCatching { contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } }.getOrNull() ?: -1L
@@ -197,7 +213,7 @@ class InstallApkActivity : ComponentActivity() {
                 val input = contentResolver.openInputStream(uri) ?: error("Can't read the APK")
                 input.use { inp ->
                     session.openWrite("base.apk", 0, length).use { out ->
-                        inp.copyTo(out, 256 * 1024)
+                        copyWithProgress(inp, out, length, onPercent)
                         session.fsync(out)
                     }
                 }
@@ -222,6 +238,7 @@ class InstallApkActivity : ComponentActivity() {
                 val confirm = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                 else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
                 if (confirm == null) return done("The installer isn't available").let { true }
+                showStatus("Confirm the install to continue")
                 try {
                     startActivity(confirm)
                 } catch (_: Exception) {
@@ -250,11 +267,72 @@ class InstallApkActivity : ComponentActivity() {
         val installerPkg = packageManager.queryIntentActivities(base, PackageManager.MATCH_DEFAULT_ONLY)
             .map { it.activityInfo.packageName }
             .firstOrNull { it != packageName }
+        showStatus("Opening the installer…")
         try {
             startActivity(if (installerPkg != null) base.setPackage(installerPkg) else base)
             done(null)
         } catch (_: Exception) {
             done("The installer isn't available")
+        }
+    }
+
+    /** The card on screen while the APK is prepared and handed to the system installer. */
+    private fun buildProgressView() {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        progressBar = ProgressBar(this).apply { isIndeterminate = true }
+        statusLine = TextView(this).apply {
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 16f
+        }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+            background = GradientDrawable().apply {
+                setColor(0xE6202020.toInt())
+                cornerRadius = dp(16).toFloat()
+            }
+            addView(progressBar, LinearLayout.LayoutParams(dp(28), dp(28)))
+            addView(statusLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(14)
+            })
+        }
+        setContentView(FrameLayout(this).apply {
+            setBackgroundColor(0x66000000)
+            addView(card, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        })
+        showStatus("Preparing…")
+    }
+
+    /** Shows what the install is doing now; [percent] null means working with no count yet. */
+    private fun showStatus(text: String, percent: Int? = null) {
+        statusLine.text = text
+        if (percent == null) {
+            progressBar.isIndeterminate = true
+        } else {
+            progressBar.isIndeterminate = false
+            progressBar.progress = percent
+        }
+    }
+
+    /** Copies the APK into the session in chunks and reports the share copied (0–100) when the size is known. */
+    private fun copyWithProgress(inp: InputStream, out: OutputStream, total: Long, onPercent: (Int) -> Unit) {
+        val buf = ByteArray(256 * 1024)
+        var copied = 0L
+        var last = -1
+        while (true) {
+            val n = inp.read(buf)
+            if (n < 0) break
+            out.write(buf, 0, n)
+            copied += n
+            if (total > 0) {
+                val percent = (copied * 100 / total).toInt().coerceAtMost(100)
+                if (percent != last) {
+                    last = percent
+                    onPercent(percent)
+                }
+            }
         }
     }
 
